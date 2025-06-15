@@ -1,42 +1,29 @@
 import './App.scss';
 
-import { useReducer, useRef } from 'react';
-import axios from 'axios';
+import { useRef } from 'react';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import * as THREE from 'three';
-import {
-  acceleratedRaycast,
-  computeBoundsTree,
-  disposeBoundsTree,
-  MeshBVH,
-} from 'three-mesh-bvh';
+import { Upload, Button } from 'antd';
 
 import Editor from '../utils/Editor';
-import MeshDiffusion from '../utils/function/mesh-diffusion/MeshDiffusion';
 import { useUpdateEffect } from '../utils/tool/UseUpdateEffect';
-
-THREE.Mesh.prototype.raycast = acceleratedRaycast;
-THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
-THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
+import PredictDirection from '../utils/function/PredictDirection';
 
 function App() {
   const containerRef = useRef();
-  const [, forceRerender] = useReducer((x) => x + 1, 0);
 
-  const loadModel = async () => {
+  /**
+   * @param {File} file 
+   */
+  const loadModel = async file => {
     try {
-      const res = await axios.get('./Easterfrog.stl', {
-        responseType: 'arraybuffer',
-      });
-
-      const buffrGeometry = new STLLoader().parse(res.data);
+      const arrayBuffer = await file.arrayBuffer();
+      const buffrGeometry = new STLLoader().parse(arrayBuffer);
 
       const posLength = buffrGeometry.getAttribute('position').array.length;
       const colorArray = new Float32Array(posLength).fill(1);
       const colorAttribute = new THREE.BufferAttribute(colorArray, 3);
       buffrGeometry.setAttribute('color', colorAttribute);
-
-      buffrGeometry.boundsTree = new MeshBVH(buffrGeometry);
 
       const material = new THREE.MeshStandardMaterial({
         color: 0xffffff,
@@ -46,9 +33,7 @@ function App() {
       });
 
       const mesh = new THREE.Mesh(buffrGeometry, material);
-
-      Editor.targetMesh = mesh;
-      Editor.scene.add(mesh);
+      PredictDirection.addMesh(mesh);
     } catch (error) {
       console.log(error);
     }
@@ -59,8 +44,8 @@ function App() {
       if (!containerRef.current) return;
 
       Editor.setEditor(containerRef.current);
-      await loadModel();
-      MeshDiffusion.isEnable = true;
+      const axisHelper = new THREE.AxesHelper(10);
+      Editor.scene.add(axisHelper);
     };
 
     initial();
@@ -68,22 +53,18 @@ function App() {
 
   return (
     <div className="container">
-      <button
-        onClick={() => {
-          MeshDiffusion.onReset();
-          forceRerender();
-        }}
+      <Upload
+        customRequest={uploadRequestOption => loadModel(uploadRequestOption.file)}
+        beforeUpload={(file) => file}
+        showUploadList={false}
       >
-        reset
-      </button>
-      <button
-        onClick={() => {
-          MeshDiffusion.isDrawBoundary = !MeshDiffusion.isDrawBoundary;
-          forceRerender();
-        }}
+        <Button>upload model</Button>
+      </Upload>
+      <Button
+        onClick={() => PredictDirection.predictMesh()}
       >
-        {MeshDiffusion.isDrawBoundary ? 'draw boundary' : 'select point'}
-      </button>
+        predict dirction
+      </Button>
       <div ref={containerRef} className="editor" />
     </div>
   );

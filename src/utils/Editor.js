@@ -9,8 +9,6 @@ class Editor {
     this.scene = null;
     this.renderer = null;
     this.control = null;
-    /**@type {THREE.Mesh} */
-    this.targetMesh = null;
   }
 
   setEditor = (container) => {
