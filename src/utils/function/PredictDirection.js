@@ -22,7 +22,7 @@ class PredictDirection {
     Editor.scene.add(mesh);
   }
 
-  predictDirection = async () => {
+  predictMesh = async () => {
     try {
       console.log('predict direction');
       const lastMeshInfo = this.meshInfoArray[this.meshInfoArray.length - 1];
