@@ -1,14 +1,15 @@
 import './App.scss';
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
 import * as THREE from 'three';
-import { Upload, Button } from 'antd';
+import { Upload, Button, Input } from 'antd';
 
 import Editor from '../utils/Editor';
 import { useUpdateEffect } from '../utils/tool/UseUpdateEffect';
 import PredictDirection from '../utils/function/PredictDirection';
+import PredictMargin from '../utils/function/PredictMargin';
 
 /**
  * @param {string} string 
@@ -59,7 +60,8 @@ const loadModel = async file => {
     });
 
     const mesh = new THREE.Mesh(buffrGeometry, material);
-    PredictDirection.addMesh(mesh);
+    // PredictDirection.addMesh(mesh);
+    PredictMargin.addMesh(mesh);
   } catch (error) {
     console.log(error);
   }
@@ -67,6 +69,7 @@ const loadModel = async file => {
 
 function App() {
   const containerRef = useRef();
+  const [toothNumberStr, setToothNumberStr] = useState(null)
 
   useUpdateEffect(() => {
     const initial = async () => {
@@ -89,10 +92,19 @@ function App() {
       >
         <Button>upload model</Button>
       </Upload>
-      <Button
+      <Input
+        value={toothNumberStr}
+        onChange={e => setToothNumberStr(e.target.value)}
+      />
+      {/* <Button
         onClick={() => PredictDirection.predictMesh()}
       >
-        predict dirction
+        predict direction
+      </Button> */}
+      <Button
+        onClick={() => PredictMargin.predictMesh(toothNumberStr)}
+      >
+        predict margin
       </Button>
       <div ref={containerRef} className="editor" />
     </div>
