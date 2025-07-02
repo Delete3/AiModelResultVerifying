@@ -13,7 +13,7 @@ class PredictDirection {
   /**
    * @param {THREE.Mesh} mesh 
    */
-  addMesh = (mesh) =>{
+  addMesh = (mesh) => {
     this.meshInfoArray.push({
       originalMesh: mesh,
       predictDirMesh: null,
@@ -22,7 +22,7 @@ class PredictDirection {
     Editor.scene.add(mesh);
   }
 
-  predictMesh = async () => {
+  predictMesh = async (isUpper = true) => {
     try {
       console.log('predict direction');
       const lastMeshInfo = this.meshInfoArray[this.meshInfoArray.length - 1];
@@ -33,6 +33,7 @@ class PredictDirection {
 
       const formData = new FormData();
       formData.append('file', blob, 'model.stl');
+      formData.append('is_upper', isUpper)
       const res = await axios.post('http://localhost:8000/predict/', formData);
 
       const quaternionRawData = res.data?.quaternion;

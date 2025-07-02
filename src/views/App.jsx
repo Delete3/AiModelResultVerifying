@@ -36,6 +36,7 @@ const parseGeometry = async (blob, fileFormat) => {
   else if (fileFormat == 'ply') geometry = new PLYLoader().parse(await blob.arrayBuffer());
   else return;
 
+  geometry.computeVertexNormals();
   return geometry;
 }
 
@@ -43,24 +44,25 @@ const parseGeometry = async (blob, fileFormat) => {
  * @param {File} file 
  */
 const loadModel = async file => {
-  try {
+  try { 
     const fileExtension = getFileExtension(file.name);
     const buffrGeometry = await parseGeometry(file, fileExtension);
+    console.log(buffrGeometry)
 
-    const posLength = buffrGeometry.getAttribute('position').array.length;
-    const colorArray = new Float32Array(posLength).fill(1);
-    const colorAttribute = new THREE.BufferAttribute(colorArray, 3);
-    buffrGeometry.setAttribute('color', colorAttribute);
+    // const posLength = buffrGeometry.getAttribute('position').array.length;
+    // const colorArray = new Float32Array(posLength).fill(1);
+    // const colorAttribute = new THREE.BufferAttribute(colorArray, 3);
+    // buffrGeometry.setAttribute('color', colorAttribute);
 
     const material = new THREE.MeshStandardMaterial({
       color: 0xffffff,
-      roughness: 0.2,
+      roughness: 0.2, 
       side: THREE.DoubleSide,
-      vertexColors: true,
+      // vertexColors: true,
     });
 
     const mesh = new THREE.Mesh(buffrGeometry, material);
-    // PredictDirection.addMesh(mesh);
+    PredictDirection.addMesh(mesh);
     PredictMargin.addMesh(mesh);
   } catch (error) {
     console.log(error);
@@ -96,11 +98,17 @@ function App() {
         value={toothNumberStr}
         onChange={e => setToothNumberStr(e.target.value)}
       />
-      {/* <Button
+      <Button
         onClick={() => PredictDirection.predictMesh()}
       >
-        predict direction
-      </Button> */}
+        predict upper direction
+      </Button>
+      
+      <Button
+        onClick={() => PredictDirection.predictMesh(false)}
+      >
+        predict lower direction
+      </Button>
       <Button
         onClick={() => PredictMargin.predictMesh(toothNumberStr)}
       >
