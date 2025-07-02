@@ -8,7 +8,7 @@ class OrthographicCamera extends THREE.OrthographicCamera {
     this.defaultCameraDistance = 195;
     this.defaultFov = 25;
 
-    this.position.set(0, -this.defaultCameraDistance, 0);
+    this.position.set(0, this.defaultCameraDistance, 0);
     this.near = 1;
     this.far = 2000;
     this.onWindowResize();

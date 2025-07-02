@@ -1,14 +1,15 @@
 import './App.scss';
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
 import * as THREE from 'three';
-import { Upload, Button } from 'antd';
+import { Upload, Button, Input } from 'antd';
 
 import Editor from '../utils/Editor';
 import { useUpdateEffect } from '../utils/tool/UseUpdateEffect';
 import PredictDirection from '../utils/function/PredictDirection';
+import PredictMargin from '../utils/function/PredictMargin';
 
 /**
  * @param {string} string 
@@ -35,6 +36,7 @@ const parseGeometry = async (blob, fileFormat) => {
   else if (fileFormat == 'ply') geometry = new PLYLoader().parse(await blob.arrayBuffer());
   else return;
 
+  geometry.computeVertexNormals();
   return geometry;
 }
 
@@ -42,24 +44,26 @@ const parseGeometry = async (blob, fileFormat) => {
  * @param {File} file 
  */
 const loadModel = async file => {
-  try {
+  try { 
     const fileExtension = getFileExtension(file.name);
     const buffrGeometry = await parseGeometry(file, fileExtension);
+    console.log(buffrGeometry)
 
-    const posLength = buffrGeometry.getAttribute('position').array.length;
-    const colorArray = new Float32Array(posLength).fill(1);
-    const colorAttribute = new THREE.BufferAttribute(colorArray, 3);
-    buffrGeometry.setAttribute('color', colorAttribute);
+    // const posLength = buffrGeometry.getAttribute('position').array.length;
+    // const colorArray = new Float32Array(posLength).fill(1);
+    // const colorAttribute = new THREE.BufferAttribute(colorArray, 3);
+    // buffrGeometry.setAttribute('color', colorAttribute);
 
     const material = new THREE.MeshStandardMaterial({
       color: 0xffffff,
-      roughness: 0.2,
+      roughness: 0.2, 
       side: THREE.DoubleSide,
-      vertexColors: true,
+      // vertexColors: true,
     });
 
     const mesh = new THREE.Mesh(buffrGeometry, material);
     PredictDirection.addMesh(mesh);
+    PredictMargin.addMesh(mesh);
   } catch (error) {
     console.log(error);
   }
@@ -67,6 +71,7 @@ const loadModel = async file => {
 
 function App() {
   const containerRef = useRef();
+  const [toothNumberStr, setToothNumberStr] = useState(null)
 
   useUpdateEffect(() => {
     const initial = async () => {
@@ -89,10 +94,25 @@ function App() {
       >
         <Button>upload model</Button>
       </Upload>
+      <Input
+        value={toothNumberStr}
+        onChange={e => setToothNumberStr(e.target.value)}
+      />
       <Button
         onClick={() => PredictDirection.predictMesh()}
       >
-        predict dirction
+        predict upper direction
+      </Button>
+      
+      <Button
+        onClick={() => PredictDirection.predictMesh(false)}
+      >
+        predict lower direction
+      </Button>
+      <Button
+        onClick={() => PredictMargin.predictMesh(toothNumberStr)}
+      >
+        predict margin
       </Button>
       <div ref={containerRef} className="editor" />
     </div>
