@@ -1,73 +1,17 @@
 import './App.scss';
 
 import { useRef, useState } from 'react';
-import { STLLoader } from 'three/addons/loaders/STLLoader.js';
-import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
 import * as THREE from 'three';
 import { Upload, Button, Input } from 'antd';
+import axios from 'axios';
 
 import Editor from '../utils/Editor';
 import { useUpdateEffect } from '../utils/tool/UseUpdateEffect';
 import PredictDirection from '../utils/function/PredictDirection';
 import PredictMargin from '../utils/function/PredictMargin';
-
-/**
- * @param {string} string 
- * @returns {string}
- */
-const getFileExtension = (string) => {
-  return string.slice((string.lastIndexOf(".") - 1 >>> 0) + 2).toLowerCase();
-}
-
-/**
- * @param {Blob} blob 
- * @param {string} fileFormat 
- * @returns {GeometryWithFileFormat}
- */
-const parseGeometry = async (blob, fileFormat) => {
-  /**@type {THREE.BufferGeometry} */
-  let geometry = null;
-  if (fileFormat == 'stl') geometry = new STLLoader().parse(await blob.arrayBuffer());
-  else if (fileFormat == 'obj') {
-    const group = new OBJLoader().parse(await blob.text());
-    const mesh = group.children[0];
-    geometry = mesh.geometry;
-  }
-  else if (fileFormat == 'ply') geometry = new PLYLoader().parse(await blob.arrayBuffer());
-  else return;
-
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
-/**
- * @param {File} file 
- */
-const loadModel = async file => {
-  try { 
-    const fileExtension = getFileExtension(file.name);
-    const buffrGeometry = await parseGeometry(file, fileExtension);
-    console.log(buffrGeometry)
-
-    // const posLength = buffrGeometry.getAttribute('position').array.length;
-    // const colorArray = new Float32Array(posLength).fill(1);
-    // const colorAttribute = new THREE.BufferAttribute(colorArray, 3);
-    // buffrGeometry.setAttribute('color', colorAttribute);
-
-    const material = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      roughness: 0.2, 
-      side: THREE.DoubleSide,
-      // vertexColors: true,
-    });
-
-    const mesh = new THREE.Mesh(buffrGeometry, material);
-    PredictDirection.addMesh(mesh);
-    PredictMargin.addMesh(mesh);
-  } catch (error) {
-    console.log(error);
-  }
-};
+import { loadGeometry, loadMesh } from '../utils/loader/loadGeometry';
+import { loadDirJson, loadMatrixJson } from '../utils/loader/loadDirJson';
+import PredictAbutment from '../utils/function/PredictAbutment';
 
 function App() {
   const containerRef = useRef();
@@ -83,40 +27,117 @@ function App() {
     };
 
     initial();
+    PredictAbutment.initFromPublic();
+    console.log(Editor)
   }, []);
 
-  return (
-    <div className="container">
+  const renderDirPredictFunc = () => {
+    return <div className='function-group'>
       <Upload
-        customRequest={uploadRequestOption => loadModel(uploadRequestOption.file)}
+        customRequest={uploadRequestOption => {
+          const geometry = loadGeometry(uploadRequestOption.file);
+          const material = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            roughness: 0.2,
+            side: THREE.DoubleSide,
+          });
+          const mesh = new THREE.Mesh(geometry, material);
+          PredictDirection.addMesh(mesh);
+        }}
+        beforeUpload={(file) => file}
+        showUploadList={false}
+      >
+        <Button>upload model</Button>
+      </Upload>
+      <Button
+        className='function-button'
+        onClick={() => PredictDirection.predictMesh()}
+      >
+        predict upper direction
+      </Button>
+      <Button
+        className='function-button'
+        onClick={() => PredictDirection.predictMesh(false)}
+      >
+        predict lower direction
+      </Button>
+    </div>
+  }
+
+  const renderMarginPredictFunc = () => {
+    return <div className='function-group'>
+      <Upload
+        customRequest={uploadRequestOption => {
+          const geometry = loadGeometry(uploadRequestOption.file);
+          const material = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            roughness: 0.2,
+            side: THREE.DoubleSide,
+          });
+          const mesh = new THREE.Mesh(geometry, material);
+          PredictMargin.addMesh(mesh);
+        }}
         beforeUpload={(file) => file}
         showUploadList={false}
       >
         <Button>upload model</Button>
       </Upload>
       <Input
+        className='function-button'
         value={toothNumberStr}
         onChange={e => setToothNumberStr(e.target.value)}
+        placeholder='input toothNumber'
       />
       <Button
-        onClick={() => PredictDirection.predictMesh()}
-      >
-        predict upper direction
-      </Button>
-      
-      <Button
-        onClick={() => PredictDirection.predictMesh(false)}
-      >
-        predict lower direction
-      </Button>
-      <Button
+        className='function-button'
         onClick={() => PredictMargin.predictMesh(toothNumberStr)}
       >
         predict margin
       </Button>
-      <div ref={containerRef} className="editor" />
     </div>
-  );
+  }
+
+  const renderAbutmentPredictFunc = () => {
+    return <div className='function-group'>
+      {/* <Upload
+        customRequest={uploadRequestOption => {
+          const geometry = loadGeometry(uploadRequestOption.file);
+          const material = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            roughness: 0.2,
+            side: THREE.DoubleSide,
+          });
+          const mesh = new THREE.Mesh(geometry, material);
+          PredictMargin.addMesh(mesh);
+        }}
+        beforeUpload={(file) => file}
+        showUploadList={false}
+      >
+        <Button>upload model</Button>
+      </Upload>
+      <Input
+        className='function-button'
+        value={toothNumberStr}
+        onChange={e => setToothNumberStr(e.target.value)}
+        placeholder='input toothNumber'
+      /> */}
+      <Button
+        className='function-button'
+        onClick={() => PredictAbutment.callApi()}
+      >
+        predict margin from abutment
+      </Button>
+    </div>
+  }
+
+  return <div className="container">
+    <div ref={containerRef} className="editor" />
+    <div className='function-container'>
+      {renderDirPredictFunc()}
+      {renderMarginPredictFunc()}
+      {renderAbutmentPredictFunc()}
+    </div>
+  </div>
 }
 
 export default App;

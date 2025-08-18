@@ -10,12 +10,14 @@ import * as THREE from 'three';
  * @returns {THREE.Vector3}
  */
 const posKey2Vec = (key, vector = new THREE.Vector3()) => {
-  const coordArray = key.split('_');
-  vector.set(
-    Number(coordArray[0]),
-    Number(coordArray[1]),
-    Number(coordArray[2])
-  );
+  const data = pointMap[key];
+  if (!data) {
+    const coordArray = key.split("_");
+    vector.set(Number(coordArray[0]), Number(coordArray[1]), Number(coordArray[2]));
+    return vector;
+  }
+
+  vector.set(data.vectorNums[0], data.vectorNums[1], data.vectorNums[2]);
   return vector;
 };
 
@@ -36,14 +38,15 @@ const buildPointMap = (geometry) => {
   const index = geometry.getIndex();
   const posAttr = geometry.getAttribute('position');
 
-  const tempPoint = new THREE.Vector3();
   const points = {};
   for (let i = 0; i < index.count; i++) {
     const triIndex = Math.floor(i / 3);
     const posIndex = index.getX(i);
 
-    const point = tempPoint.fromBufferAttribute(posAttr, posIndex);
-    const key = vec2PosKey(point);
+    const vx = posAttr.getX(posIndex);
+    const vy = posAttr.getY(posIndex);
+    const vz = posAttr.getZ(posIndex);
+    const key = `${vx}_${vy}_${vz}`;
 
     if (points[key]) {
       points[key].triIndices.push(triIndex);
@@ -52,6 +55,7 @@ const buildPointMap = (geometry) => {
     }
 
     points[key] = {
+      vectorNums: [vx, vy, vz],
       triIndices: [triIndex],
       posIndices: [posIndex],
     };
@@ -272,10 +276,37 @@ const applyColorByPointKeySet = (
   colorAttr.needsUpdate = true;
 };
 
+/**
+ * @param {THREE.Mesh} mesh 
+ * @param {boolean} resetColor 
+ */
+const prepareColorMesh = (mesh, resetColor = true) => {
+  const geometry = mesh.geometry;
+
+  if (!geometry.hasAttribute('color')) {
+    const positionArray = geometry.getAttribute('position').array;
+    const colorAttribute = new THREE.BufferAttribute(new Uint8Array(positionArray.length), 3, true);
+    geometry.setAttribute('color', colorAttribute);
+  }
+
+  const colorAttribute = geometry.getAttribute('color');
+  if (resetColor) {
+    if (colorAttribute.array instanceof Uint8Array) colorAttribute.array.fill(255);
+    else colorAttribute.array.fill(1);
+  }
+  colorAttribute.needsUpdate = true;
+
+  if (!mesh.material.vertexColors) {
+    mesh.material.vertexColors = true;
+    mesh.material.needsUpdate = true;
+  }
+}
+
 export {
   buildPointMap,
   triangleSpread,
   posKey2Vec,
   vec2PosKey,
   applyColorByPointKeySet,
+  prepareColorMesh,
 };

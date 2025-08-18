@@ -2,17 +2,33 @@ html,
 body,
 #root {
   height: 100%;
+  margin: 0;
 }
 
 .container {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  position: relative;
 
   .editor {
     height: 100%;
     width: 100%;
+  }
+
+  .function-container {
+    position: absolute;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+
+    .function-group {
+      display: flex;
+      gap: 5px;
+    }
+
+    .function-button {
+      width: 200px;
+    }
   }
 }
