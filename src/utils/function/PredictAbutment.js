@@ -8,6 +8,7 @@ import Editor from '../Editor';
 import { loadGeometry } from '../loader/loadGeometry';
 import { loadMatrixJson } from '../loader/loadDirJson';
 import { applyColorByPointKeySet, buildPointMap, posKey2Vec, prepareColorMesh } from '../tool/BufferGeometryTool';
+import { abutmentData } from '../../../public/abutmentData';
 
 class PredictAbutment {
     constructor() {
@@ -45,47 +46,6 @@ class PredictAbutment {
         // geometry.applyMatrix4(matrix);
     }
 
-    callApi = async () => {
-        if (!this.mesh || !this.toothFdi) return;
-        console.log('predict abutment');
-
-        try {
-            const formData = new FormData();
-
-            const stlString = new STLExporter().parse(this.mesh, { binary: true });
-            const stlBlob = new Blob([stlString], { type: 'text/plain' });
-            formData.append('file', stlBlob, 'model.stl');
-            formData.append('tooth_number', this.toothFdi);
-            formData.append('threshold', 0.35);
-
-            const res = await axios.post('http://localhost:8001/predict_abutment/', formData);
-            console.log(res.data);
-
-            //如何從點雲獲得完整網格
-            /**@type {number[][]} */
-            const jawPoints = _.get(res.data, 'jaw_points', []);
-            const oriPointCloudVertex = jawPoints.flat();
-            const oriPointGeometry = new THREE.BufferGeometry();
-            oriPointGeometry.setAttribute('position', new THREE.Float32BufferAttribute(oriPointCloudVertex, 3));
-            const oriPointMaterial = new THREE.PointsMaterial({ color: 0x888888, size: 4 });
-            const oriPointsMesh = new THREE.Points(oriPointGeometry, oriPointMaterial);
-            // Editor.scene.add(oriPointsMesh);
-
-            /**@type {number[][]} */
-            const abutPoints = _.get(res.data, 'abutment_points', []);
-            const abutPointCloudVertex = abutPoints.flat();
-            const abutPointGeometry = new THREE.BufferGeometry();
-            abutPointGeometry.setAttribute('position', new THREE.Float32BufferAttribute(abutPointCloudVertex, 3));
-            const abutPointMaterial = new THREE.PointsMaterial({ color: 0xff0000, size: 5 });
-            const abutPointsMesh = new THREE.Points(abutPointGeometry, abutPointMaterial);
-            // Editor.scene.add(abutPointsMesh);
-
-            this.getAbutment(abutPointGeometry);
-        } catch (error) {
-            console.log(error);
-        }
-    }
-
     /**
      * @param {THREE.BufferGeometry} abutPointGeometry 
      */
@@ -97,25 +57,21 @@ class PredictAbutment {
 
         const pointMap = buildPointMap(geometry);
         geometry.pointMap = pointMap;
-
-        const posAttr = geometry.getAttribute('position');
-        const indexAttr = geometry.getIndex();
-
         const abutPosAttr = abutPointGeometry.getAttribute('position');
 
         const abutPointKeySet = new Set();
-        const tempBoundBox = new THREE.Box3();
         const tempAbutPoint = new THREE.Vector3();
-        const boxSize = new THREE.Vector3(1, 1, 1);
+
+        const tempBoundingSphere = new THREE.Sphere();
+        tempBoundingSphere.radius = 0.8
+
         for (let i = 0; i < abutPosAttr.count; i++) {
             const abutPoint = tempAbutPoint.fromBufferAttribute(abutPosAttr, i);
-            tempBoundBox.setFromCenterAndSize(abutPoint, boxSize); //試試看包圍球的效果
+            tempBoundingSphere.center.copy(abutPoint);
 
-            //遍歷口掃每個頂點，找出在包圍框內的
             boundsTree.shapecast({
                 intersectsBounds: (box) => {
-                    if (tempBoundBox.containsBox(box)) return CONTAINED;
-                    if (tempBoundBox.intersectsBox(box)) return INTERSECTED;
+                    if (tempBoundingSphere.intersectsBox(box)) return INTERSECTED;
                     return NOT_INTERSECTED;
                 },
                 intersectsTriangle: (tri, triIndex, contained) => {
@@ -130,16 +86,163 @@ class PredictAbutment {
                         return;
                     }
 
-                    if (tempBoundBox.containsPoint(tri.a)) abutPointKeySet.add(aKey);
-                    if (tempBoundBox.containsPoint(tri.b)) abutPointKeySet.add(bKey);
-                    if (tempBoundBox.containsPoint(tri.c)) abutPointKeySet.add(cKey);
+                    if (tempBoundingSphere.containsPoint(tri.a)) abutPointKeySet.add(aKey);
+                    if (tempBoundingSphere.containsPoint(tri.b)) abutPointKeySet.add(bKey);
+                    if (tempBoundingSphere.containsPoint(tri.c)) abutPointKeySet.add(cKey);
                 }
             });
         }
 
         prepareColorMesh(this.mesh, true);
         applyColorByPointKeySet(geometry, abutPointKeySet, new THREE.Color(0, 1, 0))
-        console.log(abutPointKeySet, this.mesh)
+    }
+
+    callApi = async () => {
+        if (!this.mesh || !this.toothFdi) return;
+        console.log('predict abutment');
+
+        try {
+            // const formData = new FormData();
+
+            // const stlString = new STLExporter().parse(this.mesh, { binary: true });
+            // const stlBlob = new Blob([stlString], { type: 'text/plain' });
+            // formData.append('file', stlBlob, 'model.stl');
+            // formData.append('tooth_number', this.toothFdi);
+            // formData.append('threshold', 0.35);
+
+            // const res = await axios.post('http://localhost:8001/predict_abutment/', formData);
+            // console.log(res.data);
+
+
+            /**@type {number[][]} */
+            const jawPoints = _.get(abutmentData, 'jaw_points', []);
+            const oriPointCloudVertex = jawPoints.flat();
+            const oriPointGeometry = new THREE.BufferGeometry();
+            oriPointGeometry.setAttribute('position', new THREE.Float32BufferAttribute(oriPointCloudVertex, 3));
+            const oriPointMaterial = new THREE.PointsMaterial({ color: 0x888888, size: 4 });
+            const oriPointsMesh = new THREE.Points(oriPointGeometry, oriPointMaterial);
+            // Editor.scene.add(oriPointsMesh);
+
+            /**@type {number[][]} */
+            const abutPoints = _.get(abutmentData, 'abutment_points', []);
+            const abutPointCloudVertex = abutPoints.flat();
+            const abutPointGeometry = new THREE.BufferGeometry();
+            abutPointGeometry.setAttribute('position', new THREE.Float32BufferAttribute(abutPointCloudVertex, 3));
+            const abutPointMaterial = new THREE.PointsMaterial({ color: 0xff0000, size: 5 });
+            const abutPointsMesh = new THREE.Points(abutPointGeometry, abutPointMaterial);
+            // Editor.scene.add(abutPointsMesh);
+
+            // normalPoints = jawPoints過濾掉abutPoints
+            // const normalPoints = 
+            const abutPointCloudKeyMap = new Map();
+            for (const abutPointData of abutPoints) {
+                const [x, y, z] = abutPointData;
+                abutPointCloudKeyMap.set(`${x}_${y}_${z}`, [x, y, z]);
+            }
+
+            const normalPointCloudKeyMap = new Map();
+            for (const jawPointData of jawPoints) {
+                const [x, y, z] = jawPointData;
+                const pointKey = `${x}_${y}_${z}`;
+                if (abutPointCloudKeyMap.has(pointKey)) continue;
+
+                normalPointCloudKeyMap.set(pointKey, [x, y, z]);
+            }
+
+            // 先獲得abutment點雲大範圍的點，再用不是abutment的點雲小範圍去除點
+            prepareColorMesh(this.mesh, true);
+            const geometry = this.mesh.geometry;
+
+            const abutPointSet = this.getAllPointByPointCloud(geometry, abutPointCloudKeyMap, 0.8);
+            const normalPointSet = this.getAllPointByPointCloud(geometry, normalPointCloudKeyMap, 0.4);
+            for (const abutPointKey of abutPointSet) {
+                if (!normalPointSet.has(abutPointKey)) continue;
+                abutPointSet.delete(abutPointKey);
+            }
+            applyColorByPointKeySet(geometry, abutPointSet, new THREE.Color(0, 1, 0));
+
+            this.getSeedPoint(geometry, abutPointSet);
+        } catch (error) {
+            console.log(error);
+        }
+    }
+
+    /**
+     * @param {THREE.BufferGeometry} geometry 
+     * @param {Map<string, number[]>} pointKeyMap
+     */
+    getAllPointByPointCloud = (geometry, pointKeyMap, radius = 0.5) => {
+        if (!geometry.boundsTree) geometry.boundsTree = new MeshBVH(geometry);
+        /**@type {MeshBVH} */
+        const boundsTree = geometry.boundsTree;
+
+        if (!geometry.pointMap) geometry.pointMap = buildPointMap(geometry);
+        const pointMap = geometry.pointMap;
+
+        const pointKeySet = new Set();
+        const tempPoint = new THREE.Vector3();
+
+        const tempBoundingSphere = new THREE.Sphere();
+        tempBoundingSphere.radius = radius;
+
+        for (const [pointKey, pointData] of pointKeyMap) {
+            const [x, y, z] = pointData;
+            const point = tempPoint.set(x, y, z);
+            tempBoundingSphere.center.copy(point);
+
+            boundsTree.shapecast({
+                intersectsBounds: (box) => {
+                    if (tempBoundingSphere.intersectsBox(box)) return INTERSECTED;
+                    return NOT_INTERSECTED;
+                },
+                intersectsTriangle: (tri, triIndex, contained) => {
+                    const aKey = `${tri.a.x}_${tri.a.y}_${tri.a.z}`;
+                    const bKey = `${tri.b.x}_${tri.b.y}_${tri.b.z}`;
+                    const cKey = `${tri.c.x}_${tri.c.y}_${tri.c.z}`;
+
+                    if (contained) {
+                        pointKeySet.add(aKey);
+                        pointKeySet.add(bKey);
+                        pointKeySet.add(cKey);
+                        return;
+                    }
+
+                    if (tempBoundingSphere.containsPoint(tri.a)) pointKeySet.add(aKey);
+                    if (tempBoundingSphere.containsPoint(tri.b)) pointKeySet.add(bKey);
+                    if (tempBoundingSphere.containsPoint(tri.c)) pointKeySet.add(cKey);
+                }
+            });
+        }
+
+        return pointKeySet;
+    }
+
+    /**
+     * 獲得pointKey中心的點，再向齒軸方向找出種子點
+     * @param {THREE.BufferGeometry} geometry 
+     * @param {Set<string>} pointKeySet 
+     */
+    getSeedPoint = (geometry, pointKeySet) => {
+        if (!geometry.pointMap) geometry.pointMap = buildPointMap(geometry);
+        /**@type {import('../tool/BufferGeometryTool').PointMap} */
+        const pointMap = geometry.pointMap;
+
+        const boundingBox = new THREE.Box3();
+        const tempPoint = new THREE.Vector3();
+        for (const pointKey of pointKeySet) {
+            const pointData = pointMap[pointKey];
+            if (!pointData) {
+                console.log(`Can not find ${pointKey} in pointMap`);
+                continue;
+            }
+
+            const [x, y, z] = pointData.vectorNums;
+            const point = tempPoint.set(x, y, z);
+            boundingBox.expandByPoint(point);
+        }
+
+        //畫出包圍框中心點
+        console.log(boundingBox)
     }
 }
 

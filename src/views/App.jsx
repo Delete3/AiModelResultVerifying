@@ -24,11 +24,13 @@ function App() {
       Editor.setEditor(containerRef.current);
       const axisHelper = new THREE.AxesHelper(10);
       Editor.scene.add(axisHelper);
+      console.log(Editor)
+
+      await PredictAbutment.initFromPublic();
+      await PredictAbutment.callApi();
     };
 
     initial();
-    PredictAbutment.initFromPublic();
-    console.log(Editor)
   }, []);
 
   const renderDirPredictFunc = () => {

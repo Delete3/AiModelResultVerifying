@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 /**
- * @typedef {Object.<string, {triIndices: number[], posIndices: number[]}>} PointMap
+ * @typedef {Object.<string, {triIndices: number[], posIndices: number[], vectorNums: number[]}>} PointMap
  */
 
 /**
