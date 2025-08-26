@@ -107,53 +107,6 @@ const tri2PosIndices = (geometry, triIndex) => {
 };
 
 /**
- * @param {THREE.BufferGeometry} geometry
- * @param {string} seedPointKey 種子點
- * @param {Set<string>} boundaryPointKeySet 所有擴散邊界的點
- * @return {Promise<Set<string>>} 所有擴散到的點
- */
-const triangleSpread1 = async (geometry, seedPointKey, boundaryPointKeySet) => {
-  /**@type {PointMap} */
-  const { pointMap } = geometry;
-  if (!pointMap) return;
-
-  const checkedPointKeySet = new Set();
-  const tempSeedPointKeySet = new Set().add(seedPointKey);
-
-  let preCheckedPointKeySetSize = 0;
-  const neighborSeedKeySet = new Set();
-  while (tempSeedPointKeySet.size > 0) {
-    neighborSeedKeySet.clear();
-
-    for (const seedPointKey of tempSeedPointKeySet) {
-      const neighborKeySet = posKey2Neighbors(geometry, pointMap, seedPointKey);
-      checkedPointKeySet.add(seedPointKey);
-
-      for (const neighborKey of neighborKeySet) {
-        if (checkedPointKeySet.has(neighborKey)) continue;
-
-        const isBoundary = boundaryPointKeySet.has(neighborKey);
-        if (isBoundary) continue;
-
-        neighborSeedKeySet.add(neighborKey);
-      }
-    }
-
-    if (checkedPointKeySet.size > preCheckedPointKeySetSize) {
-      await new Promise((resolve) => setTimeout(resolve, 1.5));
-      preCheckedPointKeySetSize = checkedPointKeySet.size;
-      applyColorByPointKeySet(geometry, checkedPointKeySet);
-    }
-
-    tempSeedPointKeySet.clear();
-    for (const neighborKey of neighborSeedKeySet)
-      tempSeedPointKeySet.add(neighborKey);
-  }
-
-  return checkedPointKeySet;
-};
-
-/**
  * 根據三角形索引，獲得三個頂點的pointKey
  * @param {BufferGeometry} geometry
  * @param {number} triIndex
@@ -182,71 +135,83 @@ const getTriPointKeyArray = (geometry, triIndex) => {
 /**
  * @param {BufferGeometry} geometry
  * @param {Set<number>} seedtriIndexSet 所有種子三角形
- * @param {(triIndex: number)=>{}} ifSpreadJudgeFunc 擴散判斷函式，為true則繼續擴散
+ * @param {(checkedTriIndex: number, neighborTriIndex: number)=>{}} ifSpreadJudgeFunc 擴散判斷函式，為true則繼續擴散
  */
-const triangleSpread = async (geometry, seedtriIndexSet, ifSpreadJudgeFunc) => {
-  if (!ifSpreadJudgeFunc) return;
+const triangleSpread = (geometry, seedtriIndexSet, ifSpreadJudgeFunc = () => true) => {
+    if (!geometry.triMap) geometry.triMap = buildTriMap(geometry);
+    /**@type {import('./GeometryMapTool').TriMap} */
+    const triMap = geometry.triMap;
 
-  if (!geometry.pointMap) geometry.pointMap = buildPointMap(geometry);
-  /**@type {PointMap} */
-  const pointMap = geometry.pointMap;
+    const spreadTriIndexSet = new Set();
+    const boundaryPointKeySet = new Set();
+    const tempSeedTriIndexSet = new Set([...seedtriIndexSet]);
 
-  const checkedTriIndexSet = new Set();
-  const tempSeedTriIndexSet = new Set([...seedtriIndexSet]);
-  const tempSeedPointKeySet = new Set();
+    const neighborTriIndexSet = new Set();
+    while (tempSeedTriIndexSet.size > 0) {
+        neighborTriIndexSet.clear();
 
-  let preCheckedTriIndexSetSize = 0;
-  const neighborTriIndexSet = new Set();
-  while (tempSeedTriIndexSet.size > 0) {
-    neighborTriIndexSet.clear();
-    console.log(tempSeedTriIndexSet.size);
+        for (const seedTriKey of tempSeedTriIndexSet) {
+            const { triIndices: neighborTriArray } = triMap[seedTriKey];
+            spreadTriIndexSet.add(seedTriKey);
 
-    // 根據所有三角形索引，獲得所有pointKey
-    tempSeedPointKeySet.clear();
-    for (const triIndex of tempSeedTriIndexSet) {
-      for (const pointKey of getTriPointKeyArray(geometry, triIndex)) {
-        tempSeedPointKeySet.add(pointKey);
-      }
-      checkedTriIndexSet.add(triIndex);
+            for (const neighborKey of neighborTriArray) {
+                if (spreadTriIndexSet.has(neighborKey)) continue;
+                if (boundaryPointKeySet.has(neighborKey)) continue;
+
+                if (!ifSpreadJudgeFunc(seedTriKey, neighborKey)) {
+                    boundaryPointKeySet.add(neighborKey);
+                    continue;
+                }
+
+                neighborTriIndexSet.add(neighborKey);
+            }
+        }
+
+        tempSeedTriIndexSet.clear();
+        for (const neighborKey of neighborTriIndexSet)
+            tempSeedTriIndexSet.add(neighborKey);
     }
 
-    for (const seedPointKey of tempSeedPointKeySet) {
-      const neighborKeySet = posKey2Neighbors(geometry, pointMap, seedPointKey);
+    return { spreadTriIndexSet, boundaryPointKeySet };
+}
 
-      // 獲得點周圍所有三角形
-      for (const neighborKey of neighborKeySet) {
-        const { triIndices } = pointMap[neighborKey];
+/**
+ * @param {BufferGeometry} geometry
+ * @param {Set<string>} seedPointKeySet 所有種子點
+ * @param {(seedPointKey: string, neighborPointKey: string)=>{}} ifSpreadJudgeFunc 擴散判斷函式，為true則繼續擴散
+ * @return {Set<string>} 所有擴散到的點
+ */
+const pointSpread = (geometry, seedPointKeySet, ifSpreadJudgeFunc = () => true) => {
+    if (!geometry.pointMap) geometry.pointMap = buildPointMap(geometry);
+    /**@type {import('./GeometryMapTool').PointMap} */
+    const pointMap = geometry.pointMap;
 
-        for (const triIndex of triIndices) {
-          if (checkedTriIndexSet.has(triIndex)) continue;
-          if (!ifSpreadJudgeFunc(triIndex)) continue;
+    const checkedPointKeySet = new Set();
+    const tempSeedPointKeySet = new Set([...seedPointKeySet]);
 
-          neighborTriIndexSet.add(triIndex);
+    const neighborSeedKeySet = new Set();
+    while (tempSeedPointKeySet.size > 0) {
+        neighborSeedKeySet.clear();
+
+        for (const seedPointKey of tempSeedPointKeySet) {
+            const neighborKeySet = posKey2Neighbors(geometry, pointMap, seedPointKey);
+            checkedPointKeySet.add(seedPointKey);
+
+            for (const neighborKey of neighborKeySet) {
+                if (checkedPointKeySet.has(neighborKey)) continue;
+                if (!ifSpreadJudgeFunc(seedPointKey, neighborKey)) continue;
+
+                neighborSeedKeySet.add(neighborKey);
+            }
         }
-      }
 
-      if (checkedTriIndexSet.size > preCheckedTriIndexSetSize) {
-        await new Promise((resolve) => setTimeout(resolve, 1.5));
-        preCheckedTriIndexSetSize = checkedTriIndexSet.size;
-
-        const checkedPointKeySet = new Set();
-        for (const triIndex of checkedTriIndexSet) {
-          const pointKeyArray = getTriPointKeyArray(geometry, triIndex);
-          for (const pointKey of pointKeyArray) {
-            checkedPointKeySet.add(pointKey);
-          }
-        }
-        applyColorByPointKeySet(geometry, checkedPointKeySet);
-      }
-
-      tempSeedTriIndexSet.clear();
-      for (const neighborKey of neighborTriIndexSet)
-        tempSeedTriIndexSet.add(neighborKey);
+        tempSeedPointKeySet.clear();
+        for (const neighborKey of neighborSeedKeySet)
+            tempSeedPointKeySet.add(neighborKey);
     }
-  }
 
-  return checkedTriIndexSet;
-};
+    return checkedPointKeySet;
+}
 
 /**
  * 根據checkedPointKeySet的點，給三角形上色
@@ -276,37 +241,11 @@ const applyColorByPointKeySet = (
   colorAttr.needsUpdate = true;
 };
 
-/**
- * @param {THREE.Mesh} mesh 
- * @param {boolean} resetColor 
- */
-const prepareColorMesh = (mesh, resetColor = true) => {
-  const geometry = mesh.geometry;
-
-  if (!geometry.hasAttribute('color')) {
-    const positionArray = geometry.getAttribute('position').array;
-    const colorAttribute = new THREE.BufferAttribute(new Uint8Array(positionArray.length), 3, true);
-    geometry.setAttribute('color', colorAttribute);
-  }
-
-  const colorAttribute = geometry.getAttribute('color');
-  if (resetColor) {
-    if (colorAttribute.array instanceof Uint8Array) colorAttribute.array.fill(255);
-    else colorAttribute.array.fill(1);
-  }
-  colorAttribute.needsUpdate = true;
-
-  if (!mesh.material.vertexColors) {
-    mesh.material.vertexColors = true;
-    mesh.material.needsUpdate = true;
-  }
-}
-
 export {
   buildPointMap,
   triangleSpread,
+  pointSpread,
   posKey2Vec,
   vec2PosKey,
   applyColorByPointKeySet,
-  prepareColorMesh,
 };

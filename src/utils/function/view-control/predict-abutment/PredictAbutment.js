@@ -4,11 +4,23 @@ import { STLExporter } from 'three/examples/jsm/exporters/STLExporter'
 import _ from 'lodash';
 import { MeshBVH, CONTAINED, INTERSECTED, NOT_INTERSECTED } from 'three-mesh-bvh';
 
-import Editor from '../Editor';
-import { loadGeometry } from '../loader/loadGeometry';
-import { loadMatrixJson } from '../loader/loadDirJson';
-import { applyColorByPointKeySet, buildPointMap, posKey2Vec, prepareColorMesh } from '../tool/BufferGeometryTool';
-import { abutmentData } from '../../../public/abutmentData';
+import Editor from '../../../Editor';
+import { loadGeometry } from '../../../loader/loadGeometry';
+import { loadMatrixJson } from '../../../loader/loadDirJson';
+import { applyColorByPointKeySet, buildPointMap, pointSpread, posKey2Vec } from '../../../tool/BufferGeometryTool';
+import { drawArrow, drawPoint, prepareColorMesh } from '../../../tool/SceneTool';
+import { abutmentData } from '../../../../../public/abutmentData';
+import { sortPointsByMST, optimizePointOrder } from './SortPoint';
+import { smoothPoints, decimatePoints } from './SmoothPoint';
+import { pointCloud2Boundary } from './PointCloud2Boundary';
+
+const curveMaterial = new THREE.MeshStandardMaterial({
+    color: 0xff0000,
+    emissive: 0,
+    metalness: 0.2,
+    side: 2,
+    roughness: 0.5
+});
 
 class PredictAbutment {
     constructor() {
@@ -55,8 +67,7 @@ class PredictAbutment {
         /**@type {MeshBVH} */
         const boundsTree = geometry.boundsTree;
 
-        const pointMap = buildPointMap(geometry);
-        geometry.pointMap = pointMap;
+        if (!geometry.pointMap) geometry.pointMap = buildPointMap(geometry);
         const abutPosAttr = abutPointGeometry.getAttribute('position');
 
         const abutPointKeySet = new Set();
@@ -119,8 +130,8 @@ class PredictAbutment {
             const oriPointCloudVertex = jawPoints.flat();
             const oriPointGeometry = new THREE.BufferGeometry();
             oriPointGeometry.setAttribute('position', new THREE.Float32BufferAttribute(oriPointCloudVertex, 3));
-            const oriPointMaterial = new THREE.PointsMaterial({ color: 0x888888, size: 4 });
-            const oriPointsMesh = new THREE.Points(oriPointGeometry, oriPointMaterial);
+            // const oriPointMaterial = new THREE.PointsMaterial({ color: 0x888888, size: 4 });
+            // const oriPointsMesh = new THREE.Points(oriPointGeometry, oriPointMaterial);
             // Editor.scene.add(oriPointsMesh);
 
             /**@type {number[][]} */
@@ -128,8 +139,8 @@ class PredictAbutment {
             const abutPointCloudVertex = abutPoints.flat();
             const abutPointGeometry = new THREE.BufferGeometry();
             abutPointGeometry.setAttribute('position', new THREE.Float32BufferAttribute(abutPointCloudVertex, 3));
-            const abutPointMaterial = new THREE.PointsMaterial({ color: 0xff0000, size: 5 });
-            const abutPointsMesh = new THREE.Points(abutPointGeometry, abutPointMaterial);
+            // const abutPointMaterial = new THREE.PointsMaterial({ color: 0xff0000, size: 5 });
+            // const abutPointsMesh = new THREE.Points(abutPointGeometry, abutPointMaterial);
             // Editor.scene.add(abutPointsMesh);
 
             // normalPoints = jawPoints過濾掉abutPoints
@@ -152,98 +163,46 @@ class PredictAbutment {
             // 先獲得abutment點雲大範圍的點，再用不是abutment的點雲小範圍去除點
             prepareColorMesh(this.mesh, true);
             const geometry = this.mesh.geometry;
+            const edgePointKeySet = pointCloud2Boundary(abutPointCloudKeyMap, normalPointCloudKeyMap);
 
-            const abutPointSet = this.getAllPointByPointCloud(geometry, abutPointCloudKeyMap, 0.8);
-            const normalPointSet = this.getAllPointByPointCloud(geometry, normalPointCloudKeyMap, 0.4);
-            for (const abutPointKey of abutPointSet) {
-                if (!normalPointSet.has(abutPointKey)) continue;
-                abutPointSet.delete(abutPointKey);
-            }
-            applyColorByPointKeySet(geometry, abutPointSet, new THREE.Color(0, 1, 0));
-
-            this.getSeedPoint(geometry, abutPointSet);
+            applyColorByPointKeySet(geometry, edgePointKeySet, new THREE.Color(0, 0, 1));
+            this.edgePoint2margin(edgePointKeySet);
         } catch (error) {
             console.log(error);
         }
     }
 
     /**
-     * @param {THREE.BufferGeometry} geometry 
-     * @param {Map<string, number[]>} pointKeyMap
-     */
-    getAllPointByPointCloud = (geometry, pointKeyMap, radius = 0.5) => {
-        if (!geometry.boundsTree) geometry.boundsTree = new MeshBVH(geometry);
-        /**@type {MeshBVH} */
-        const boundsTree = geometry.boundsTree;
-
-        if (!geometry.pointMap) geometry.pointMap = buildPointMap(geometry);
-        const pointMap = geometry.pointMap;
-
-        const pointKeySet = new Set();
-        const tempPoint = new THREE.Vector3();
-
-        const tempBoundingSphere = new THREE.Sphere();
-        tempBoundingSphere.radius = radius;
-
-        for (const [pointKey, pointData] of pointKeyMap) {
-            const [x, y, z] = pointData;
-            const point = tempPoint.set(x, y, z);
-            tempBoundingSphere.center.copy(point);
-
-            boundsTree.shapecast({
-                intersectsBounds: (box) => {
-                    if (tempBoundingSphere.intersectsBox(box)) return INTERSECTED;
-                    return NOT_INTERSECTED;
-                },
-                intersectsTriangle: (tri, triIndex, contained) => {
-                    const aKey = `${tri.a.x}_${tri.a.y}_${tri.a.z}`;
-                    const bKey = `${tri.b.x}_${tri.b.y}_${tri.b.z}`;
-                    const cKey = `${tri.c.x}_${tri.c.y}_${tri.c.z}`;
-
-                    if (contained) {
-                        pointKeySet.add(aKey);
-                        pointKeySet.add(bKey);
-                        pointKeySet.add(cKey);
-                        return;
-                    }
-
-                    if (tempBoundingSphere.containsPoint(tri.a)) pointKeySet.add(aKey);
-                    if (tempBoundingSphere.containsPoint(tri.b)) pointKeySet.add(bKey);
-                    if (tempBoundingSphere.containsPoint(tri.c)) pointKeySet.add(cKey);
-                }
-            });
-        }
-
-        return pointKeySet;
-    }
-
-    /**
-     * 獲得pointKey中心的點，再向齒軸方向找出種子點
-     * @param {THREE.BufferGeometry} geometry 
+     * @param {THREE.BufferGeometry} pointKeySet 
      * @param {Set<string>} pointKeySet 
      */
-    getSeedPoint = (geometry, pointKeySet) => {
+    edgePoint2margin = (pointKeySet) => {
+        const geometry = this.mesh.geometry;
+
         if (!geometry.pointMap) geometry.pointMap = buildPointMap(geometry);
-        /**@type {import('../tool/BufferGeometryTool').PointMap} */
+        /**@type {import('../../../tool/BufferGeometryTool').PointMap} */
         const pointMap = geometry.pointMap;
 
-        const boundingBox = new THREE.Box3();
-        const tempPoint = new THREE.Vector3();
+        const pointArray = [];
         for (const pointKey of pointKeySet) {
-            const pointData = pointMap[pointKey];
-            if (!pointData) {
-                console.log(`Can not find ${pointKey} in pointMap`);
-                continue;
-            }
-
-            const [x, y, z] = pointData.vectorNums;
-            const point = tempPoint.set(x, y, z);
-            boundingBox.expandByPoint(point);
+            const { vectorNums: [x, y, z] } = pointMap[pointKey];
+            const point = new THREE.Vector3(x, y, z);
+            pointArray.push(point);
         }
 
-        //畫出包圍框中心點
-        console.log(boundingBox)
+        let sortedPointArray = sortPointsByMST(pointArray);
+        sortedPointArray = optimizePointOrder(sortedPointArray);
+
+        // sortedPointArray = smoothPoints(sortedPointArray, 3, 1);
+        // sortedPointArray = decimatePoints(sortedPointArray, 0.3);
+        // sortedPointArray = smoothPoints(sortedPointArray, 1, 0.9);
+
+        const fittedCurve = new THREE.CatmullRomCurve3(sortedPointArray, true);
+        const curveGeometry = new THREE.TubeGeometry(fittedCurve, sortedPointArray.length, 0.02, 8, true);
+        const curveMesh = new THREE.Mesh(curveGeometry, curveMaterial);
+        Editor.scene.add(curveMesh);
     }
+
 }
 
 export default new PredictAbutment();

@@ -11,7 +11,7 @@ import PredictDirection from '../utils/function/PredictDirection';
 import PredictMargin from '../utils/function/PredictMargin';
 import { loadGeometry, loadMesh } from '../utils/loader/loadGeometry';
 import { loadDirJson, loadMatrixJson } from '../utils/loader/loadDirJson';
-import PredictAbutment from '../utils/function/PredictAbutment';
+import PredictAbutment from '../utils/function/view-control/predict-abutment/PredictAbutment';
 
 function App() {
   const containerRef = useRef();

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
 
-import { getFileExtension } from '../tool/StringProcessing';
+import { getFileExtension } from '../tool/StringProcessing.js';
 
 /**
  * @param {File} file 
