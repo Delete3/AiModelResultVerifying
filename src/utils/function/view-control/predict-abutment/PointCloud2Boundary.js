@@ -111,6 +111,7 @@ const getSeedPoint = (pointKeySet) => {
     const center = boundingBox.getCenter(new THREE.Vector3());
     const isUpper = fdi2Uni[PredictAbutment.toothFdi] < 16;
     const dir = new THREE.Vector3(0, 0, isUpper ? -1 : 1);
+    center.sub(dir.clone().setLength(5));
     const raycaster = new THREE.Raycaster(center, dir);
     const results = raycaster.intersectObject(PredictAbutment.mesh, false);
     if (results.length == 0) return;

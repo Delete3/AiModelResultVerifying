@@ -91,7 +91,7 @@ const optimizePointOrder = (points, maxIterations = Infinity) => {
     if (points.length <= 3) return points;
 
     // 對於大量點集，先進行快速預處理
-    points = quickDecimate(points, 100);
+    // points = quickDecimate(points, 200);
 
     let bestOrder = [...points];
     let bestDistance = calculateTotalDistance(bestOrder);

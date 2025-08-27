@@ -35,25 +35,4 @@ const smoothPoints = (points, iterations = 3, factor = 0.5) => {
     return smoothedPoints;
 }
 
-/**
- * 減少點的數量以獲得更平滑的曲線
- * @param {THREE.Vector3[]} points 
- * @param {number} ratio 保留比例 (0-1)
- * @returns {THREE.Vector3[]}
- */
-const decimatePoints = (points, ratio = 0.5) => {
-    if (points.length <= 3 || ratio >= 1) return points;
-
-    const targetCount = Math.max(3, Math.floor(points.length * ratio));
-    const step = points.length / targetCount;
-    const decimatedPoints = [];
-
-    for (let i = 0; i < targetCount; i++) {
-        const index = Math.floor(i * step);
-        decimatedPoints.push(points[index]);
-    }
-
-    return decimatedPoints;
-}
-
-export { smoothPoints, decimatePoints }
+export { smoothPoints }

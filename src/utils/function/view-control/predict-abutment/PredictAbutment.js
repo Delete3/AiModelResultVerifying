@@ -10,9 +10,10 @@ import { loadMatrixJson } from '../../../loader/loadDirJson';
 import { applyColorByPointKeySet, buildPointMap, pointSpread, posKey2Vec } from '../../../tool/BufferGeometryTool';
 import { drawArrow, drawPoint, prepareColorMesh } from '../../../tool/SceneTool';
 import { abutmentData } from '../../../../../public/abutmentData';
-import { sortPointsByMST, optimizePointOrder } from './SortPoint';
-import { smoothPoints, decimatePoints } from './SmoothPoint';
+import { sortPointsByMST, optimizePointOrder, quickDecimate } from './SortPoint';
+import { smoothPoints } from './SmoothPoint';
 import { pointCloud2Boundary } from './PointCloud2Boundary';
+import { projectPointArrayOnMesh } from './ProjectPoint';
 
 const curveMaterial = new THREE.MeshStandardMaterial({
     color: 0xff0000,
@@ -55,7 +56,6 @@ class PredictAbutment {
         const matrix = await loadMatrixJson(dirFile);
 
         geometry.applyMatrix4(matrix.clone().invert());
-        // geometry.applyMatrix4(matrix);
     }
 
     /**
@@ -113,38 +113,38 @@ class PredictAbutment {
         console.log('predict abutment');
 
         try {
-            // const formData = new FormData();
+            const formData = new FormData();
 
-            // const stlString = new STLExporter().parse(this.mesh, { binary: true });
-            // const stlBlob = new Blob([stlString], { type: 'text/plain' });
-            // formData.append('file', stlBlob, 'model.stl');
-            // formData.append('tooth_number', this.toothFdi);
-            // formData.append('threshold', 0.35);
+            const stlString = new STLExporter().parse(this.mesh, { binary: true });
+            const stlBlob = new Blob([stlString], { type: 'text/plain' });
+            formData.append('file', stlBlob, 'model.stl');
+            formData.append('tooth_number', this.toothFdi);
+            formData.append('threshold', 0.35);
 
-            // const res = await axios.post('http://localhost:8001/predict_abutment/', formData);
-            // console.log(res.data);
+            const res = await axios.post('http://localhost:8001/predict_abutment/', formData);
+            console.log(res.data);
 
 
             /**@type {number[][]} */
-            const jawPoints = _.get(abutmentData, 'jaw_points', []);
-            const oriPointCloudVertex = jawPoints.flat();
-            const oriPointGeometry = new THREE.BufferGeometry();
-            oriPointGeometry.setAttribute('position', new THREE.Float32BufferAttribute(oriPointCloudVertex, 3));
+            const jawPoints = _.get(res.data, 'jaw_points', []);
+            // const oriPointCloudVertex = jawPoints.flat();
+            // const oriPointGeometry = new THREE.BufferGeometry();
+            // oriPointGeometry.setAttribute('position', new THREE.Float32BufferAttribute(oriPointCloudVertex, 3));
             // const oriPointMaterial = new THREE.PointsMaterial({ color: 0x888888, size: 4 });
             // const oriPointsMesh = new THREE.Points(oriPointGeometry, oriPointMaterial);
             // Editor.scene.add(oriPointsMesh);
 
             /**@type {number[][]} */
-            const abutPoints = _.get(abutmentData, 'abutment_points', []);
-            const abutPointCloudVertex = abutPoints.flat();
-            const abutPointGeometry = new THREE.BufferGeometry();
-            abutPointGeometry.setAttribute('position', new THREE.Float32BufferAttribute(abutPointCloudVertex, 3));
+            const abutPoints = _.get(res.data, 'abutment_points', []);
+            if (abutPoints.length == 0) throw new Error('AI can not recognize abutment')
+            // const abutPointCloudVertex = abutPoints.flat();
+            // const abutPointGeometry = new THREE.BufferGeometry();
+            // abutPointGeometry.setAttribute('position', new THREE.Float32BufferAttribute(abutPointCloudVertex, 3));
             // const abutPointMaterial = new THREE.PointsMaterial({ color: 0xff0000, size: 5 });
             // const abutPointsMesh = new THREE.Points(abutPointGeometry, abutPointMaterial);
             // Editor.scene.add(abutPointsMesh);
 
             // normalPoints = jawPoints過濾掉abutPoints
-            // const normalPoints = 
             const abutPointCloudKeyMap = new Map();
             for (const abutPointData of abutPoints) {
                 const [x, y, z] = abutPointData;
@@ -190,19 +190,17 @@ class PredictAbutment {
             pointArray.push(point);
         }
 
-        let sortedPointArray = sortPointsByMST(pointArray);
+        let sortedPointArray = quickDecimate(pointArray, 100);
+        sortedPointArray = sortPointsByMST(sortedPointArray);
         sortedPointArray = optimizePointOrder(sortedPointArray);
-
-        // sortedPointArray = smoothPoints(sortedPointArray, 3, 1);
-        // sortedPointArray = decimatePoints(sortedPointArray, 0.3);
-        // sortedPointArray = smoothPoints(sortedPointArray, 1, 0.9);
+        sortedPointArray = smoothPoints(sortedPointArray, 3, 1);
+        sortedPointArray = projectPointArrayOnMesh(this.mesh, sortedPointArray);
 
         const fittedCurve = new THREE.CatmullRomCurve3(sortedPointArray, true);
         const curveGeometry = new THREE.TubeGeometry(fittedCurve, sortedPointArray.length, 0.02, 8, true);
         const curveMesh = new THREE.Mesh(curveGeometry, curveMaterial);
         Editor.scene.add(curveMesh);
     }
-
 }
 
 export default new PredictAbutment();
