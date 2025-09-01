@@ -8,12 +8,12 @@ import Editor from '../../../Editor';
 import { loadGeometry } from '../../../loader/loadGeometry';
 import { loadMatrixJson } from '../../../loader/loadDirJson';
 import { applyColorByPointKeySet, buildPointMap, pointSpread, posKey2Vec } from '../../../tool/BufferGeometryTool';
-import { drawArrow, drawPoint, prepareColorMesh } from '../../../tool/SceneTool';
+import { disposeMesh, drawArrow, drawPoint, prepareColorMesh } from '../../../tool/SceneTool';
 import { abutmentData } from '../../../../../public/abutmentData';
 import { sortPointsByMST, optimizePointOrder, quickDecimate } from './SortPoint';
 import { smoothPoints } from './SmoothPoint';
 import { pointCloud2Boundary } from './PointCloud2Boundary';
-import { projectPointArrayOnMesh } from './ProjectPoint';
+import { projectCurveOnMesh, projectPointArrayOnMesh } from './ProjectPoint';
 
 const curveMaterial = new THREE.MeshStandardMaterial({
     color: 0xff0000,
@@ -27,7 +27,10 @@ class PredictAbutment {
     constructor() {
         /**@type {THREE.Mesh} */
         this.mesh = null;
+        /**@type {number} */
         this.toothFdi = null;
+        /**@type {THREE.Mesh} */
+        this.curveMesh = null;
     }
 
     initFromPublic = async () => {
@@ -110,6 +113,9 @@ class PredictAbutment {
 
     callApi = async () => {
         if (!this.mesh || !this.toothFdi) return;
+
+        disposeMesh(this.curveMesh);
+        this.curveMesh = null;
         console.log('predict abutment');
 
         try {
@@ -121,9 +127,10 @@ class PredictAbutment {
             formData.append('tooth_number', this.toothFdi);
             formData.append('threshold', 0.35);
 
+            console.time('AI predict abutment');
             const res = await axios.post('http://localhost:8001/predict_abutment/', formData);
             console.log(res.data);
-
+            console.timeEnd('AI predict abutment');
 
             /**@type {number[][]} */
             const jawPoints = _.get(res.data, 'jaw_points', []);
@@ -194,12 +201,21 @@ class PredictAbutment {
         sortedPointArray = sortPointsByMST(sortedPointArray);
         sortedPointArray = optimizePointOrder(sortedPointArray);
         sortedPointArray = smoothPoints(sortedPointArray, 3, 1);
-        sortedPointArray = projectPointArrayOnMesh(this.mesh, sortedPointArray);
 
-        const fittedCurve = new THREE.CatmullRomCurve3(sortedPointArray, true);
+        let fittedCurve = new THREE.CatmullRomCurve3(sortedPointArray, true);
+        fittedCurve = projectCurveOnMesh(this.mesh, fittedCurve);
         const curveGeometry = new THREE.TubeGeometry(fittedCurve, sortedPointArray.length, 0.02, 8, true);
         const curveMesh = new THREE.Mesh(curveGeometry, curveMaterial);
+        this.curveMesh = curveMesh
         Editor.scene.add(curveMesh);
+    }
+
+    dispose = () =>{
+        disposeMesh(this.mesh);
+        this.mesh = null;
+        
+        disposeMesh(this.curveMesh);
+        this.curveMesh = null;
     }
 }
 

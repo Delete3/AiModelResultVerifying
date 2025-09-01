@@ -111,6 +111,7 @@ function App() {
             side: THREE.DoubleSide,
           });
           const mesh = new THREE.Mesh(geometry, material);
+          PredictAbutment.dispose();
           PredictAbutment.mesh = mesh;
           Editor.scene.add(mesh);
         }}
