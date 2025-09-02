@@ -2,9 +2,9 @@ import * as THREE from 'three';
 import { MeshBVH, CONTAINED, INTERSECTED, NOT_INTERSECTED } from 'three-mesh-bvh';
 
 import PredictAbutment from './PredictAbutment';
-import { applyColorByPointKeySet, buildPointMap, pointSpread, posKey2Vec } from '../../../tool/BufferGeometryTool';
-import { fdi2Uni } from '../../../tool/ToothNumberMap';
-import { drawArrow, drawPoint, prepareColorMesh } from '../../../tool/SceneTool';
+import { applyColorByPointKeySet, buildPointMap, pointSpread, posKey2Vec } from '../../tool/BufferGeometryTool';
+import { fdi2Uni } from '../../tool/ToothNumberMap';
+import { drawArrow, drawPoint, prepareColorMesh } from '../../tool/SceneTool';
 
 const pointCloud2Boundary = (abutPointCloudKeyMap, normalPointCloudKeyMap) => {
     const geometry = PredictAbutment.mesh.geometry;
@@ -90,7 +90,7 @@ const getSeedPoint = (pointKeySet) => {
     const geometry = PredictAbutment.mesh.geometry;
 
     if (!geometry.pointMap) geometry.pointMap = buildPointMap(geometry);
-    /**@type {import('../../../tool/BufferGeometryTool').PointMap} */
+    /**@type {import('../../tool/BufferGeometryTool').PointMap} */
     const pointMap = geometry.pointMap;
     const posAttr = geometry.getAttribute('position');
 

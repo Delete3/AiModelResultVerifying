@@ -4,12 +4,12 @@ import { STLExporter } from 'three/examples/jsm/exporters/STLExporter'
 import _ from 'lodash';
 import { MeshBVH, CONTAINED, INTERSECTED, NOT_INTERSECTED } from 'three-mesh-bvh';
 
-import Editor from '../../../Editor';
-import { loadGeometry } from '../../../loader/loadGeometry';
-import { loadMatrixJson } from '../../../loader/loadDirJson';
-import { applyColorByPointKeySet, buildPointMap, pointSpread, posKey2Vec } from '../../../tool/BufferGeometryTool';
-import { disposeMesh, drawArrow, drawPoint, prepareColorMesh } from '../../../tool/SceneTool';
-import { abutmentData } from '../../../../../public/abutmentData';
+import Editor from '../../Editor';
+import { loadGeometry } from '../../loader/loadGeometry';
+import { loadMatrixJson } from '../../loader/loadDirJson';
+import { applyColorByPointKeySet, buildPointMap, pointSpread, posKey2Vec } from '../../tool/BufferGeometryTool';
+import { disposeMesh, drawArrow, drawPoint, prepareColorMesh } from '../../tool/SceneTool';
+// import { abutmentData } from '../../../../../public/abutmentData';
 import { sortPointsByMST, optimizePointOrder, quickDecimate } from './SortPoint';
 import { smoothPoints } from './SmoothPoint';
 import { pointCloud2Boundary } from './PointCloud2Boundary';
@@ -187,7 +187,7 @@ class PredictAbutment {
         const geometry = this.mesh.geometry;
 
         if (!geometry.pointMap) geometry.pointMap = buildPointMap(geometry);
-        /**@type {import('../../../tool/BufferGeometryTool').PointMap} */
+        /**@type {import('../../tool/BufferGeometryTool').PointMap} */
         const pointMap = geometry.pointMap;
 
         const pointArray = [];
