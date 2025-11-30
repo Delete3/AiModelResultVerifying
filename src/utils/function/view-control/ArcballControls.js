@@ -24,7 +24,7 @@ class ArcballControls extends ThreeArcballControls {
     this.minZoom = 0.4;
     this.enablePan = true;
     this.target.set(0, 0, 0);
-    this.camera.up.set(0, 0, 1);
+    this.camera.up.set(0, 0, -1);
     this.setGizmosVisible(false);
     this.unsetMouseAction(0);
     this.setMouseAction('PAN', 1);

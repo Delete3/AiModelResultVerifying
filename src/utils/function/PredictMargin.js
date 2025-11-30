@@ -50,7 +50,7 @@ class PredictMargin {
       const formData = new FormData();
       formData.append('file', blob, 'model.stl');
       formData.append('tooth_number', toothNumber);
-      const res = await axios.post('http://localhost:8001/predict-margin/', formData);
+      const res = await axios.post('/api/margin/predict-margin/', formData);
       console.log(res.data)
       const quaternionRawData = res.data?.quaternion;
       const marginLineRawData = res.data?.margin_line;

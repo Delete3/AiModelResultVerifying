@@ -3,6 +3,7 @@ import axios from 'axios';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter'
 import _ from 'lodash';
 import { MeshBVH, CONTAINED, INTERSECTED, NOT_INTERSECTED } from 'three-mesh-bvh';
+import { message } from 'antd';
 
 import Editor from '../../Editor';
 import { loadGeometry } from '../../loader/loadGeometry';
@@ -128,7 +129,7 @@ class PredictAbutment {
             formData.append('threshold', 0.35);
 
             console.time('AI predict abutment');
-            const res = await axios.post('http://localhost:8001/predict_abutment/', formData);
+            const res = await axios.post('http://192.168.0.101:8001/predict_abutment/', formData);
             console.log(res.data);
             console.timeEnd('AI predict abutment');
 
@@ -176,6 +177,7 @@ class PredictAbutment {
             this.edgePoint2margin(edgePointKeySet);
         } catch (error) {
             console.log(error);
+            message.error('predict margin fail')
         }
     }
 
@@ -210,10 +212,10 @@ class PredictAbutment {
         Editor.scene.add(curveMesh);
     }
 
-    dispose = () =>{
+    dispose = () => {
         disposeMesh(this.mesh);
         this.mesh = null;
-        
+
         disposeMesh(this.curveMesh);
         this.curveMesh = null;
     }

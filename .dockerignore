@@ -2,3 +2,9 @@ node_modules
 .git
 .vscode
 __pycache__
+.dockerignore
+README.md
+Dockerfile
+.eslintrc.cjs
+.gitignore
+_gitignore
