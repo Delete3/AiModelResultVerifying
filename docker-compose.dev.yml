@@ -1,0 +1,26 @@
+# 啟動開發環境：
+# docker compose -f docker-compose.dev.yml up -d
+# docker exec -it ai-verifying-dev bash
+
+# 停止開發環境：
+# docker compose -f docker-compose.dev.yml down
+
+services:
+  verifying-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-verifying-dev
+    volumes:
+      # 掛載整個專案目錄，實現熱更新
+      - .:/app
+      # 排除 node_modules，使用容器內的版本
+      - /app/node_modules
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    environment:
+      - NODE_ENV=development
+    stdin_open: true
+    tty: true
+    command: npm run dev

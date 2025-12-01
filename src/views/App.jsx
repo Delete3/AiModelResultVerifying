@@ -2,7 +2,7 @@ import './App.scss';
 
 import { useRef, useState, useReducer } from 'react';
 import * as THREE from 'three';
-import { Upload, Button, Input } from 'antd';
+import { Upload, Button, Input, Spin } from 'antd';
 import axios from 'axios';
 
 import Editor from '../utils/Editor';
@@ -11,11 +11,12 @@ import PredictDirection from '../utils/function/PredictDirection';
 import PredictMargin from '../utils/function/PredictMargin';
 import { loadGeometry, loadMesh } from '../utils/loader/loadGeometry';
 import { loadDirJson, loadMatrixJson } from '../utils/loader/loadDirJson';
-import PredictAbutment from '../utils/function/view-control/predict-abutment/PredictAbutment';
+import PredictAbutment from '../utils/function/predict-abutment/PredictAbutment';
 
 function App() {
   const containerRef = useRef();
   const [toothNumberStr, setToothNumberStr] = useState(null)
+  const [isLoading, setIsLoading] = useState(false)
   const [, forceRerender] = useReducer(x => x + 1, 0);
 
   useUpdateEffect(() => {
@@ -100,7 +101,7 @@ function App() {
     </div>
   }
 
-  const renderAbutmentPredictFunc = () => {
+  const renderUploadModel = () => {
     return <div className='function-group'>
       <Upload
         customRequest={async uploadRequestOption => {
@@ -112,6 +113,7 @@ function App() {
           });
           const mesh = new THREE.Mesh(geometry, material);
           PredictAbutment.dispose();
+          PredictDirection.mesh = mesh;
           PredictAbutment.mesh = mesh;
           Editor.scene.add(mesh);
         }}
@@ -129,23 +131,60 @@ function App() {
         }}
         placeholder='input toothNumber'
       />
+    </div>
+  }
+
+  const renderDirectionPredictFunc = () => {
+    return <div className='function-group'>
       <Button
         className='function-button'
-        onClick={() => PredictAbutment.callApi()}
+        onClick={() => PredictDirection.predictMesh(PredictAbutment.toothFdi > 28)}
       >
-        predict margin from abutment
+        predict dir
       </Button>
     </div>
   }
 
-  return <div className="container">
-    <div ref={containerRef} className="editor" />
-    <div className='function-container'>
-      {/* {renderDirPredictFunc()}
-      {renderMarginPredictFunc()} */}
-      {renderAbutmentPredictFunc()}
+  const renderAbutmentPredictFunc = () => {
+    return <div className='function-group'>
+      <Button
+        className='function-button'
+        onClick={() => PredictAbutment.callApi()}
+      >
+        predict margin
+      </Button>
     </div>
-  </div>
+  }
+
+  const renderDirAbuPredictFunc = () => {
+    return <div className='function-group'>
+      <Button
+        className='function-button'
+        onClick={async () => {
+          setIsLoading(true)
+          await PredictDirection.predictMesh()
+          await PredictAbutment.callApi()
+          setIsLoading(false)
+        }}
+      >
+        predict dir and margin
+      </Button>
+    </div>
+  }
+
+  return (
+    <div className="container">
+        <Spin spinning={isLoading}>
+        <div ref={containerRef} className="editor" />
+        <div className='function-container'>
+          {renderUploadModel()}
+          {renderDirectionPredictFunc()}
+          {renderAbutmentPredictFunc()}
+          {renderDirAbuPredictFunc()}
+        </div>
+    </Spin>
+      </div>
+  )
 }
 
 export default App;
