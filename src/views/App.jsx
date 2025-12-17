@@ -12,6 +12,7 @@ import PredictMargin from '../utils/function/PredictMargin';
 import { loadGeometry, loadMesh } from '../utils/loader/loadGeometry';
 import { loadDirJson, loadMatrixJson } from '../utils/loader/loadDirJson';
 import PredictAbutment from '../utils/function/view-control/predict-abutment/PredictAbutment';
+import AdjustScanDir from '../utils/function/AdjustScanDir';
 
 function App() {
   const containerRef = useRef();
@@ -27,8 +28,7 @@ function App() {
       Editor.scene.add(axisHelper);
       console.log(Editor)
 
-      // await PredictAbutment.initFromPublic();
-      // await PredictAbutment.callApi();
+      await AdjustScanDir.init();
     };
 
     initial();
@@ -138,12 +138,30 @@ function App() {
     </div>
   }
 
+  const renderAdjustScanDirFunc = () => {
+    return <div className='function-group'>
+      <Button onClick={AdjustScanDir.pre}>
+        pre
+      </Button>
+      <Button onClick={AdjustScanDir.next}>
+        next
+      </Button>
+      <Button onClick={async () => {
+        AdjustScanDir.save()
+        await AdjustScanDir.next()
+      }}>
+        save & next
+      </Button>
+    </div>
+  }
+
   return <div className="container">
     <div ref={containerRef} className="editor" />
     <div className='function-container'>
       {/* {renderDirPredictFunc()}
       {renderMarginPredictFunc()} */}
-      {renderAbutmentPredictFunc()}
+      {/* {renderAbutmentPredictFunc()} */}
+      {renderAdjustScanDirFunc()}
     </div>
   </div>
 }

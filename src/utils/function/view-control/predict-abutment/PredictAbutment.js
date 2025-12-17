@@ -9,7 +9,7 @@ import { loadGeometry } from '../../../loader/loadGeometry';
 import { loadMatrixJson } from '../../../loader/loadDirJson';
 import { applyColorByPointKeySet, buildPointMap, pointSpread, posKey2Vec } from '../../../tool/BufferGeometryTool';
 import { disposeMesh, drawArrow, drawPoint, prepareColorMesh } from '../../../tool/SceneTool';
-import { abutmentData } from '../../../../../public/abutmentData';
+// import { abutmentData } from '../../../../../public/abutmentData';
 import { sortPointsByMST, optimizePointOrder, quickDecimate } from './SortPoint';
 import { smoothPoints } from './SmoothPoint';
 import { pointCloud2Boundary } from './PointCloud2Boundary';
