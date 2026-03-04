@@ -33,7 +33,7 @@ const projectPointArrayOnMesh = (mesh, pointArray) => {
  */
 const projectPointOnMesh = (mesh, point, targetPoint = new THREE.Vector3()) => {
     const { geometry } = mesh;
-    if (!geometry.boundsTree) geometry.computeBoundsTree();
+    if (!geometry.boundsTree) geometry.boundsTree = new MeshBVH(geometry);
     /**@type {MeshBVH} */
     const boundsTree = geometry.boundsTree;
 

@@ -19,6 +19,7 @@ class PredictDirection {
   }
 
   predictMesh = async (isUpper = true) => {
+    console.log(isUpper)
     try {
       console.log('predict direction');
       const exporter = new STLExporter();
@@ -28,12 +29,15 @@ class PredictDirection {
       const formData = new FormData();
       formData.append('file', blob, 'model.stl');
       formData.append('is_upper', isUpper)
-      const res = await axios.post('http://192.168.0.101:8002/predict_direction/', formData);
+      // const res = await axios.post('http://192.168.0.101:8003/predict_direction/', formData);
+      // const res = await axios.post('http://localhost:8000/predict', formData);
+      const res = await axios.post('http://192.168.0.101:8000/predict', formData);
       console.log(res.data)
 
       const quaternionRawData = res.data?.quaternion;
-      if (!quaternionRawData || !Array.isArray(quaternionRawData) || quaternionRawData.length !== 4) throw `${data} is not a valid quaternion data`;
-      const quaternion = new THREE.Quaternion(quaternionRawData[0], quaternionRawData[1], quaternionRawData[2], quaternionRawData[3]);
+      const quaternion = new THREE.Quaternion(quaternionRawData.x, quaternionRawData.y, quaternionRawData.z, quaternionRawData.w);
+      // if (!quaternionRawData || !Array.isArray(quaternionRawData) || quaternionRawData.length !== 4) throw `${data} is not a valid quaternion data`;
+      // const quaternion = new THREE.Quaternion(quaternionRawData[0], quaternionRawData[1], quaternionRawData[2], quaternionRawData[3]);
       this.mesh.geometry.applyQuaternion(quaternion)
 
     } catch (error) {

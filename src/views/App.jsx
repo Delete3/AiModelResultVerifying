@@ -2,7 +2,7 @@ import './App.scss';
 
 import { useRef, useState, useReducer } from 'react';
 import * as THREE from 'three';
-import { Upload, Button, Input, Spin } from 'antd';
+import { Upload, Button, Input, Spin, Divider } from 'antd';
 import axios from 'axios';
 
 import Editor from '../utils/Editor';
@@ -12,6 +12,7 @@ import PredictMargin from '../utils/function/PredictMargin';
 import { loadGeometry, loadMesh } from '../utils/loader/loadGeometry';
 import { loadDirJson, loadMatrixJson } from '../utils/loader/loadDirJson';
 import PredictAbutment from '../utils/function/predict-abutment/PredictAbutment';
+import { disposeMesh } from '../utils/tool/SceneTool';
 
 function App() {
   const containerRef = useRef();
@@ -105,6 +106,11 @@ function App() {
     return <div className='function-group'>
       <Upload
         customRequest={async uploadRequestOption => {
+          if (PredictDirection.mesh) disposeMesh(PredictDirection.mesh);
+          if (PredictAbutment.mesh) disposeMesh(PredictAbutment.mesh);
+          PredictDirection.mesh = null;
+          PredictAbutment.mesh = null;
+
           const geometry = await loadGeometry(uploadRequestOption.file);
           const material = new THREE.MeshStandardMaterial({
             color: 0xffffff,
@@ -129,8 +135,36 @@ function App() {
           PredictAbutment.toothFdi = e.target.value;
           forceRerender();
         }}
-        placeholder='input toothNumber'
+        placeholder='input FDI'
+        onPressEnter={async () => {
+          setIsLoading(true)
+          await PredictDirection.predictMesh(PredictAbutment.toothFdi < 30)
+          await PredictAbutment.callApi(2)
+          setIsLoading(false)
+        }}
       />
+      <Button
+        className='function-button'
+        onClick={async () => {
+          setIsLoading(true)
+          await PredictDirection.predictMesh(PredictAbutment.toothFdi < 30)
+          await PredictAbutment.callApi()
+          setIsLoading(false)
+        }}
+      >
+        predict dir and margin
+      </Button>
+      <Button
+        className='function-button'
+        onClick={async () => {
+          setIsLoading(true)
+          await PredictDirection.predictMesh(PredictAbutment.toothFdi < 30)
+          await PredictAbutment.callApi(2)
+          setIsLoading(false)
+        }}
+      >
+        predict dir and margin 2
+      </Button>
     </div>
   }
 
@@ -138,15 +172,27 @@ function App() {
     return <div className='function-group'>
       <Button
         className='function-button'
-        onClick={() => PredictDirection.predictMesh(PredictAbutment.toothFdi > 28)}
+        onClick={() => PredictDirection.predictMesh(true)}
       >
-        predict dir
+        predict upper dir
+      </Button>
+      <Button
+        className='function-button'
+        onClick={() => PredictDirection.predictMesh(false)}
+      >
+        predict lower dir
       </Button>
     </div>
   }
 
   const renderAbutmentPredictFunc = () => {
     return <div className='function-group'>
+      {/* <Button
+        className='function-button'
+        onClick={() => PredictDirection.predictMesh(PredictAbutment.toothFdi < 30)}
+      >
+        predict dir
+      </Button> */}
       <Button
         className='function-button'
         onClick={() => PredictAbutment.callApi()}
@@ -174,16 +220,17 @@ function App() {
 
   return (
     <div className="container">
-        <Spin spinning={isLoading}>
+      <Spin spinning={isLoading}>
         <div ref={containerRef} className="editor" />
         <div className='function-container'>
           {renderUploadModel()}
+          <Divider style={{ pointerEvents: 'none' }} />
           {renderDirectionPredictFunc()}
           {renderAbutmentPredictFunc()}
-          {renderDirAbuPredictFunc()}
+          {/* {renderDirAbuPredictFunc()} */}
         </div>
-    </Spin>
-      </div>
+      </Spin>
+    </div>
   )
 }
 
