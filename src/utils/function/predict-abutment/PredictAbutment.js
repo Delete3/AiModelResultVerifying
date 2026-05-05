@@ -136,8 +136,12 @@ class PredictAbutment {
 
             console.time('AI predict abutment');
             let res;
-            if (version == 2) res = await axios.post('http://192.168.0.101:8001/predict_abutment_v2/', formData);
-            else res = await axios.post('http://192.168.0.101:8001/predict_abutment/', formData);
+            // if (version == 2) res = await axios.post('http://192.168.0.101:8001/predict_abutment_v2/', formData);
+            // else res = await axios.post('http://192.168.0.101:8001/predict_abutment/', formData);
+            
+            if (version == 2) res = await axios.post('https://4e942d61-8fdf-4adb-b15d-495a88409d93.inteware.com.tw/margin/predict_abutment_v2/', formData);
+            else res = await axios.post('https://4e942d61-8fdf-4adb-b15d-495a88409d93.inteware.com.tw/margin/predict_abutment/', formData);
+
             console.log(res.data);
             console.timeEnd('AI predict abutment');
 
@@ -153,7 +157,7 @@ class PredictAbutment {
      * @param {object} data - API response
      * @param {number} gradientThreshold - 機率梯度閾值
      */
-    processResult = (data, gradientThreshold = 0.3) => {
+    processResult = (data, gradientThreshold = 0.4) => {
         /**@type {number[][]} */
         const jawPoints = _.get(data, 'jaw_points', []);
         /**@type {number[]} */

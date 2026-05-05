@@ -1,9 +1,34 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import http from 'http'
+import https from 'https'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: 'dynamic-proxy',
+      configureServer(server) {
+        server.middlewares.use('/api/proxy', (req, res) => {
+          const targetUrl = new URL(req.url, 'http://localhost').searchParams.get('url');
+          if (!targetUrl) {
+            res.statusCode = 400;
+            res.end('Missing url param');
+            return;
+          }
+          const client = targetUrl.startsWith('https') ? https : http;
+          client.get(targetUrl, (proxyRes) => {
+            res.writeHead(proxyRes.statusCode, { 'Content-Type': 'application/json' });
+            proxyRes.pipe(res);
+          }).on('error', (err) => {
+            res.statusCode = 500;
+            res.end(err.message);
+          });
+        });
+      }
+    }
+  ],
   server: {
     host: '0.0.0.0', // 允許外部訪問
     port: 5173,

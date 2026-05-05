@@ -31,7 +31,8 @@ class PredictDirection {
       formData.append('is_upper', isUpper)
       // const res = await axios.post('http://192.168.0.101:8003/predict_direction/', formData);
       // const res = await axios.post('http://localhost:8000/predict', formData);
-      const res = await axios.post('http://192.168.0.101:8000/predict', formData);
+      // const res = await axios.post('http://192.168.0.101:8000/predict', formData);
+      const res = await axios.post('https://4e942d61-8fdf-4adb-b15d-495a88409d93.inteware.com.tw/jaw/predict', formData);
       console.log(res.data)
 
       const quaternionRawData = res.data?.quaternion;
