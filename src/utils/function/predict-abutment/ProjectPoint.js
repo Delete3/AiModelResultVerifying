@@ -17,7 +17,7 @@ const projectCurveOnMesh = (mesh, curve) => {
 /**
  * @param {THREE.Mesh} mesh 
  * @param {THREE.Vector3[]} pointArray 
- * @returns {THREE.CatmullRomCurve3}
+ * @returns {THREE.Vector3[]}
  */
 const projectPointArrayOnMesh = (mesh, pointArray) => {
     for (const point of pointArray) {
@@ -33,15 +33,17 @@ const projectPointArrayOnMesh = (mesh, pointArray) => {
  */
 const projectPointOnMesh = (mesh, point, targetPoint = new THREE.Vector3()) => {
     const { geometry } = mesh;
-    if (!geometry.boundsTree) geometry.computeBoundsTree();
+    if (!geometry.boundsTree) geometry.boundsTree = new MeshBVH(geometry);
     /**@type {MeshBVH} */
     const boundsTree = geometry.boundsTree;
 
     targetPoint.copy(point);
+    mesh.updateMatrixWorld(true);
     mesh.worldToLocal(targetPoint);
 
     const closestPoint = boundsTree.closestPointToPoint(targetPoint).point;
-    targetPoint.copy(closestPoint).applyMatrix4(mesh.matrix);
+    targetPoint.copy(closestPoint);
+    mesh.localToWorld(targetPoint);
     return targetPoint;
 }
 

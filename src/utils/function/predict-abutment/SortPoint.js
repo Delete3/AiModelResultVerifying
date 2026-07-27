@@ -1,7 +1,54 @@
 import * as THREE from 'three';
+import { fdi2Uni } from '../../tool/ToothNumberMap';
 
 /**
- * 使用最小生成樹算法對點進行排序
+ * 使用角度排序法對邊界點排序（適用於環形邊界）
+ * 將點投影到以質心為原點、齒軸為法線的平面，按 atan2 角度排序
+ * @param {THREE.Vector3[]} points 
+ * @param {number} toothFdi - 齒位 FDI 編號
+ * @returns {THREE.Vector3[]}
+ */
+const sortPointsByAngle = (points, toothFdi) => {
+    if (points.length <= 2) return points;
+
+    console.time('sortPointsByAngle');
+
+    // 1. 計算質心
+    const centroid = new THREE.Vector3();
+    for (const p of points) centroid.add(p);
+    centroid.divideScalar(points.length);
+
+    // 2. 齒軸方向作為法線（上顎 -Z，下顎 +Z）
+    const isUpper = fdi2Uni[toothFdi] < 16;
+    const axisDir = new THREE.Vector3(0, 0, isUpper ? -1 : 1);
+
+    // 3. 建立局部座標系
+    // u, v 是投影平面上的兩個正交軸
+    const tempUp = Math.abs(axisDir.dot(new THREE.Vector3(1, 0, 0))) < 0.9
+        ? new THREE.Vector3(1, 0, 0)
+        : new THREE.Vector3(0, 1, 0);
+
+    const u = new THREE.Vector3().crossVectors(axisDir, tempUp).normalize();
+    const v = new THREE.Vector3().crossVectors(axisDir, u).normalize();
+
+    // 4. 計算每個點的角度
+    const pointsWithAngle = points.map(p => {
+        const rel = new THREE.Vector3().subVectors(p, centroid);
+        const projU = rel.dot(u);
+        const projV = rel.dot(v);
+        const angle = Math.atan2(projV, projU);
+        return { point: p, angle };
+    });
+
+    // 5. 按角度排序
+    pointsWithAngle.sort((a, b) => a.angle - b.angle);
+
+    console.timeEnd('sortPointsByAngle');
+    return pointsWithAngle.map(pa => pa.point);
+}
+
+/**
+ * 使用最小生成樹算法對點進行排序（保留作為 fallback）
  * @param {THREE.Vector3[]} points 
  * @returns {THREE.Vector3[]}
  */
@@ -90,9 +137,6 @@ const optimizePointOrder = (points, maxIterations = Infinity) => {
     console.time('optimizePointOrder')
     if (points.length <= 3) return points;
 
-    // 對於大量點集，先進行快速預處理
-    // points = quickDecimate(points, 200);
-
     let bestOrder = [...points];
     let bestDistance = calculateTotalDistance(bestOrder);
     let improved = true;
@@ -150,7 +194,50 @@ const calculate2OptDelta = (points, i, j) => {
 }
 
 /**
- * 快速減少點數量（保持形狀特徵）
+ * 自適應降採樣 — 使用 Douglas-Peucker 算法保留形狀特徵
+ * 曲率大的地方保留更多點，直線段保留更少
+ * @param {THREE.Vector3[]} points - 已排序的閉合曲線點
+ * @param {number} targetCount - 目標點數
+ * @returns {THREE.Vector3[]}
+ */
+const adaptiveDecimate = (points, targetCount = 100) => {
+    if (points.length <= targetCount) return points;
+
+    console.time('adaptiveDecimate');
+
+    // 計算每個點的曲率（用相鄰三點的角度變化）
+    const n = points.length;
+    const curvatures = [];
+
+    for (let i = 0; i < n; i++) {
+        const prev = points[(i - 1 + n) % n];
+        const curr = points[i];
+        const next = points[(i + 1) % n];
+
+        const v1 = new THREE.Vector3().subVectors(prev, curr).normalize();
+        const v2 = new THREE.Vector3().subVectors(next, curr).normalize();
+        const curvature = 1 - v1.dot(v2); // 0 = 直線, 2 = 反轉
+        curvatures.push({ index: i, curvature, point: curr });
+    }
+
+    // 按曲率排序，優先保留高曲率點
+    const sorted = [...curvatures].sort((a, b) => b.curvature - a.curvature);
+
+    // 保留 targetCount 個最高曲率的點
+    const keepIndices = new Set(sorted.slice(0, targetCount).map(c => c.index));
+
+    // 按原始順序輸出
+    const result = [];
+    for (let i = 0; i < n; i++) {
+        if (keepIndices.has(i)) result.push(points[i]);
+    }
+
+    console.timeEnd('adaptiveDecimate');
+    return result;
+}
+
+/**
+ * 快速減少點數量（保持形狀特徵）- 保留作為 fallback
  * @param {THREE.Vector3[]} points 
  * @param {number} targetCount 
  * @returns {THREE.Vector3[]}
@@ -192,4 +279,4 @@ const reverse = (array, start, end) => {
     }
 }
 
-export { sortPointsByMST, optimizePointOrder, quickDecimate }
+export { sortPointsByAngle, sortPointsByMST, optimizePointOrder, adaptiveDecimate, quickDecimate }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import axios from 'axios';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter'
 import _ from 'lodash';
@@ -10,11 +11,11 @@ import { loadGeometry } from '../../loader/loadGeometry';
 import { loadMatrixJson } from '../../loader/loadDirJson';
 import { applyColorByPointKeySet, buildPointMap, pointSpread, posKey2Vec } from '../../tool/BufferGeometryTool';
 import { disposeMesh, drawArrow, drawPoint, prepareColorMesh } from '../../tool/SceneTool';
-// import { abutmentData } from '../../../../../public/abutmentData';
-import { sortPointsByMST, optimizePointOrder, quickDecimate } from './SortPoint';
-import { smoothPoints } from './SmoothPoint';
+import { optimizePointOrder } from './SortPoint';
+import { smoothPoints, smoothPointsWithProjection } from './SmoothPoint';
 import { pointCloud2Boundary } from './PointCloud2Boundary';
 import { projectCurveOnMesh, projectPointArrayOnMesh } from './ProjectPoint';
+import PredictDirection from '../PredictDirection';
 
 const curveMaterial = new THREE.MeshStandardMaterial({
     color: 0xff0000,
@@ -24,14 +25,29 @@ const curveMaterial = new THREE.MeshStandardMaterial({
     roughness: 0.5
 });
 
+// 兩個後端實例都跑在 ai-margin-training-gpu-1 容器內，stage2 同為 v8_plain，差別在 stage1：
+//   current: v5full + v6_sibseed 雙模型 ensemble（現行部署配方）
+//   v8:      stage1_v8_mcls_fgdice 多類別單模型（一次 forward 標註所有備牙、結構性不重複）
+export const MODEL_API_HOSTS = {
+    current: 'http://192.168.0.101:8011',
+    v8: 'http://192.168.0.101:8012',
+};
+
 class PredictAbutment {
     constructor() {
         /**@type {THREE.Mesh} */
         this.mesh = null;
         /**@type {number} */
         this.toothFdi = null;
+        /**@type {string} */
+        this.allToothFdi = '';
+        /**@type {keyof typeof MODEL_API_HOSTS} */
+        this.modelApi = 'current';
         /**@type {THREE.Mesh} */
         this.curveMesh = null;
+        /**@type {THREE.Mesh[]} */
+        this.tempMeshArray = [];
+        console.log(this)
     }
 
     initFromPublic = async () => {
@@ -112,11 +128,16 @@ class PredictAbutment {
         applyColorByPointKeySet(geometry, abutPointKeySet, new THREE.Color(0, 1, 0))
     }
 
-    callApi = async () => {
+    /**
+     * 呼叫 AI API 預測 abutment margin line
+     * @param {number} version - API 版本
+     * @param {number} [gradientThreshold=0.3] - 機率梯度閾值（使用者可調）
+     */
+    callApi = async (version, gradientThreshold = 0.4) => {
         if (!this.mesh || !this.toothFdi) return;
 
-        disposeMesh(this.curveMesh);
-        this.curveMesh = null;
+        this.dispose();
+
         console.log('predict abutment');
 
         try {
@@ -126,98 +147,257 @@ class PredictAbutment {
             const stlBlob = new Blob([stlString], { type: 'text/plain' });
             formData.append('file', stlBlob, 'model.stl');
             formData.append('tooth_number', this.toothFdi);
-            formData.append('threshold', 0.35);
+            formData.append('threshold', gradientThreshold);
 
             console.time('AI predict abutment');
-            const res = await axios.post('http://192.168.0.101:8001/predict_abutment/', formData);
+            let res;
+            // if (version == 2) res = await axios.post('http://192.168.0.101:8001/predict_abutment_v2/', formData);
+            // else res = await axios.post('http://192.168.0.101:8001/predict_abutment/', formData);
+
+            if (version == 2) res = await axios.post('https://4e942d61-8fdf-4adb-b15d-495a88409d93.inteware.com.tw/margin/predict_abutment_v2/', formData);
+            else if (version == 1) res = await axios.post('https://4e942d61-8fdf-4adb-b15d-495a88409d93.inteware.com.tw/margin/predict_abutment/', formData);
+
             console.log(res.data);
             console.timeEnd('AI predict abutment');
 
-            /**@type {number[][]} */
-            const jawPoints = _.get(res.data, 'jaw_points', []);
-            // const oriPointCloudVertex = jawPoints.flat();
-            // const oriPointGeometry = new THREE.BufferGeometry();
-            // oriPointGeometry.setAttribute('position', new THREE.Float32BufferAttribute(oriPointCloudVertex, 3));
-            // const oriPointMaterial = new THREE.PointsMaterial({ color: 0x888888, size: 4 });
-            // const oriPointsMesh = new THREE.Points(oriPointGeometry, oriPointMaterial);
-            // Editor.scene.add(oriPointsMesh);
-
-            /**@type {number[][]} */
-            const abutPoints = _.get(res.data, 'abutment_points', []);
-            if (abutPoints.length == 0) throw new Error('AI can not recognize abutment')
-            // const abutPointCloudVertex = abutPoints.flat();
-            // const abutPointGeometry = new THREE.BufferGeometry();
-            // abutPointGeometry.setAttribute('position', new THREE.Float32BufferAttribute(abutPointCloudVertex, 3));
-            // const abutPointMaterial = new THREE.PointsMaterial({ color: 0xff0000, size: 5 });
-            // const abutPointsMesh = new THREE.Points(abutPointGeometry, abutPointMaterial);
-            // Editor.scene.add(abutPointsMesh);
-
-            // normalPoints = jawPoints過濾掉abutPoints
-            const abutPointCloudKeyMap = new Map();
-            for (const abutPointData of abutPoints) {
-                const [x, y, z] = abutPointData;
-                abutPointCloudKeyMap.set(`${x}_${y}_${z}`, [x, y, z]);
-            }
-
-            const normalPointCloudKeyMap = new Map();
-            for (const jawPointData of jawPoints) {
-                const [x, y, z] = jawPointData;
-                const pointKey = `${x}_${y}_${z}`;
-                if (abutPointCloudKeyMap.has(pointKey)) continue;
-
-                normalPointCloudKeyMap.set(pointKey, [x, y, z]);
-            }
-
-            // 先獲得abutment點雲大範圍的點，再用不是abutment的點雲小範圍去除點
-            prepareColorMesh(this.mesh, true);
-            const geometry = this.mesh.geometry;
-            const edgePointKeySet = pointCloud2Boundary(abutPointCloudKeyMap, normalPointCloudKeyMap);
-
-            applyColorByPointKeySet(geometry, edgePointKeySet, new THREE.Color(0, 0, 1));
-            this.edgePoint2margin(edgePointKeySet);
+            return this.processResult(res.data, gradientThreshold);
         } catch (error) {
             console.log(error);
             message.error('predict margin fail')
         }
     }
 
+    callApi_2 = async () => {
+        if (!this.mesh || !this.toothFdi) return;
+
+        this.dispose();
+        console.log('predict abutment2');
+
+        try {
+            const formData = new FormData();
+
+            const stlString = new STLExporter().parse(this.mesh, { binary: true });
+            const stlBlob = new Blob([stlString], { type: 'text/plain' });
+            formData.append('file', stlBlob, 'model.stl');
+            formData.append('tooth_number', this.toothFdi);
+            if (this.allToothFdi) formData.append('all_tooth_numbers', this.allToothFdi);
+            // formData.append('return_debug', true);
+            // formData.append('curve_smooth_iterations', 8);
+            // formData.append('spline_point', 128);
+            formData.append('boundary_mode', 'prob_isocontour');
+            // formData.append('threshold', gradientThreshold);
+
+            console.time('AI predict abutment2');
+
+            // const res = await axios.post('http://192.168.0.101:8011/predict_margin', formData);
+            const res = await axios.post(`${MODEL_API_HOSTS[this.modelApi]}/predict_margin_two_stage`, formData);
+            // const res = await axios.post('https://4e942d61-8fdf-4adb-b15d-495a88409d93.inteware.com.tw/margin-new/predict_margin_two_stage', formData);
+            console.log(res.data)
+            // stage1.conditioning 會回報實際生效的模式（v8 應為 multiclass_fdi）
+            console.log('conditioning:', _.get(res.data, 'stage1.conditioning'))
+            console.log(_.get(res.data, 'validity.valid', true))
+
+
+
+            const responsePointArray = _.get(res.data, 'spline_points_mm', []).length
+                ? _.get(res.data, 'spline_points_mm', [])
+                : _.get(res.data, 'margin_points_mm', []);
+            const marginPointArray = responsePointArray.map(pointData => {
+                const x = _.get(pointData, '0', 0);
+                const y = _.get(pointData, '1', 0);
+                const z = _.get(pointData, '2', 0);
+                return new THREE.Vector3(x, y, z)
+            });
+            this.showMarginLine(marginPointArray, _.get(res.data, 'margin_closed', true));
+
+            if (false) {
+                const verticeArray = _.get(res.data, 'debug.vertices_mm', []);
+                const posAttr = new THREE.Float32BufferAttribute(verticeArray.flat(), 3, false);
+
+                const faceArray = _.get(res.data, 'debug.faces', []);
+                const indexAttr = new THREE.Uint32BufferAttribute(faceArray.flat(), 1, false);
+
+                const colorAttr = new THREE.Float32BufferAttribute(posAttr.array.length, 3, false);
+                colorAttr.array.fill(1);
+                // const labelArray = _.get(res.data, 'debug.raw_stage2_labels', []);
+                const labelArray = _.get(res.data, 'debug.postprocessed_labels', []);
+                for (let faceIndex = 0; faceIndex < labelArray.length; faceIndex++) {
+                    const isLabel = labelArray[faceIndex] === 1;
+                    if (!isLabel) continue;
+
+                    const faceIndexFlat = faceIndex * 3;
+                    for (let i = 0; i < 3; i++) {
+                        const posIndex = indexAttr.array[faceIndexFlat + i];
+                        colorAttr.setXYZ(posIndex, 0, 1, 0);
+                    }
+                }
+                colorAttr.needsUpdate = true;
+                const newGeo = new THREE.BufferGeometry();
+                newGeo.setAttribute('position', posAttr);
+                newGeo.setAttribute('color', colorAttr);
+                newGeo.setIndex(indexAttr);
+                newGeo.computeVertexNormals();
+                this.mesh.geometry = newGeo;
+                this.mesh.material.vertexColors = true;
+                this.mesh.material.needsUpdate = true;
+                console.log(this.mesh)
+            }
+
+            console.timeEnd('AI predict abutment2');
+            return marginPointArray;
+        } catch (error) {
+            console.log(error);
+            message.error('predict margin2 fail')
+        }
+    }
+
+    callApi_checkNPZ = async () => {
+        try {
+            console.time('AI predict abutment3');
+
+            const res = await axios.get('http://192.168.0.101:8011/case_npz?filename=68a6b953879fae70eb3e20c1_16_stage2');
+            console.log(res.data)
+
+            const verticeArray = _.get(res.data, 'vertices_mm', []);
+            const posAttr = new THREE.Float32BufferAttribute(verticeArray.flat(), 3, false);
+
+            const faceArray = _.get(res.data, 'faces', []);
+            const indexAttr = new THREE.Uint32BufferAttribute(faceArray.flat(), 1, false);
+
+            const colorAttr = new THREE.Float32BufferAttribute(posAttr.array.length, 3, false);
+            colorAttr.array.fill(1);
+            const labelArray = _.get(res.data, 'labels', []);
+            for (let faceIndex = 0; faceIndex < labelArray.length; faceIndex++) {
+                const isLabel = labelArray[faceIndex] === 1;
+                if (!isLabel) continue;
+
+                const faceIndexFlat = faceIndex * 3;
+                for (let i = 0; i < 3; i++) {
+                    const posIndex = indexAttr.array[faceIndexFlat + i];
+                    colorAttr.setXYZ(posIndex, 1, 0, 0);
+                }
+            }
+            colorAttr.needsUpdate = true;
+
+            const newGeo = new THREE.BufferGeometry();
+            newGeo.setAttribute('position', posAttr);
+            newGeo.setAttribute('color', colorAttr);
+            newGeo.setIndex(indexAttr);
+            newGeo.computeVertexNormals();
+
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 0.2,
+                side: THREE.DoubleSide,
+            });
+            material.vertexColors = true;
+            material.needsUpdate = true;
+
+            this.mesh = new THREE.Mesh(newGeo, material);
+            console.log(this.mesh)
+            Editor.scene.add(this.mesh)
+
+            console.timeEnd('AI predict abutment3');
+        } catch (error) {
+            console.log(error);
+            message.error('predict margin3 fail')
+        }
+    }
+
     /**
-     * @param {THREE.BufferGeometry} pointKeySet 
-     * @param {Set<string>} pointKeySet 
+     * 處理 AI 回傳的結果，提取 margin line
+     * @param {object} data - API response
+     * @param {number} gradientThreshold - 機率梯度閾值
      */
-    edgePoint2margin = (pointKeySet) => {
-        const geometry = this.mesh.geometry;
+    processResult = (data, gradientThreshold = 0.4) => {
+        /**@type {number[][]} */
+        const jawPoints = _.get(data, 'jaw_points', []);
+        /**@type {number[]} */
+        const allProbabilities = _.get(data, 'all_probabilities', []);
 
-        if (!geometry.pointMap) geometry.pointMap = buildPointMap(geometry);
-        /**@type {import('../../tool/BufferGeometryTool').PointMap} */
-        const pointMap = geometry.pointMap;
-
-        const pointArray = [];
-        for (const pointKey of pointKeySet) {
-            const { vectorNums: [x, y, z] } = pointMap[pointKey];
-            const point = new THREE.Vector3(x, y, z);
-            pointArray.push(point);
+        if (jawPoints.length === 0 || allProbabilities.length === 0) {
+            throw new Error('AI response missing jaw_points or all_probabilities');
         }
 
-        let sortedPointArray = quickDecimate(pointArray, 100);
-        sortedPointArray = sortPointsByMST(sortedPointArray);
-        sortedPointArray = optimizePointOrder(sortedPointArray);
-        sortedPointArray = smoothPoints(sortedPointArray, 3, 1);
+        if (false) {
+            // 視覺化：顯示所有點雲（灰色）
+            const oriPointCloudVertex = jawPoints.flat();
+            const oriPointGeometry = new THREE.BufferGeometry();
+            oriPointGeometry.setAttribute('position', new THREE.Float32BufferAttribute(oriPointCloudVertex, 3));
+            const oriPointMaterial = new THREE.PointsMaterial({ color: 0x888888, size: 4 });
+            const oriPointsMesh = new THREE.Points(oriPointGeometry, oriPointMaterial);
+            this.tempMeshArray.push(oriPointsMesh);
+            Editor.scene.add(oriPointsMesh);
 
-        let fittedCurve = new THREE.CatmullRomCurve3(sortedPointArray, true);
-        fittedCurve = projectCurveOnMesh(this.mesh, fittedCurve);
-        const curveGeometry = new THREE.TubeGeometry(fittedCurve, sortedPointArray.length, 0.02, 8, true);
+            // 視覺化：顯示 abutment 點（綠色，按機率過濾）
+            const abutPoints = jawPoints.filter((_, i) => allProbabilities[i] > 0.5);
+            if (abutPoints.length === 0) throw new Error('AI can not recognize abutment');
+
+            const abutPointCloudVertex = abutPoints.flat();
+            const abutPointGeometry = new THREE.BufferGeometry();
+            abutPointGeometry.setAttribute('position', new THREE.Float32BufferAttribute(abutPointCloudVertex, 3));
+            const abutPointMaterial = new THREE.PointsMaterial({ color: 0x00ff00, size: 5 });
+            const abutPointsMesh = new THREE.Points(abutPointGeometry, abutPointMaterial);
+            this.tempMeshArray.push(abutPointsMesh);
+            Editor.scene.add(abutPointsMesh);
+        }
+
+        // Step 1: Angular Sweep 輪廓提取（輸出已有序、閉合）
+        console.time('Boundary extraction');
+        const outlinePoints = pointCloud2Boundary(jawPoints, allProbabilities, this.toothFdi, {
+            probThreshold: gradientThreshold,
+        });
+        console.timeEnd('Boundary extraction');
+
+        if (outlinePoints.length === 0) {
+            throw new Error('Failed to extract outline points');
+        }
+
+        console.log(`Outline points: ${outlinePoints.length}`);
+
+        // Step 2: 投影到 mesh 上
+        let sortedPoints = projectPointArrayOnMesh(this.mesh, outlinePoints);
+
+        // Step 3: 2-opt 微調排序（輪廓已大致有序，微調即可）
+        sortedPoints = optimizePointOrder(sortedPoints);
+
+        // Step 4: Laplacian 平滑 + mesh 投影
+        sortedPoints = smoothPointsWithProjection(sortedPoints, this.mesh, 3, 0.5, 1);
+
+        // Step 5: 生成 CatmullRomCurve3 + TubeGeometry
+        this.showMarginLine(sortedPoints);
+        return sortedPoints;
+    }
+
+    /**
+     * @param {THREE.Vector3[]} pointArray 
+     * @param {boolean} closed
+     */
+    showMarginLine = (pointArray, closed = true) => {
+        if (pointArray.length < 2) return;
+
+        const curvePath = new THREE.CurvePath();
+        for (let i = 0; i < pointArray.length - 1; i++) {
+            curvePath.add(new THREE.LineCurve3(pointArray[i], pointArray[i + 1]));
+        }
+        if (closed && pointArray.length > 2) {
+            curvePath.add(new THREE.LineCurve3(pointArray[pointArray.length - 1], pointArray[0]));
+        }
+
+        const curveGeometry = new THREE.TubeGeometry(curvePath, Math.max(pointArray.length, 16), 0.02, 8, false);
         const curveMesh = new THREE.Mesh(curveGeometry, curveMaterial);
-        this.curveMesh = curveMesh
+        this.curveMesh = curveMesh;
         Editor.scene.add(curveMesh);
     }
 
     dispose = () => {
-        disposeMesh(this.mesh);
-        this.mesh = null;
-
         disposeMesh(this.curveMesh);
         this.curveMesh = null;
+
+        for (const mesh of this.tempMeshArray) {
+            disposeMesh(mesh);
+        }
+        this.tempMeshArray = [];
     }
 }
 
