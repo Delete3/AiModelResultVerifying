@@ -3,6 +3,7 @@ import { STLExporter } from 'three/examples/jsm/exporters/STLExporter'
 import axios from 'axios';
 
 import Editor from '../Editor';
+import { disposeMesh } from '../tool/SceneTool';
 
 class PredictDirection {
   constructor() {
@@ -14,6 +15,7 @@ class PredictDirection {
    * @param {THREE.Mesh} mesh 
    */
   setMesh = (mesh) => {
+    if (this.mesh) disposeMesh(this.mesh);
     this.mesh = mesh;
     Editor.scene.add(mesh);
   }
@@ -34,16 +36,19 @@ class PredictDirection {
       // const res = await axios.post('http://192.168.0.101:8000/predict', formData);
       const res = await axios.post('https://4e942d61-8fdf-4adb-b15d-495a88409d93.inteware.com.tw/jaw/predict', formData);
       console.log(res.data)
-
-      const quaternionRawData = res.data?.quaternion;
-      const quaternion = new THREE.Quaternion(quaternionRawData.x, quaternionRawData.y, quaternionRawData.z, quaternionRawData.w);
-      // if (!quaternionRawData || !Array.isArray(quaternionRawData) || quaternionRawData.length !== 4) throw `${data} is not a valid quaternion data`;
-      // const quaternion = new THREE.Quaternion(quaternionRawData[0], quaternionRawData[1], quaternionRawData[2], quaternionRawData[3]);
-      this.mesh.geometry.applyQuaternion(quaternion)
-
+      return this.processResult(res.data);
     } catch (error) {
       console.log(error)
     }
+  }
+
+  processResult = (data) => {
+    const quaternionRawData = data.quaternion;
+    const quaternion = new THREE.Quaternion(quaternionRawData.x, quaternionRawData.y, quaternionRawData.z, quaternionRawData.w);
+    // if (!quaternionRawData || !Array.isArray(quaternionRawData) || quaternionRawData.length !== 4) throw `${data} is not a valid quaternion data`;
+    // const quaternion = new THREE.Quaternion(quaternionRawData[0], quaternionRawData[1], quaternionRawData[2], quaternionRawData[3]);
+    this.mesh.geometry.applyQuaternion(quaternion)
+    return quaternion;
   }
 }
 
