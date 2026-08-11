@@ -107,6 +107,18 @@ body,
       flex: 1 0 100%;
     }
 
+    // Tinted so the two "只用目前檔案生成" buttons cannot be hit interchangeably by muscle
+    // memory -- which instance produced a crown is the whole point of the comparison.
+    .flow-actions .prod-model-button {
+      border-color: #52c41a;
+      color: #389e0d;
+
+      &:not(:disabled):hover {
+        border-color: #73d13d;
+        color: #52c41a;
+      }
+    }
+
     .panel-divider {
       height: 1px;
       margin: 18px -16px 0;

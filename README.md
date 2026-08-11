@@ -57,7 +57,16 @@ FDI）。這會啟用 v6 的 competitor-seed conditioning；單顆備牙可留�
 
 按下「一鍵：擺正 → Margin → 牙冠」後，面板會顯示每一步狀態。生成完成後會顯示半透明上下顎與橘色牙冠，並可下載 PLY。若 margin API 回傳 validity flags，面板會以警告顯示。
 
-「只用目前檔案生成」則是手動模式，另外需要 margin `.pts`。Contacts、jaw matrix 與 abutment points 必須和提交的 STL 在相同座標系；一鍵擺正流程目前不會帶入原座標的這些檔案。
+「只用目前檔案生成（dev 8010）」與「只用目前檔案生成（prod 8013）」則是手動模式，另外需要 margin `.pts`。Contacts、jaw matrix 與 abutment points 必須和提交的 STL 在相同座標系；一鍵擺正流程目前不會帶入原座標的這些檔案。
+
+這兩個按鈕送往這台機器上的兩個 FlowToothSDF 服務。dev 跟著目前在改的東西跑，prod 是釘住的正式版、有自己的工作目錄（`/opt/ai_services/FlowToothSDF-prod`），所以這兩顆按鈕回答的是「我現在看的版本跟正在出貨的差多少」。
+
+```text
+dev   /api/flowtooth       → FLOWTOOTH_API_URL       (8010)
+prod  /api/flowtooth-prod  → FLOWTOOTH_PROD_API_URL  (8013)
+```
+
+prod 的下載檔名會多一個 `_prod` 後綴（`outer_crown_FDI45_prod.ply`），兩邊的 job id 也分別帶 `checkingviewer-dev-` 與 `checkingviewer-prod-`，所以下載檔與伺服器 log 都分得出是哪一個服務。「檢查 API」會一次檢查兩個服務。一鍵流程走 dev。
 
 ## predict_margin_two_stage CORS
 

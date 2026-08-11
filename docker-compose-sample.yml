@@ -25,6 +25,8 @@ services:
       - MARGIN_V8_API_URL=http://host.docker.internal:8012
       # on the Docker host.
       - FLOWTOOTH_API_URL=http://host.docker.internal:8010
+      # the pinned production instance, for comparison against dev above
+      - FLOWTOOTH_PROD_API_URL=http://host.docker.internal:8013
     extra_hosts:
       - "host.docker.internal:host-gateway"
     stdin_open: true

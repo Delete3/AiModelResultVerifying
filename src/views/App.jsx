@@ -17,7 +17,7 @@ import { setupByAbutTaskUrl, setupByDirectionTaskUrl } from '../utils/function/S
 import CheckGroundTrue from '../utils/function/CheckGroundTrue';
 import CheckAIMarginResult from '../utils/function/CheckAIMarginResult';
 import { computeMarginAccuracy } from '../utils/tool/MarginAccuracy';
-import { generateFlowToothCrown, getFlowToothHealth } from '../utils/function/FlowToothApi';
+import { generateFlowToothCrown, getFlowToothHealth, FLOWTOOTH_MODEL_LABEL } from '../utils/function/FlowToothApi';
 import { prepareFlowToothInputs } from '../utils/function/FlowToothPipeline';
 
 /**
@@ -229,25 +229,35 @@ function App() {
     Editor.control.update();
   };
 
+  // Both instances get checked in one click: an A/B is worth nothing if one of the two is
+  // down and the panel only ever reported the other one's state.
   const checkFlowToothHealth = async () => {
     setFlowApiStatus({ state: 'checking', label: '檢查中…' });
-    try {
-      const health = await getFlowToothHealth();
-      const loaded = health.model_loaded ? '模型已載入' : '模型待首次載入';
-      setFlowApiStatus({
-        state: 'online',
-        label: `API 正常 · ${health.device} · ${loaded}`,
-      });
-    } catch (error) {
-      setFlowApiStatus({ state: 'offline', label: `無法連線：${error.message}` });
-    }
+
+    const describe = async model => {
+      const label = FLOWTOOTH_MODEL_LABEL[model];
+      try {
+        const health = await getFlowToothHealth(model);
+        const loaded = health.model_loaded ? '模型已載入' : '模型待首次載入';
+        return { ok: true, text: `${label} 正常 · ${health.device} · ${loaded}` };
+      } catch (error) {
+        return { ok: false, text: `${label} 無法連線：${error.message}` };
+      }
+    };
+
+    const results = await Promise.all([describe('dev'), describe('prod')]);
+    setFlowApiStatus({
+      state: results.every(result => result.ok) ? 'online' : 'offline',
+      label: results.map(result => result.text).join('　｜　'),
+    });
   };
 
   const isValidFlowFdi = fdi => /^[1-4][1-8]$/.test(String(Number(fdi)));
 
-  const generateCrownFromFiles = async (files, { abutfit = flowAbutfit } = {}) => {
+  const generateCrownFromFiles = async (files, { abutfit = flowAbutfit, model = 'dev' } = {}) => {
     const fdi = Number(flowFdi);
     const result = await generateFlowToothCrown({
+      model,
       fdi,
       upperStl: files.upperStl,
       lowerStl: files.lowerStl,
@@ -265,11 +275,12 @@ function App() {
     if (flowResult?.url) URL.revokeObjectURL(flowResult.url);
     const url = URL.createObjectURL(result.blob);
     setFlowResult({ ...result, url });
-    setFlowApiStatus({ state: 'online', label: 'API 正常 · 模型已載入' });
+    // Names the instance: a successful generate only proves the one that served it.
+    setFlowApiStatus({ state: 'online', label: `${result.modelLabel} 正常 · 模型已載入` });
     return result;
   };
 
-  const runFlowToothGeneration = async () => {
+  const runFlowToothGeneration = async (model = 'dev') => {
     const requiredFiles = [
       ['upperStl', 'upper.stl'],
       ['lowerStl', 'lower.stl'],
@@ -290,13 +301,16 @@ function App() {
       return;
     }
 
+    const modelLabel = FLOWTOOTH_MODEL_LABEL[model] ?? model;
     setFlowGenerating(true);
-    setFlowMessage('步驟 3/3：正在生成牙冠…');
+    setFlowMessage(`步驟 3/3：正在用${modelLabel}生成牙冠…`);
     try {
-      const result = await generateCrownFromFiles(flowToothFiles);
-      setFlowMessage(`完成：${result.fileName} · Job ${result.jobId} · ${result.seconds.toFixed(1)} 秒`);
+      const result = await generateCrownFromFiles(flowToothFiles, { model });
+      setFlowMessage(
+        `完成（${result.modelLabel}）：${result.fileName} · Job ${result.jobId} · ${result.seconds.toFixed(1)} 秒`,
+      );
     } catch (error) {
-      setFlowMessage(`生成失敗：${error.message}`);
+      setFlowMessage(`${modelLabel}生成失敗：${error.message}`);
     } finally {
       setFlowGenerating(false);
     }
@@ -448,7 +462,18 @@ function App() {
         <Button className='pipeline-button' type='primary' loading={flowGenerating} onClick={runFlowToothPipeline}>
           一鍵：擺正 → Margin → 牙冠
         </Button>
-        <Button disabled={flowGenerating} onClick={runFlowToothGeneration}>只用目前檔案生成</Button>
+        {/* Arrow wrappers, not a bare reference: onClick would hand the button its click
+            event as the model argument. */}
+        <Button disabled={flowGenerating} onClick={() => runFlowToothGeneration('dev')}>
+          只用目前檔案生成（dev 8010）
+        </Button>
+        <Button
+          className='prod-model-button'
+          disabled={flowGenerating}
+          onClick={() => runFlowToothGeneration('prod')}
+        >
+          只用目前檔案生成（prod 8013）
+        </Button>
         <Button disabled={!flowResult} onClick={downloadFlowResult}>下載 PLY</Button>
         <Button disabled={!flowMeshesRef.current.length} onClick={clearFlowPreview}>清除預覽</Button>
       </div>

@@ -1,6 +1,18 @@
 import axios from 'axios';
 
-const FLOWTOOTH_PROXY_BASE = '/api/flowtooth';
+// The two FlowToothSDF instances on this box: 8010 (dev, follows current work) and 8013
+// (prod, pinned). Both proxies are declared in vite.config.js.
+const FLOWTOOTH_PROXY_BASE = {
+  dev: '/api/flowtooth',
+  prod: '/api/flowtooth-prod',
+};
+
+const FLOWTOOTH_MODEL_LABEL = {
+  dev: 'dev',
+  prod: 'prod',
+};
+
+const proxyBase = model => FLOWTOOTH_PROXY_BASE[model] ?? FLOWTOOTH_PROXY_BASE.dev;
 
 const decodeApiError = data => {
   if (data instanceof ArrayBuffer) {
@@ -20,12 +32,13 @@ const decodeApiError = data => {
   return typeof data === 'string' ? data : null;
 };
 
-const getFlowToothHealth = async () => {
-  const response = await axios.get(`${FLOWTOOTH_PROXY_BASE}/health`);
+const getFlowToothHealth = async (model = 'dev') => {
+  const response = await axios.get(`${proxyBase(model)}/health`);
   return response.data;
 };
 
 const generateFlowToothCrown = async ({
+  model = 'dev',
   fdi,
   upperStl,
   lowerStl,
@@ -50,11 +63,13 @@ const generateFlowToothCrown = async ({
 
   try {
     const response = await axios.post(
-      `${FLOWTOOTH_PROXY_BASE}/api/v1/crowns`,
+      `${proxyBase(model)}/api/v1/crowns`,
       formData,
       {
         params: {
-          job_id: `checkingviewer-${Date.now()}`,
+          // The model goes in the job id so the two instances' run directories, and any
+          // log line either of them prints, say which weights produced the crown.
+          job_id: `checkingviewer-${model}-${Date.now()}`,
           res,
           chamfer: chamfer ? 1 : 0,
           abutfit: abutfit ? 1 : 0,
@@ -65,12 +80,19 @@ const generateFlowToothCrown = async ({
     );
 
     const disposition = response.headers['content-disposition'] ?? '';
-    const fileName = disposition.match(/filename="?([^";]+)"?/i)?.[1]
+    const servedName = disposition.match(/filename="?([^";]+)"?/i)?.[1]
       ?? `generated_crown_FDI${fdi}.ply`;
+    // Both instances serve the same filename for the same tooth, so tag the file with the
+    // model. Downloading one after the other must not leave two indistinguishable PLYs.
+    const fileName = model === 'dev'
+      ? servedName
+      : servedName.replace(/(\.[^.]+)?$/, `_${model}$1`);
 
     return {
       blob: new Blob([response.data], { type: 'model/ply' }),
       fileName,
+      model,
+      modelLabel: FLOWTOOTH_MODEL_LABEL[model] ?? model,
       jobId: response.headers['x-flowtooth-job-id'] ?? '',
       seconds: Number(response.headers['x-flowtooth-seconds'] ?? 0),
     };
@@ -80,4 +102,4 @@ const generateFlowToothCrown = async ({
   }
 };
 
-export { generateFlowToothCrown, getFlowToothHealth };
+export { generateFlowToothCrown, getFlowToothHealth, FLOWTOOTH_MODEL_LABEL };
