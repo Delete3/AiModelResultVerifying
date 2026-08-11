@@ -6,6 +6,11 @@ import fs from 'fs'
 import path from 'path'
 
 const TRAINING_DATA_ROOT = '/trainingData'
+const FLOWTOOTH_API_URL = process.env.FLOWTOOTH_API_URL || 'http://127.0.0.1:8010'
+const DIRECTION_API_URL = process.env.DIRECTION_API_URL || 'http://127.0.0.1:8000'
+// MARGIN_CURRENT_API_URL is kept as a compatibility fallback for older compose files.
+const MARGIN_V6_API_URL = process.env.MARGIN_V6_API_URL || process.env.MARGIN_CURRENT_API_URL || 'http://127.0.0.1:8011'
+const MARGIN_V8_API_URL = process.env.MARGIN_V8_API_URL || 'http://127.0.0.1:8012'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -150,8 +155,29 @@ export default defineConfig({
     },
     // 添加代理配置，將前端 API 請求轉發到主機的 localhost 端口
     proxy: {
+      '/api/flowtooth': {
+        target: FLOWTOOTH_API_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/flowtooth/, ''),
+      },
+      '/api/margin-two-stage-v6': {
+        target: MARGIN_V6_API_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/margin-two-stage-v6/, ''),
+      },
+      // Preserve the previous same-origin endpoint for bookmarks and local tools.
+      '/api/margin-two-stage-current': {
+        target: MARGIN_V6_API_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/margin-two-stage-current/, ''),
+      },
+      '/api/margin-two-stage-v8': {
+        target: MARGIN_V8_API_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/margin-two-stage-v8/, ''),
+      },
       '/api/direction': {
-        target: 'http://localhost:8002',
+        target: DIRECTION_API_URL,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/direction/, '')
       },

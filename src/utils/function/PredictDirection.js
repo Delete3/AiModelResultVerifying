@@ -20,34 +20,59 @@ class PredictDirection {
     Editor.scene.add(mesh);
   }
 
-  predictMesh = async (isUpper = true) => {
-    console.log(isUpper)
-    try {
-      console.log('predict direction');
-      const exporter = new STLExporter();
-      const stlString = exporter.parse(this.mesh, { binary: true });
-      const blob = new Blob([stlString], { type: 'text/plain' });
+  /** Predict orientation without mutating the jaw mesh. */
+  predictQuaternion = async (mesh, isUpper = true) => {
+    if (!mesh) throw new Error('No jaw mesh was provided for direction prediction');
 
-      const formData = new FormData();
-      formData.append('file', blob, 'model.stl');
-      formData.append('is_upper', isUpper)
-      // const res = await axios.post('http://192.168.0.101:8003/predict_direction/', formData);
-      // const res = await axios.post('http://localhost:8000/predict', formData);
-      // const res = await axios.post('http://192.168.0.101:8000/predict', formData);
-      const res = await axios.post('https://4e942d61-8fdf-4adb-b15d-495a88409d93.inteware.com.tw/jaw/predict', formData);
-      console.log(res.data)
-      return this.processResult(res.data);
+    const stlData = new STLExporter().parse(mesh, { binary: true });
+    const blob = new Blob([stlData], { type: 'model/stl' });
+    const formData = new FormData();
+    formData.append('file', blob, 'model.stl');
+    formData.append('is_upper', String(isUpper));
+
+    // Same-origin Vite proxy avoids browser CORS and HTTPS mixed-content errors.
+    const res = await axios.post('/api/direction/predict', formData);
+    return this.parseQuaternion(res.data);
+  }
+
+  /** Predict and apply orientation to an arbitrary jaw mesh. */
+  predictTargetMesh = async (mesh, isUpper = true) => {
+    const quaternion = await this.predictQuaternion(mesh, isUpper);
+    this.applyQuaternion(mesh, quaternion);
+    return quaternion;
+  }
+
+  predictMesh = async (isUpper = true) => {
+    try {
+      return await this.predictTargetMesh(this.mesh, isUpper);
     } catch (error) {
-      console.log(error)
+      console.error(error);
+      return null;
     }
   }
 
-  processResult = (data) => {
+  parseQuaternion = (data) => {
     const quaternionRawData = data.quaternion;
+    if (!quaternionRawData) throw new Error('Direction API returned an invalid quaternion');
+
     const quaternion = new THREE.Quaternion(quaternionRawData.x, quaternionRawData.y, quaternionRawData.z, quaternionRawData.w);
-    // if (!quaternionRawData || !Array.isArray(quaternionRawData) || quaternionRawData.length !== 4) throw `${data} is not a valid quaternion data`;
-    // const quaternion = new THREE.Quaternion(quaternionRawData[0], quaternionRawData[1], quaternionRawData[2], quaternionRawData[3]);
-    this.mesh.geometry.applyQuaternion(quaternion)
+    if (
+      !quaternion.toArray().every(Number.isFinite)
+      || quaternion.lengthSq() < Number.EPSILON
+    ) {
+      throw new Error('Direction API returned an invalid quaternion');
+    }
+    return quaternion.normalize();
+  }
+
+  applyQuaternion = (mesh, quaternion) => {
+    if (!mesh || !quaternion) throw new Error('A jaw mesh and quaternion are required');
+    mesh.geometry.applyQuaternion(quaternion);
+  }
+
+  processResult = (data, mesh = this.mesh) => {
+    const quaternion = this.parseQuaternion(data);
+    this.applyQuaternion(mesh, quaternion);
     return quaternion;
   }
 }

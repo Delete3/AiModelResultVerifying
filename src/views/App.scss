@@ -18,19 +18,156 @@ body,
     width: 100%;
   }
 
-  .function-container {
+
+  .flowtooth-panel {
     position: absolute;
-    top: 0;
-    display: flex;
-    flex-direction: column;
+    top: 16px;
+    left: 16px;
+    z-index: 10;
+    width: min(460px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    box-sizing: border-box;
+    overflow: auto;
+    padding: 16px;
+    border: 1px solid #d9d9d9;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
 
-    .function-group {
+    .flow-panel-header {
       display: flex;
-      gap: 5px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+      font-size: 16px;
     }
 
-    .function-button {
-      width: 200px;
+    .flow-section-title {
+      margin-top: 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #262626;
     }
+
+    .flow-files {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+
+      .ant-upload-wrapper,
+      .ant-upload-select {
+        display: block;
+        width: 100%;
+      }
+
+      .flow-file-button {
+        width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    .flow-options {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 12px;
+      margin-top: 14px;
+
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 12px;
+        color: #595959;
+      }
+
+      .ant-input-number {
+        width: 100%;
+      }
+
+      .flow-switch {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 32px;
+      }
+    }
+
+    .flow-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .flow-actions .pipeline-button {
+      flex: 1 0 100%;
+    }
+
+    .panel-divider {
+      height: 1px;
+      margin: 18px -16px 0;
+      background: #f0f0f0;
+    }
+
+    .legacy-title {
+      margin: 12px 0 8px;
+    }
+
+    .legacy-tools {
+      background: transparent;
+
+      .ant-collapse-content-box {
+        padding: 10px;
+      }
+
+      .function-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+
+      .function-button {
+        flex: 1 1 160px;
+        width: auto;
+        min-width: 0;
+      }
+
+      .ant-select {
+        max-width: 100%;
+      }
+    }
+
+    .flow-message {
+      max-height: 150px;
+      margin: 12px 0 0;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #135200;
+
+      &.error {
+        color: #a8071a;
+      }
+      &.warning {
+        color: #ad6800;
+      }
+    }
+  }
+}
+
+@media (max-width: 760px) {
+  .container .flowtooth-panel {
+    top: auto;
+    bottom: 12px;
+    left: 12px;
+    right: auto;
+    width: calc(100vw - 24px);
+    max-height: 62vh;
   }
 }

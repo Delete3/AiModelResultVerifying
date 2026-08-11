@@ -25,12 +25,12 @@ const curveMaterial = new THREE.MeshStandardMaterial({
     roughness: 0.5
 });
 
-// 兩個後端實例都跑在 ai-margin-training-gpu-1 容器內，stage2 同為 v8_plain，差別在 stage1：
-//   current: v5full + v6_sibseed 雙模型 ensemble（現行部署配方）
-//   v8:      stage1_v8_mcls_fgdice 多類別單模型（一次 forward 標註所有備牙、結構性不重複）
-export const MODEL_API_HOSTS = {
-    current: 'http://192.168.0.101:8011',
-    v8: 'http://192.168.0.101:8012',
+// 兩個 two-stage 選項的 stage2 都是 v8_plain，差別在 stage1：
+//   v6: stage1_v6_sibseed（正式部署的最佳單模型；可使用同顎所有備牙 FDI 作競爭牙 seed）
+//   v8: stage1_v8_mcls_fgdice（多類別 runner-up；一次 forward 標註所有備牙）
+export const MODEL_API_PATHS = {
+    v6: '/api/margin-two-stage-v6',
+    v8: '/api/margin-two-stage-v8',
 };
 
 class PredictAbutment {
@@ -41,8 +41,9 @@ class PredictAbutment {
         this.toothFdi = null;
         /**@type {string} */
         this.allToothFdi = '';
-        /**@type {keyof typeof MODEL_API_HOSTS} */
-        this.modelApi = 'current';
+        /**@type {keyof typeof MODEL_API_PATHS} */
+        this.modelApi = 'v6';
+        this.lastTwoStageResult = null;
         /**@type {THREE.Mesh} */
         this.curveMesh = null;
         /**@type {THREE.Mesh[]} */
@@ -167,7 +168,7 @@ class PredictAbutment {
         }
     }
 
-    callApi_2 = async () => {
+    callApi_2 = async (throwOnError = false) => {
         if (!this.mesh || !this.toothFdi) return;
 
         this.dispose();
@@ -189,11 +190,12 @@ class PredictAbutment {
 
             console.time('AI predict abutment2');
 
-            // const res = await axios.post('http://192.168.0.101:8011/predict_margin', formData);
-            const res = await axios.post(`${MODEL_API_HOSTS[this.modelApi]}/predict_margin_two_stage`, formData);
+            // Same-origin Vite proxy avoids browser CORS and HTTPS mixed-content errors.
+            const res = await axios.post(`${MODEL_API_PATHS[this.modelApi]}/predict_margin_two_stage`, formData);
             // const res = await axios.post('https://4e942d61-8fdf-4adb-b15d-495a88409d93.inteware.com.tw/margin-new/predict_margin_two_stage', formData);
+            this.lastTwoStageResult = res.data;
             console.log(res.data)
-            // stage1.conditioning 會回報實際生效的模式（v8 應為 multiclass_fdi）
+            // stage1.conditioning 會回報實際生效的 conditioning；v6 多備牙時應有 sibling seed。
             console.log('conditioning:', _.get(res.data, 'stage1.conditioning'))
             console.log(_.get(res.data, 'validity.valid', true))
 
@@ -246,8 +248,10 @@ class PredictAbutment {
             console.timeEnd('AI predict abutment2');
             return marginPointArray;
         } catch (error) {
-            console.log(error);
-            message.error('predict margin2 fail')
+            console.error(error);
+            message.error(`predict margin2 fail: ${error.response?.data?.detail ?? error.message}`);
+            if (throwOnError) throw error;
+            return null;
         }
     }
 

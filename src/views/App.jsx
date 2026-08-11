@@ -2,7 +2,7 @@ import './App.scss';
 
 import { useRef, useState, useReducer } from 'react';
 import * as THREE from 'three';
-import { Upload, Button, Input, Spin, Divider, Select } from 'antd';
+import { Upload, Button, Input, InputNumber, Spin, Select, Switch, Tag, Tooltip, Collapse } from 'antd';
 import axios from 'axios';
 
 import Editor from '../utils/Editor';
@@ -17,6 +17,8 @@ import { setupByAbutTaskUrl, setupByDirectionTaskUrl } from '../utils/function/S
 import CheckGroundTrue from '../utils/function/CheckGroundTrue';
 import CheckAIMarginResult from '../utils/function/CheckAIMarginResult';
 import { computeMarginAccuracy } from '../utils/tool/MarginAccuracy';
+import { generateFlowToothCrown, getFlowToothHealth } from '../utils/function/FlowToothApi';
+import { prepareFlowToothInputs } from '../utils/function/FlowToothPipeline';
 
 /**
  * @param {File} file 
@@ -58,6 +60,19 @@ function App() {
 
   const [taskDomain, setTaskDomain] = useState(taskDomainOption[1].value)
   const [taskId, setTaskId] = useState('');
+
+  const [flowToothFiles, setFlowToothFiles] = useState({});
+  const [flowFdi, setFlowFdi] = useState(null);
+  const [flowAllToothFdi, setFlowAllToothFdi] = useState('');
+  const [flowRes, setFlowRes] = useState(128);
+  const [flowChamfer, setFlowChamfer] = useState(true);
+  const [flowAbutfit, setFlowAbutfit] = useState(false);
+  const [flowGenerating, setFlowGenerating] = useState(false);
+  const [flowApiStatus, setFlowApiStatus] = useState({ state: 'unknown', label: '尚未檢查' });
+  const [flowMessage, setFlowMessage] = useState('');
+  const [flowResult, setFlowResult] = useState(null);
+  const flowMeshesRef = useRef([]);
+  const flowRawScansRef = useRef({});
 
   const tempTest = async () => {
     return;
@@ -132,6 +147,318 @@ function App() {
     initial();
     tempTest()
   }, []);
+
+  const setFlowFile = (key, file) => {
+    if (key === 'upperStl' || key === 'lowerStl') {
+      flowRawScansRef.current[key] = file;
+    }
+    setFlowToothFiles(previous => ({ ...previous, [key]: file }));
+    setFlowMessage('');
+    return false;
+  };
+
+  const renderFlowFileUpload = (key, label, accept, required = false) => {
+    const file = flowToothFiles[key];
+    return <Upload
+      accept={accept}
+      beforeUpload={selected => setFlowFile(key, selected)}
+      maxCount={1}
+      showUploadList={false}
+    >
+      <Button className='flow-file-button' type={file ? 'primary' : 'default'}>
+        {required ? '* ' : ''}{file?.name || label}
+      </Button>
+    </Upload>
+  };
+
+  const clearFlowPreview = () => {
+    for (const mesh of flowMeshesRef.current) disposeMesh(mesh);
+    flowMeshesRef.current = [];
+  };
+
+  const applyPreviewMatrix = async (mesh, matrixFile) => {
+    if (!mesh || !matrixFile) return;
+    const matrixData = JSON.parse((await matrixFile.text()).replace(/^\uFEFF/, ''));
+    const matrixValues = matrixData.flat();
+    if (matrixValues.length !== 16) throw new Error(`${matrixFile.name} 不是 4x4 matrix`);
+    mesh.applyMatrix4(new THREE.Matrix4().set(...matrixValues));
+  };
+
+  const showFlowToothResult = async (result, files = flowToothFiles) => {
+    if (!Editor.scene || !Editor.control) throw new Error('3D viewer 尚未初始化');
+
+    const crownFile = new File([result.blob], result.fileName, { type: 'model/ply' });
+    const [upperMesh, lowerMesh, crownMesh] = await Promise.all([
+      loadMesh(files.upperStl),
+      loadMesh(files.lowerStl),
+      loadMesh(crownFile),
+    ]);
+    if (!upperMesh || !lowerMesh || !crownMesh) throw new Error('無法解析 API 回傳的牙冠模型');
+
+    await Promise.all([
+      applyPreviewMatrix(upperMesh, files.upperMatrix),
+      applyPreviewMatrix(lowerMesh, files.lowerMatrix),
+    ]);
+
+    clearFlowPreview();
+
+    const setMaterial = (mesh, name, color, opacity) => {
+      mesh.name = name;
+      mesh.material.color.set(color);
+      mesh.material.transparent = opacity < 1;
+      mesh.material.opacity = opacity;
+      mesh.material.depthWrite = opacity === 1;
+    };
+    setMaterial(upperMesh, 'flowtooth-upper', 0x8fc8ff, 0.22);
+    setMaterial(lowerMesh, 'flowtooth-lower', 0xc6b4ff, 0.22);
+    setMaterial(crownMesh, 'flowtooth-crown', 0xff7a18, 1);
+    crownMesh.renderOrder = 2;
+
+    flowMeshesRef.current = [upperMesh, lowerMesh, crownMesh];
+    Editor.scene.add(...flowMeshesRef.current);
+
+    const box = new THREE.Box3();
+    for (const mesh of flowMeshesRef.current) box.expandByObject(mesh);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const cameraOffset = Editor.control.camera.position.clone().sub(Editor.control.target);
+    Editor.control.target.copy(center);
+    Editor.control.camera.position.copy(center).add(cameraOffset);
+    Editor.control.camera.zoom = THREE.MathUtils.clamp(70 / Math.max(size.x, size.y, size.z, 1), 0.4, 8);
+    Editor.control.camera.updateProjectionMatrix();
+    Editor.control.update();
+  };
+
+  const checkFlowToothHealth = async () => {
+    setFlowApiStatus({ state: 'checking', label: '檢查中…' });
+    try {
+      const health = await getFlowToothHealth();
+      const loaded = health.model_loaded ? '模型已載入' : '模型待首次載入';
+      setFlowApiStatus({
+        state: 'online',
+        label: `API 正常 · ${health.device} · ${loaded}`,
+      });
+    } catch (error) {
+      setFlowApiStatus({ state: 'offline', label: `無法連線：${error.message}` });
+    }
+  };
+
+  const isValidFlowFdi = fdi => /^[1-4][1-8]$/.test(String(Number(fdi)));
+
+  const generateCrownFromFiles = async (files, { abutfit = flowAbutfit } = {}) => {
+    const fdi = Number(flowFdi);
+    const result = await generateFlowToothCrown({
+      fdi,
+      upperStl: files.upperStl,
+      lowerStl: files.lowerStl,
+      marginPts: files.marginPts,
+      contactsPly: files.contactsPly,
+      upperMatrix: files.upperMatrix,
+      lowerMatrix: files.lowerMatrix,
+      abutmentPoints: files.abutmentPoints,
+      res: flowRes,
+      chamfer: flowChamfer,
+      abutfit,
+    });
+
+    await showFlowToothResult(result, files);
+    if (flowResult?.url) URL.revokeObjectURL(flowResult.url);
+    const url = URL.createObjectURL(result.blob);
+    setFlowResult({ ...result, url });
+    setFlowApiStatus({ state: 'online', label: 'API 正常 · 模型已載入' });
+    return result;
+  };
+
+  const runFlowToothGeneration = async () => {
+    const requiredFiles = [
+      ['upperStl', 'upper.stl'],
+      ['lowerStl', 'lower.stl'],
+      ['marginPts', 'margin .pts'],
+    ];
+    const missing = requiredFiles.filter(([key]) => !flowToothFiles[key]).map(([, label]) => label);
+
+    if (!isValidFlowFdi(flowFdi)) {
+      setFlowMessage('請輸入有效的兩位數 FDI（11–48，每象限牙位 1–8）');
+      return;
+    }
+    if (missing.length) {
+      setFlowMessage(`缺少必要檔案：${missing.join('、')}`);
+      return;
+    }
+    if (flowAbutfit && !flowToothFiles.abutmentPoints) {
+      setFlowMessage('啟用 abutment fit 時必須提供 abutmentPoints .txt');
+      return;
+    }
+
+    setFlowGenerating(true);
+    setFlowMessage('步驟 3/3：正在生成牙冠…');
+    try {
+      const result = await generateCrownFromFiles(flowToothFiles);
+      setFlowMessage(`完成：${result.fileName} · Job ${result.jobId} · ${result.seconds.toFixed(1)} 秒`);
+    } catch (error) {
+      setFlowMessage(`生成失敗：${error.message}`);
+    } finally {
+      setFlowGenerating(false);
+    }
+  };
+
+  const runFlowToothPipeline = async () => {
+    const rawUpperStl = flowRawScansRef.current.upperStl || flowToothFiles.upperStl;
+    const rawLowerStl = flowRawScansRef.current.lowerStl || flowToothFiles.lowerStl;
+    if (!isValidFlowFdi(flowFdi)) {
+      setFlowMessage('請先輸入有效的兩位數 FDI（11–48，每象限牙位 1–8）');
+      return;
+    }
+    if (!rawUpperStl || !rawLowerStl) {
+      setFlowMessage('一鍵流程需要原始 upper.stl 與 lower.stl');
+      return;
+    }
+    if (flowAbutfit) {
+      setFlowMessage('一鍵擺正流程目前不套用原座標的 abutment points；請先關閉 Abutment fit');
+      return;
+    }
+
+    setFlowGenerating(true);
+    try {
+      const prepared = await prepareFlowToothInputs({
+        upperStl: rawUpperStl,
+        lowerStl: rawLowerStl,
+        fdi: Number(flowFdi),
+        allToothFdi: flowAllToothFdi,
+        modelApi: PredictAbutment.modelApi,
+        onStep: setFlowMessage,
+      });
+
+      // Positioned scans and generated margin already share one coordinate frame.
+      // Do not resend original matrices/contacts/abutment points from the raw frame.
+      const pipelineFiles = {
+        ...flowToothFiles,
+        ...prepared,
+        contactsPly: undefined,
+        upperMatrix: undefined,
+        lowerMatrix: undefined,
+        abutmentPoints: undefined,
+      };
+      setFlowToothFiles(pipelineFiles);
+      setFlowMessage('步驟 3/3：正在生成牙冠…');
+      const result = await generateCrownFromFiles(pipelineFiles, { abutfit: false });
+      const marginWarning = prepared.marginValidity?.valid === false
+        ? ` ⚠ Margin：${prepared.marginValidity.flags?.join(', ') || 'validity=false'}`
+        : '';
+      setFlowMessage(
+        `一鍵流程完成：擺正 → Margin → ${result.fileName} · ${result.seconds.toFixed(1)} 秒（未帶入原座標 contacts）${marginWarning}`,
+      );
+    } catch (error) {
+      setFlowMessage(`Pipeline 失敗：${error.response?.data?.detail ?? error.message}`);
+    } finally {
+      setFlowGenerating(false);
+    }
+  };
+
+  const downloadFlowResult = () => {
+    if (!flowResult) return;
+    const anchor = document.createElement('a');
+    anchor.href = flowResult.url;
+    anchor.download = flowResult.fileName;
+    anchor.click();
+  };
+
+  const renderFlowToothPanel = () => {
+    const tagColor = {
+      unknown: 'default',
+      checking: 'processing',
+      online: 'success',
+      offline: 'error',
+    }[flowApiStatus.state];
+    const legacyItems = [
+      { key: 'model', label: '既有模型與牙位設定', children: renderUploadModel() },
+      {
+        key: 'predict',
+        label: '擺正與 Margin 測試工具',
+        children: <div className='legacy-tool-stack'>
+          {renderDirectionPredictFunc()}
+          {renderAbutmentPredictFunc()}
+        </div>,
+      },
+      { key: 'task', label: 'Task 載入', children: renderTaskIdInput() },
+      {
+        key: 'verify',
+        label: '驗證工具',
+        children: <div className='legacy-tool-stack'>
+          {renderCheckGroundTrue()}
+          {renderCheckAIMarginResult()}
+        </div>,
+      },
+    ];
+
+    return <section className='flowtooth-panel'>
+      <div className='flow-panel-header'>
+        <strong>AI Checking Viewer</strong>
+        <Button size='small' onClick={checkFlowToothHealth}>檢查 API</Button>
+      </div>
+      <Tag color={tagColor}>{flowApiStatus.label}</Tag>
+
+      <div className='flow-section-title'>擺正 → Margin → 牙冠</div>
+      <div className='flow-files'>
+        {renderFlowFileUpload('upperStl', 'upper.stl', '.stl', true)}
+        {renderFlowFileUpload('lowerStl', 'lower.stl', '.stl', true)}
+        {renderFlowFileUpload('marginPts', 'margin .pts（可自動產生）', '.pts')}
+        {renderFlowFileUpload('contactsPly', '定位後 contacts .ply', '.ply')}
+        {renderFlowFileUpload('upperMatrix', 'upper matrix .json', '.json')}
+        {renderFlowFileUpload('lowerMatrix', 'lower matrix .json', '.json')}
+        {renderFlowFileUpload('abutmentPoints', 'abutmentPoints .txt', '.txt')}
+      </div>
+
+      <div className='flow-options'>
+        <label>
+          FDI
+          <InputNumber min={11} max={48} value={flowFdi} onChange={setFlowFdi} placeholder='例如 27' />
+        </label>
+        <label>
+          同顎所有備牙 FDI
+          <Input
+            value={flowAllToothFdi}
+            onChange={e => setFlowAllToothFdi(e.target.value)}
+            placeholder='多備牙時，例如 14,15'
+          />
+        </label>
+        <label>
+          Resolution
+          <InputNumber min={64} max={256} value={flowRes} onChange={setFlowRes} />
+        </label>
+        <label>
+          Margin AI
+          <Select
+            value={PredictAbutment.modelApi}
+            onChange={value => {
+              PredictAbutment.modelApi = value;
+              forceRerender();
+            }}
+            options={[
+              { value: 'v6', label: 'v6（正式推薦）' },
+              { value: 'v8', label: 'v8（多類別 runner-up）' },
+            ]}
+          />
+        </label>
+        <label className='flow-switch'>Chamfer <Switch checked={flowChamfer} onChange={setFlowChamfer} /></label>
+        <label className='flow-switch'>Abutment fit <Switch checked={flowAbutfit} onChange={setFlowAbutfit} /></label>
+      </div>
+
+      <div className='flow-actions'>
+        <Button className='pipeline-button' type='primary' loading={flowGenerating} onClick={runFlowToothPipeline}>
+          一鍵：擺正 → Margin → 牙冠
+        </Button>
+        <Button disabled={flowGenerating} onClick={runFlowToothGeneration}>只用目前檔案生成</Button>
+        <Button disabled={!flowResult} onClick={downloadFlowResult}>下載 PLY</Button>
+        <Button disabled={!flowMeshesRef.current.length} onClick={clearFlowPreview}>清除預覽</Button>
+      </div>
+      {flowMessage && <pre className={/失敗|缺少|請先|需要/.test(flowMessage) ? 'flow-message error' : flowMessage.includes('⚠') ? 'flow-message warning' : 'flow-message'}>{flowMessage}</pre>}
+
+      <div className='panel-divider' />
+      <div className='flow-section-title legacy-title'>既有工具</div>
+      <Collapse className='legacy-tools' size='small' items={legacyItems} />
+    </section>;
+  };
 
   const renderDirPredictFunc = () => {
     return <div className='function-group'>
@@ -236,8 +563,8 @@ function App() {
             forceRerender();
           }}
           options={[
-            { value: 'current', label: 'AI: v5+v6 現行' },
-            { value: 'v8', label: 'AI: v8 多類別' },
+            { value: 'v6', label: 'AI: v6 正式推薦' },
+            { value: 'v8', label: 'AI: v8 多類別 runner-up' },
           ]}
         />
       </div>
@@ -271,7 +598,7 @@ function App() {
           onPressEnter={async () => {
             const fdiStrArray = PredictAbutment.allToothFdi.split(',');
             if (!fdiStrArray[0]) return;
-            
+
             setIsLoading(true)
             await PredictDirection.predictMesh(fdiStrArray[0] < 30)
             await PredictAbutment.callApi_2()
@@ -487,17 +814,7 @@ function App() {
     <div className="container">
       <Spin spinning={isLoading}>
         <div ref={containerRef} className="editor" />
-        <div className='function-container'>
-          {renderUploadModel()}
-          <Divider style={{ pointerEvents: 'none' }} />
-          {renderDirectionPredictFunc()}
-          {renderAbutmentPredictFunc()}
-          <Divider style={{ pointerEvents: 'none' }} />
-          {renderTaskIdInput()}
-          <Divider style={{ pointerEvents: 'none' }} />
-          {renderCheckGroundTrue()}
-          {renderCheckAIMarginResult()}
-        </div>
+        {renderFlowToothPanel()}
       </Spin>
     </div>
   )

@@ -19,6 +19,14 @@ services:
       - "5174:5173"
     environment:
       - NODE_ENV=development
+      # Vite runs inside this container, while FlowToothSDF publishes port 8010
+      - DIRECTION_API_URL=http://host.docker.internal:8000
+      - MARGIN_V6_API_URL=http://host.docker.internal:8011
+      - MARGIN_V8_API_URL=http://host.docker.internal:8012
+      # on the Docker host.
+      - FLOWTOOTH_API_URL=http://host.docker.internal:8010
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     stdin_open: true
     tty: true
     command: npm run dev
