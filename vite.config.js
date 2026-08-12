@@ -26,6 +26,20 @@ export default defineConfig({
     {
       name: 'training-data-api',
       configureServer(server) {
+        // Instances that serve people outside the lab mount no corpus. Answer those
+        // plainly rather than letting every listing die on readdirSync, and rather than
+        // falling through to the SPA, which would hand axios an index.html it cannot parse.
+        if (!fs.existsSync(TRAINING_DATA_ROOT)) {
+          server.config.logger.warn(
+            `[training-data-api] ${TRAINING_DATA_ROOT} is not mounted; GT browsing is disabled`
+          )
+          server.middlewares.use('/api/training-data', (req, res) => {
+            res.writeHead(503, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: `${TRAINING_DATA_ROOT} is not mounted on this instance` }))
+          })
+          return
+        }
+
         // GET /api/training-data/:dataset  → 列出該資料集下所有 case 資料夾名稱
         // GET /api/training-data/:dataset/:id  → 列出該 case 內的檔案/子目錄
         server.middlewares.use('/api/training-data', (req, res) => {
