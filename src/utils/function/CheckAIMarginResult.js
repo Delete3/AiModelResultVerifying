@@ -8,7 +8,6 @@ import { disposeMesh } from '../tool/SceneTool';
 import { loadMatrixJson } from '../loader/loadDirJson';
 import PredictDirection from './PredictDirection';
 import PredictAbutment from './predict-abutment/PredictAbutment';
-import { caseList } from '../../../public/caseList';
 
 const material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
@@ -31,6 +30,15 @@ class CheckAIMarginResult {
         // return
         console.time('test')
         try {
+            // public/ is copied verbatim rather than bundled, and it is git-ignored, so the
+            // case list exists only on checkouts that happen to carry it. Importing it
+            // statically took the whole app down on the ones that do not. Loading it by URL
+            // at the moment it is needed leaves the failure inside this panel.
+            // The specifier goes through a variable on purpose: given a literal, Vite
+            // resolves it at transform time and fails the module again, @vite-ignore or not.
+            const caseListUrl = '/caseList.js'
+            const { caseList } = await import(/* @vite-ignore */ caseListUrl)
+
             // for (let i = 0; i < 3; i++) {
             for (let i = 0; i < 100; i++) {
                 // await this.predictMarginProcess_v1(caseList[i]);
