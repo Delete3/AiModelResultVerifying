@@ -18,6 +18,14 @@ const MARGIN_V8_API_URL = process.env.MARGIN_V8_API_URL || 'http://127.0.0.1:801
 // listed here. localhost and bare IPs are allowed by Vite regardless.
 const ALLOWED_HOSTS = (process.env.VITE_ALLOWED_HOSTS || 'eztest.inteware.com.tw')
   .split(',').map((h) => h.trim()).filter(Boolean)
+// An instance published through the tunnel is reached by browsers nowhere near this host,
+// so an HMR client pointed at localhost dials the visitor's own machine, fails, and retries
+// for as long as the tab is open. Naming the public host sends it back through the tunnel
+// instead, which carries websockets. Note that `hmr: false` is not the fix it looks like:
+// Vite 5.4 injects the client and its connection constants either way.
+const HMR = process.env.VITE_HMR_PUBLIC_HOST
+  ? { protocol: 'wss', host: process.env.VITE_HMR_PUBLIC_HOST, clientPort: 443 }
+  : { host: 'localhost' }
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -151,9 +159,7 @@ export default defineConfig({
     watch: {
       usePolling: true, // Docker 環境需要使用輪詢來監聽文件變化
     },
-    hmr: {
-      host: 'localhost', // 熱模組替換的主機
-    },
+    hmr: HMR,
     // 添加代理配置，將前端 API 請求轉發到主機的 localhost 端口
     proxy: {
       // Before '/api/flowtooth': these keys are matched as prefixes in declaration order,
