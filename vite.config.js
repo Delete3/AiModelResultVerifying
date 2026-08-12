@@ -1,7 +1,5 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import http from 'http'
-import https from 'https'
 import fs from 'fs'
 import path from 'path'
 
@@ -15,6 +13,11 @@ const DIRECTION_API_URL = process.env.DIRECTION_API_URL || 'http://127.0.0.1:800
 // MARGIN_CURRENT_API_URL is kept as a compatibility fallback for older compose files.
 const MARGIN_V6_API_URL = process.env.MARGIN_V6_API_URL || process.env.MARGIN_CURRENT_API_URL || 'http://127.0.0.1:8011'
 const MARGIN_V8_API_URL = process.env.MARGIN_V8_API_URL || 'http://127.0.0.1:8012'
+// Vite 5.4.12+ refuses any request whose Host header it does not recognise, so reaching
+// this server by name rather than by IP — through the Cloudflare tunnel — needs the name
+// listed here. localhost and bare IPs are allowed by Vite regardless.
+const ALLOWED_HOSTS = (process.env.VITE_ALLOWED_HOSTS || 'eztest.inteware.com.tw')
+  .split(',').map((h) => h.trim()).filter(Boolean)
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -125,32 +128,12 @@ export default defineConfig({
           }
         });
       }
-    },
-    {
-      name: 'dynamic-proxy',
-      configureServer(server) {
-        server.middlewares.use('/api/proxy', (req, res) => {
-          const targetUrl = new URL(req.url, 'http://localhost').searchParams.get('url');
-          if (!targetUrl) {
-            res.statusCode = 400;
-            res.end('Missing url param');
-            return;
-          }
-          const client = targetUrl.startsWith('https') ? https : http;
-          client.get(targetUrl, (proxyRes) => {
-            res.writeHead(proxyRes.statusCode, { 'Content-Type': 'application/json' });
-            proxyRes.pipe(res);
-          }).on('error', (err) => {
-            res.statusCode = 500;
-            res.end(err.message);
-          });
-        });
-      }
     }
   ],
   server: {
     host: '0.0.0.0', // 允許外部訪問
     port: 5173,
+    allowedHosts: ALLOWED_HOSTS,
     watch: {
       usePolling: true, // Docker 環境需要使用輪詢來監聽文件變化
     },
