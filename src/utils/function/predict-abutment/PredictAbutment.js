@@ -25,12 +25,16 @@ const curveMaterial = new THREE.MeshStandardMaterial({
     roughness: 0.5
 });
 
-// 兩個 two-stage 選項的 stage2 都是 v8_plain，差別在 stage1：
-//   v6: stage1_v6_sibseed（正式部署的最佳單模型；可使用同顎所有備牙 FDI 作競爭牙 seed）
-//   v8: stage1_v8_mcls_fgdice（多類別 runner-up；一次 forward 標註所有備牙）
+// stage2 是 v8_plain；v6 指的是 stage1_v6_sibseed（正式部署的最佳單模型，可使用同顎所有
+// 備牙 FDI 作競爭牙 seed）。
+//
+// 曾經有第二個選項 v8 → stage1_v8_mcls_fgdice（多類別 runner-up，一次 forward 標註所有
+// 備牙），走 /api/margin-two-stage-v8。它背後那個 :8002 的 instance 從未寫進 compose，
+// 是手動起的，容器重啟後就沒了，按下去只會拿到 proxy 錯誤，所以移除。
+// 檢查點還在 trainAiMarginModel/checkpoints/stage1_v8_mcls_fgdice/，要復原就是在
+// trainAiMarginModel 的 compose 補一個 service 跑 :8002，再把這裡和 App.jsx 的選單加回來。
 export const MODEL_API_PATHS = {
     v6: '/api/margin-two-stage-v6',
-    v8: '/api/margin-two-stage-v8',
 };
 
 class PredictAbutment {

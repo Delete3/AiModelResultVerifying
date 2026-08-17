@@ -14,7 +14,6 @@ const FLOWTOOTH_PROD_API_URL = process.env.FLOWTOOTH_PROD_API_URL || 'http://127
 const DIRECTION_API_URL = process.env.DIRECTION_API_URL || 'http://127.0.0.1:8020'
 // MARGIN_CURRENT_API_URL is kept as a compatibility fallback for older compose files.
 const MARGIN_V6_API_URL = process.env.MARGIN_V6_API_URL || process.env.MARGIN_CURRENT_API_URL || 'http://127.0.0.1:8011'
-const MARGIN_V8_API_URL = process.env.MARGIN_V8_API_URL || 'http://127.0.0.1:8012'
 // Vite 5.4.12+ refuses any request whose Host header it does not recognise, so reaching
 // this server by name rather than by IP — through the Cloudflare tunnel — needs the name
 // listed here. localhost and bare IPs are allowed by Vite regardless.
@@ -188,11 +187,6 @@ export default defineConfig({
         target: MARGIN_V6_API_URL,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/margin-two-stage-current/, ''),
-      },
-      '/api/margin-two-stage-v8': {
-        target: MARGIN_V8_API_URL,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/margin-two-stage-v8/, ''),
       },
       '/api/direction': {
         target: DIRECTION_API_URL,

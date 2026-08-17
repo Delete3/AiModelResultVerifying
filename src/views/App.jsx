@@ -440,20 +440,6 @@ function App() {
           Resolution
           <InputNumber min={64} max={256} value={flowRes} onChange={setFlowRes} />
         </label>
-        <label>
-          Margin AI
-          <Select
-            value={PredictAbutment.modelApi}
-            onChange={value => {
-              PredictAbutment.modelApi = value;
-              forceRerender();
-            }}
-            options={[
-              { value: 'v6', label: 'v6（正式推薦）' },
-              { value: 'v8', label: 'v8（多類別 runner-up）' },
-            ]}
-          />
-        </label>
         <label className='flow-switch'>Chamfer <Switch checked={flowChamfer} onChange={setFlowChamfer} /></label>
         <label className='flow-switch'>Abutment fit <Switch checked={flowAbutfit} onChange={setFlowAbutfit} /></label>
       </div>
@@ -578,20 +564,6 @@ function App() {
         >
           <Button>import abutment data</Button>
         </Upload>
-      </div>
-      <div className='function-group'>
-        <Select
-          className='function-button'
-          value={PredictAbutment.modelApi}
-          onChange={value => {
-            PredictAbutment.modelApi = value;
-            forceRerender();
-          }}
-          options={[
-            { value: 'v6', label: 'AI: v6 正式推薦' },
-            { value: 'v8', label: 'AI: v8 多類別 runner-up' },
-          ]}
-        />
       </div>
       <div className='function-group'>
         <Input
