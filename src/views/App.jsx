@@ -355,7 +355,12 @@ function App() {
       };
       setFlowToothFiles(pipelineFiles);
       setFlowMessage('步驟 3/3：正在生成牙冠…');
-      const result = await generateCrownFromFiles(pipelineFiles, { abutfit: false });
+      // prod, explicitly. This flow exists to reproduce what production does end to end, and
+      // generateCrownFromFiles defaults to dev — which deliberately holds the Stage-1/Stage-2
+      // pair that production replaced, so the default quietly generated crowns from the older
+      // model. Neither instance reports its weights over HTTP; check with
+      //   docker inspect flowtooth-prod-api --format '{{json .Config.Cmd}}'
+      const result = await generateCrownFromFiles(pipelineFiles, { abutfit: false, model: 'prod' });
       const marginWarning = prepared.marginValidity?.valid === false
         ? ` ⚠ Margin：${prepared.marginValidity.flags?.join(', ') || 'validity=false'}`
         : '';
@@ -446,19 +451,24 @@ function App() {
 
       <div className='flow-actions'>
         <Button className='pipeline-button' type='primary' loading={flowGenerating} onClick={runFlowToothPipeline}>
-          一鍵：擺正 → Margin → 牙冠
+          一鍵：擺正 → Margin → 牙冠（prod）
         </Button>
         {/* Arrow wrappers, not a bare reference: onClick would hand the button its click
-            event as the model argument. */}
+            event as the model argument.
+
+            The labels say which role each instance plays rather than naming a checkpoint:
+            dev is whichever pair production last replaced, and both rotate. Naming versions
+            here would go stale silently, which is how the pipeline came to run the older
+            model without anyone noticing. */}
         <Button disabled={flowGenerating} onClick={() => runFlowToothGeneration('dev')}>
-          只用目前檔案生成（dev 8010）
+          只用目前檔案生成（dev 8010・對照組）
         </Button>
         <Button
           className='prod-model-button'
           disabled={flowGenerating}
           onClick={() => runFlowToothGeneration('prod')}
         >
-          只用目前檔案生成（prod 8013）
+          只用目前檔案生成（prod 8013・線上權重）
         </Button>
         <Button disabled={!flowResult} onClick={downloadFlowResult}>下載 PLY</Button>
         <Button disabled={!flowMeshesRef.current.length} onClick={clearFlowPreview}>清除預覽</Button>

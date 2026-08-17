@@ -1,15 +1,20 @@
 import axios from 'axios';
 
-// The two FlowToothSDF instances on this box: 8010 (dev, follows current work) and 8013
-// (prod, pinned). Both proxies are declared in vite.config.js.
+// The two FlowToothSDF instances on this box: 8010 (dev) and 8013 (prod). Both proxies are
+// declared in vite.config.js. dev is not "the newer one" — it deliberately holds the
+// Stage-1/Stage-2 pair that production replaced, so the two remain a comparison. Which
+// checkpoints each is actually serving shows up only in the container command:
+//   docker inspect flowtooth-prod-api --format '{{json .Config.Cmd}}'
 const FLOWTOOTH_PROXY_BASE = {
   dev: '/api/flowtooth',
   prod: '/api/flowtooth-prod',
 };
 
+// Roles, not checkpoint names, for the same reason: a version here goes stale silently the
+// next time the two rotate.
 const FLOWTOOTH_MODEL_LABEL = {
-  dev: 'dev',
-  prod: 'prod',
+  dev: 'dev・對照組',
+  prod: 'prod・線上權重',
 };
 
 const proxyBase = model => FLOWTOOTH_PROXY_BASE[model] ?? FLOWTOOTH_PROXY_BASE.dev;
