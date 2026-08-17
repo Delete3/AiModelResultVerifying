@@ -18,7 +18,7 @@ import CheckGroundTrue from '../utils/function/CheckGroundTrue';
 import CheckAIMarginResult from '../utils/function/CheckAIMarginResult';
 import { computeMarginAccuracy } from '../utils/tool/MarginAccuracy';
 import { generateFlowToothCrown, getFlowToothHealth, FLOWTOOTH_MODEL_LABEL } from '../utils/function/FlowToothApi';
-import { prepareFlowToothInputs } from '../utils/function/FlowToothPipeline';
+import { formatTimings, prepareFlowToothInputs } from '../utils/function/FlowToothPipeline';
 
 /**
  * @param {File} file 
@@ -333,6 +333,7 @@ function App() {
     }
 
     setFlowGenerating(true);
+    const pipelineStart = performance.now();
     try {
       const prepared = await prepareFlowToothInputs({
         upperStl: rawUpperStl,
@@ -360,12 +361,23 @@ function App() {
       // pair that production replaced, so the default quietly generated crowns from the older
       // model. Neither instance reports its weights over HTTP; check with
       //   docker inspect flowtooth-prod-api --format '{{json .Config.Cmd}}'
+      const crownStart = performance.now();
       const result = await generateCrownFromFiles(pipelineFiles, { abutfit: false, model: 'prod' });
+      const crownSeconds = (performance.now() - crownStart) / 1000;
+      const totalSeconds = (performance.now() - pipelineStart) / 1000;
+
       const marginWarning = prepared.marginValidity?.valid === false
-        ? ` ⚠ Margin：${prepared.marginValidity.flags?.join(', ') || 'validity=false'}`
+        ? `\n⚠ Margin：${prepared.marginValidity.flags?.join(', ') || 'validity=false'}`
         : '';
+      // This row covers the upload, the inference, the PLY download and rendering the preview.
+      // result.seconds is the inference alone, which is why the old single figure read as far
+      // faster than the flow actually was.
+      const timings = [
+        ...prepared.timings,
+        { label: '牙冠生成與預覽', seconds: crownSeconds, note: `（伺服器推論 ${result.seconds.toFixed(1)} 秒）` },
+      ];
       setFlowMessage(
-        `一鍵流程完成：擺正 → Margin → ${result.fileName} · ${result.seconds.toFixed(1)} 秒（未帶入原座標 contacts）${marginWarning}`,
+        `一鍵流程完成：${result.fileName}（未帶入原座標 contacts）\n${formatTimings(timings, totalSeconds)}${marginWarning}`,
       );
     } catch (error) {
       setFlowMessage(`Pipeline 失敗：${error.response?.data?.detail ?? error.message}`);
