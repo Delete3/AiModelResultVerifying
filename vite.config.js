@@ -9,7 +9,9 @@ const TRAINING_DATA_ROOT = '/trainingData'
 // these two answer "does the change I am looking at differ from what is shipping".
 const FLOWTOOTH_API_URL = process.env.FLOWTOOTH_API_URL || 'http://127.0.0.1:8010'
 const FLOWTOOTH_PROD_API_URL = process.env.FLOWTOOTH_PROD_API_URL || 'http://127.0.0.1:8013'
-const DIRECTION_API_URL = process.env.DIRECTION_API_URL || 'http://127.0.0.1:8000'
+// ai-jaw-direction-prod. Not 8000: that port is published by the training container and has
+// nothing listening behind it, so the old default answered every request with a proxy 500.
+const DIRECTION_API_URL = process.env.DIRECTION_API_URL || 'http://127.0.0.1:8020'
 // MARGIN_CURRENT_API_URL is kept as a compatibility fallback for older compose files.
 const MARGIN_V6_API_URL = process.env.MARGIN_V6_API_URL || process.env.MARGIN_CURRENT_API_URL || 'http://127.0.0.1:8011'
 const MARGIN_V8_API_URL = process.env.MARGIN_V8_API_URL || 'http://127.0.0.1:8012'
