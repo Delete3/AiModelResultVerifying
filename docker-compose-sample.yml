@@ -23,6 +23,9 @@ services:
       - DIRECTION_API_URL=http://host.docker.internal:8000
       - MARGIN_V6_API_URL=http://host.docker.internal:8011
       # on the Docker host.
+      # ezai-pipeline, the entry point production calls. The one-click flow goes through
+      # this so its timings reflect production rather than the browser's own orchestration.
+      - PIPELINE_API_URL=http://host.docker.internal:8031
       - FLOWTOOTH_API_URL=http://host.docker.internal:8010
       # the pinned production instance, for comparison against dev above
       - FLOWTOOTH_PROD_API_URL=http://host.docker.internal:8013

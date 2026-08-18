@@ -18,7 +18,8 @@ import CheckGroundTrue from '../utils/function/CheckGroundTrue';
 import CheckAIMarginResult from '../utils/function/CheckAIMarginResult';
 import { computeMarginAccuracy } from '../utils/tool/MarginAccuracy';
 import { generateFlowToothCrown, getFlowToothHealth, FLOWTOOTH_MODEL_LABEL } from '../utils/function/FlowToothApi';
-import { formatTimings, prepareFlowToothInputs } from '../utils/function/FlowToothPipeline';
+import { formatTimings } from '../utils/function/formatTimings';
+import { runPipelineJob } from '../utils/function/EzaiPipelineApi';
 
 /**
  * @param {File} file 
@@ -316,6 +317,11 @@ function App() {
     }
   };
 
+  // Production calls ezai-pipeline rather than the three services one at a time, so this
+  // button does too: one upload, and the service runs jaw → transform → margin → crown
+  // itself. Driving the same three calls from the browser measured something nobody runs --
+  // it shipped every intermediate mesh back out to the client, and that traffic cost more
+  // than the inference did.
   const runFlowToothPipeline = async () => {
     const rawUpperStl = flowRawScansRef.current.upperStl || flowToothFiles.upperStl;
     const rawLowerStl = flowRawScansRef.current.lowerStl || flowToothFiles.lowerStl;
@@ -328,56 +334,53 @@ function App() {
       return;
     }
     if (flowAbutfit) {
-      setFlowMessage('一鍵擺正流程目前不套用原座標的 abutment points；請先關閉 Abutment fit');
+      setFlowMessage('pipeline 不接受 abutment points；一鍵流程請先關閉 Abutment fit');
       return;
     }
 
     setFlowGenerating(true);
-    const pipelineStart = performance.now();
+    const startedAt = performance.now();
     try {
-      const prepared = await prepareFlowToothInputs({
+      const result = await runPipelineJob({
         upperStl: rawUpperStl,
         lowerStl: rawLowerStl,
         fdi: Number(flowFdi),
         allToothFdi: flowAllToothFdi,
-        modelApi: PredictAbutment.modelApi,
-        onStep: setFlowMessage,
+        onStage: setFlowMessage,
       });
+      const totalSeconds = (performance.now() - startedAt) / 1000;
 
-      // Positioned scans and generated margin already share one coordinate frame.
-      // Do not resend original matrices/contacts/abutment points from the raw frame.
-      const pipelineFiles = {
+      // The service returns the crown in the frame the scans were uploaded in, so the
+      // preview uses the raw scans and none of our own matrices.
+      const previewFiles = {
         ...flowToothFiles,
-        ...prepared,
+        upperStl: rawUpperStl,
+        lowerStl: rawLowerStl,
+        marginPts: undefined,
         contactsPly: undefined,
         upperMatrix: undefined,
         lowerMatrix: undefined,
         abutmentPoints: undefined,
       };
-      setFlowToothFiles(pipelineFiles);
-      setFlowMessage('步驟 3/3：正在生成牙冠…');
-      // prod, explicitly. This flow exists to reproduce what production does end to end, and
-      // generateCrownFromFiles defaults to dev — which deliberately holds the Stage-1/Stage-2
-      // pair that production replaced, so the default quietly generated crowns from the older
-      // model. Neither instance reports its weights over HTTP; check with
-      //   docker inspect flowtooth-prod-api --format '{{json .Config.Cmd}}'
-      const crownStart = performance.now();
-      const result = await generateCrownFromFiles(pipelineFiles, { abutfit: false, model: 'prod' });
-      const crownSeconds = (performance.now() - crownStart) / 1000;
-      const totalSeconds = (performance.now() - pipelineStart) / 1000;
+      setFlowToothFiles(previewFiles);
+      await showFlowToothResult(result, previewFiles);
+      if (flowResult?.url) URL.revokeObjectURL(flowResult.url);
+      setFlowResult({ ...result, url: URL.createObjectURL(result.blob) });
+      setFlowApiStatus({ state: 'online', label: `pipeline 正常 · Job ${result.jobId}` });
 
-      const marginWarning = prepared.marginValidity?.valid === false
-        ? `\n⚠ Margin：${prepared.marginValidity.flags?.join(', ') || 'validity=false'}`
-        : '';
-      // This row covers the upload, the inference, the PLY download and rendering the preview.
-      // result.seconds is the inference alone, which is why the old single figure read as far
-      // faster than the flow actually was.
+      // The service's own stage timings, plus whatever the browser waited on top of them:
+      // uploading both scans and pulling the archive back.
       const timings = [
-        ...prepared.timings,
-        { label: '牙冠生成與預覽', seconds: crownSeconds, note: `（伺服器推論 ${result.seconds.toFixed(1)} 秒）` },
+        ...result.timings,
+        { label: '上傳與取回', seconds: Math.max(0, totalSeconds - result.serverSeconds) },
       ];
+      const params = Object.entries(result.crownParams)
+        .map(([key, value]) => `${key}=${value}`).join(' ');
+      const warnings = result.warnings.length ? `\n⚠ ${result.warnings.join('\n⚠ ')}` : '';
       setFlowMessage(
-        `一鍵流程完成：${result.fileName}（未帶入原座標 contacts）\n${formatTimings(timings, totalSeconds)}${marginWarning}`,
+        `一鍵流程完成（pipeline）：${result.fileName} · Job ${result.jobId}\n`
+        + `${formatTimings(timings, totalSeconds)}\n`
+        + `  牙冠參數由 pipeline 決定：${params}${warnings}`,
       );
     } catch (error) {
       setFlowMessage(`Pipeline 失敗：${error.response?.data?.detail ?? error.message}`);

@@ -4,6 +4,9 @@ import fs from 'fs'
 import path from 'path'
 
 const TRAINING_DATA_ROOT = '/trainingData'
+// ezai-pipeline: the entry point production actually calls. It runs jaw, margin and crown
+// itself, so the browser uploads once instead of shuttling meshes between three services.
+const PIPELINE_API_URL = process.env.PIPELINE_API_URL || 'http://127.0.0.1:8031'
 // The two FlowToothSDF instances on this box. dev tracks whatever is being worked on;
 // prod is pinned and lives in its own checkout (/opt/ai_services/FlowToothSDF-prod), so
 // these two answer "does the change I am looking at differ from what is shipping".
@@ -167,6 +170,11 @@ export default defineConfig({
       // so the shorter one would claim '/api/flowtooth-prod/...' first and forward it to the
       // DEV service under a mangled path. Same reason the margin-two-stage keys precede
       // '/api/margin'.
+      '/api/pipeline': {
+        target: PIPELINE_API_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/pipeline/, ''),
+      },
       '/api/flowtooth-prod': {
         target: FLOWTOOTH_PROD_API_URL,
         changeOrigin: true,
