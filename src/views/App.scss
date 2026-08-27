@@ -107,6 +107,21 @@ body,
       flex: 1 0 100%;
     }
 
+    // The Chiayi one-click button. Same reasoning as .prod-model-button below: the two
+    // one-click buttons run identical work on different machines, sit one above the other,
+    // and are told apart only by the last three characters of their labels -- so the tint
+    // is what stops a comparison from quietly becoming two runs of the same box. Violet
+    // rather than the green used below, which already means "production weights" here.
+    .flow-actions .rtx5090-button {
+      border-color: #9254de;
+      color: #531dab;
+
+      &:not(:disabled):hover {
+        border-color: #b37feb;
+        color: #722ed1;
+      }
+    }
+
     // Tinted so the two "只用目前檔案生成" buttons cannot be hit interchangeably by muscle
     // memory -- which instance produced a crown is the whole point of the comparison.
     .flow-actions .prod-model-button {

@@ -19,7 +19,7 @@ import CheckAIMarginResult from '../utils/function/CheckAIMarginResult';
 import { computeMarginAccuracy } from '../utils/tool/MarginAccuracy';
 import { generateFlowToothCrown, getFlowToothHealth, FLOWTOOTH_MODEL_LABEL } from '../utils/function/FlowToothApi';
 import { formatTimings } from '../utils/function/formatTimings';
-import { runPipelineJob } from '../utils/function/EzaiPipelineApi';
+import { runPipelineJob, PIPELINE_TARGETS } from '../utils/function/EzaiPipelineApi';
 
 /**
  * @param {File} file 
@@ -69,6 +69,11 @@ function App() {
   const [flowChamfer, setFlowChamfer] = useState(true);
   const [flowAbutfit, setFlowAbutfit] = useState(false);
   const [flowGenerating, setFlowGenerating] = useState(false);
+  // Which box the running one-click job is on, or null. Separate from flowGenerating so
+  // that only the button actually running shows a spinner -- with two one-click buttons,
+  // spinning both would leave the answer to "which one did I press" on screen for the
+  // length of the job, and that answer is the entire point of having two.
+  const [flowPipelineTarget, setFlowPipelineTarget] = useState(null);
   const [flowApiStatus, setFlowApiStatus] = useState({ state: 'unknown', label: '尚未檢查' });
   const [flowMessage, setFlowMessage] = useState('');
   const [flowResult, setFlowResult] = useState(null);
@@ -322,7 +327,11 @@ function App() {
   // itself. Driving the same three calls from the browser measured something nobody runs --
   // it shipped every intermediate mesh back out to the client, and that traffic cost more
   // than the inference did.
-  const runFlowToothPipeline = async () => {
+  // `target` picks which box runs it -- 'z790' is this one, 'rtx5090' is Chiayi. Same code
+  // path for both on purpose: the two runs are only comparable if nothing but the address
+  // differs, so there is one function rather than two that drift apart.
+  const runFlowToothPipeline = async (target = 'z790') => {
+    const site = PIPELINE_TARGETS[target];
     const rawUpperStl = flowRawScansRef.current.upperStl || flowToothFiles.upperStl;
     const rawLowerStl = flowRawScansRef.current.lowerStl || flowToothFiles.lowerStl;
     if (!isValidFlowFdi(flowFdi)) {
@@ -339,6 +348,7 @@ function App() {
     }
 
     setFlowGenerating(true);
+    setFlowPipelineTarget(target);
     const startedAt = performance.now();
     try {
       const result = await runPipelineJob({
@@ -347,6 +357,7 @@ function App() {
         fdi: Number(flowFdi),
         allToothFdi: flowAllToothFdi,
         onStage: setFlowMessage,
+        target,
       });
       const totalSeconds = (performance.now() - startedAt) / 1000;
 
@@ -366,26 +377,50 @@ function App() {
       await showFlowToothResult(result, previewFiles);
       if (flowResult?.url) URL.revokeObjectURL(flowResult.url);
       setFlowResult({ ...result, url: URL.createObjectURL(result.blob) });
-      setFlowApiStatus({ state: 'online', label: `pipeline 正常 · Job ${result.jobId}` });
+      setFlowApiStatus({ state: 'online', label: `${site.label} 正常 · Job ${result.jobId}` });
 
       // The service's own stage timings, plus whatever the browser waited on top of them:
       // uploading both scans and pulling the archive back.
+      const transferLabel = site.remote ? '上傳與取回（含 tunnel）' : '上傳與取回';
       const timings = [
         ...result.timings,
-        { label: '上傳與取回', seconds: Math.max(0, totalSeconds - result.serverSeconds) },
+        { label: transferLabel, seconds: Math.max(0, totalSeconds - result.serverSeconds) },
       ];
       const params = Object.entries(result.crownParams)
         .map(([key, value]) => `${key}=${value}`).join(' ');
       const warnings = result.warnings.length ? `\n⚠ ${result.warnings.join('\n⚠ ')}` : '';
+      // The whole point of the second button is comparing two boxes, and the number most
+      // likely to be compared is the big one at the end -- which for Chiayi includes an
+      // internet round trip through Cloudflare and says nothing about the GPU. Say so here
+      // rather than letting the panel imply the remote box is slower than it is.
+      const remoteNote = site.remote
+        ? '\n  ⓘ 跨機比較請看上面各階段的推論時間；總計含 tunnel 往返，不是 GPU 的差距'
+        : '';
       setFlowMessage(
-        `一鍵流程完成（pipeline）：${result.fileName} · Job ${result.jobId}\n`
+        `一鍵流程完成（${site.label}・${site.hint}）：${result.fileName} · Job ${result.jobId}\n`
         + `${formatTimings(timings, totalSeconds)}\n`
-        + `  牙冠參數由 pipeline 決定：${params}${warnings}`,
+        + `  牙冠參數由 pipeline 決定：${params}${remoteNote}${warnings}`,
       );
     } catch (error) {
-      setFlowMessage(`Pipeline 失敗：${error.response?.data?.detail ?? error.message}`);
+      // A job can outlive this page's own Cloudflare Access session. When that session
+      // ends, the next same-origin XHR is answered with a 302 to the Access login page,
+      // the browser follows it cross-origin, and the fetch dies as a CORS failure -- which
+      // axios reports as a bare "Network Error" with no response attached. Nothing in that
+      // says "log in again", and the poll loop makes it most likely to land on a request
+      // that looks like the remote box broke. Name it, since the fix is one reload.
+      const sessionLikelyExpired = !error.response
+        && (error.code === 'ERR_NETWORK' || /network error/i.test(error.message ?? ''));
+      setFlowMessage(
+        sessionLikelyExpired
+          ? `${site.label} pipeline 中斷：與伺服器的連線被擋下。\n`
+            + '  最常見的原因是這個頁面的 Cloudflare Access 登入階段過期了（DevTools 會看到\n'
+            + '  一個 302 導向 cdn-cgi/access/login 以及一則 CORS 錯誤）。請重新整理頁面重新登入後再試。\n'
+            + '  工作本身可能已經在遠端跑完了，重試不會有副作用。'
+          : `${site.label} pipeline 失敗：${error.response?.data?.detail ?? error.message}`,
+      );
     } finally {
       setFlowGenerating(false);
+      setFlowPipelineTarget(null);
     }
   };
 
@@ -465,8 +500,28 @@ function App() {
       </div>
 
       <div className='flow-actions'>
-        <Button className='pipeline-button' type='primary' loading={flowGenerating} onClick={runFlowToothPipeline}>
-          一鍵：擺正 → Margin → 牙冠（prod）
+        {/* Arrow wrappers, as with the two model buttons below: a bare reference would hand
+            the handler its click event as the target argument, which PIPELINE_TARGETS would
+            not resolve. */}
+        <Button
+          className='pipeline-button'
+          type='primary'
+          loading={flowPipelineTarget === 'z790'}
+          disabled={flowGenerating && flowPipelineTarget !== 'z790'}
+          onClick={() => runFlowToothPipeline('z790')}
+        >
+          一鍵：擺正 → Margin → 牙冠（台中 5080）
+        </Button>
+        {/* The same case on the Chiayi box, for comparing the two GPUs. Tinted rather than
+            primary so the two one-click buttons cannot be hit interchangeably -- which box
+            produced a crown is the whole point, and they are otherwise identical. */}
+        <Button
+          className='pipeline-button rtx5090-button'
+          loading={flowPipelineTarget === 'rtx5090'}
+          disabled={flowGenerating && flowPipelineTarget !== 'rtx5090'}
+          onClick={() => runFlowToothPipeline('rtx5090')}
+        >
+          一鍵：擺正 → Margin → 牙冠（嘉義 5090）
         </Button>
         {/* Arrow wrappers, not a bare reference: onClick would hand the button its click
             event as the model argument.

@@ -6,6 +6,33 @@ import axios from 'axios';
 // stage, and with the service reporting its own per-stage timings.
 const PIPELINE_BASE = '/api/pipeline';
 
+// The same service on two machines, for comparing them on identical input.
+//
+// Both entries are same-origin paths that vite.config.js proxies. The Chiayi one leaves
+// this host over the public hostname and through Cloudflare Access; the Service Token that
+// needs is attached by that proxy, server-side, and deliberately does not exist in this
+// bundle. Do not "simplify" this by pointing the browser straight at
+// https://ezai2.inteware.com.tw -- it would need the token in client code, and CORS would
+// reject it anyway.
+//
+// `remote: true` is what the UI reads to know that wall-clock here includes an internet
+// round trip and is therefore NOT the number to compare between the two boxes. The
+// service's own timings_ms are.
+const PIPELINE_TARGETS = {
+  z790: {
+    base: PIPELINE_BASE,
+    label: 'z790 8031',
+    hint: '台中 · RTX 5080 · 區網直連',
+    remote: false,
+  },
+  rtx5090: {
+    base: '/api/pipeline-rtx5090',
+    label: '5090 ezai2',
+    hint: '嘉義 · RTX 5090 · 經 Cloudflare tunnel',
+    remote: true,
+  },
+};
+
 // --- a very small zip reader -----------------------------------------------------------
 // The archive holds one member worth having here — crown.ply, which the service stores
 // uncompressed precisely because deflate buys nothing on dense binary floats — plus four
@@ -108,8 +135,27 @@ const runPipelineJob = async ({
   onStage = () => {},
   pollMs = 500,
   timeoutMs = 15 * 60 * 1000,
+  // Defaults to the local box, so every existing call site keeps its behaviour.
+  target = 'z790',
 }) => {
+  const site = PIPELINE_TARGETS[target];
+  if (!site) throw new Error(`未知的 pipeline 目標：${target}`);
+  const base = site.base;
   if (!upperStl || !lowerStl) throw new Error('需要 upper.stl 與 lower.stl');
+
+  // Cloudflare caps a request body at 100 MB and cannot be configured past it, so a pair of
+  // scans over that limit fails at the edge with a 413 that says nothing about which file
+  // was too big. Catch it here while both sizes are still in hand. The local box has no
+  // such limit, which is why this is checked per target rather than always.
+  if (site.remote) {
+    const totalMb = (upperStl.size + lowerStl.size) / 1024 / 1024;
+    if (totalMb > 95) {
+      throw new Error(
+        `上下顎合計 ${totalMb.toFixed(1)} MB，超過 Cloudflare 的 100 MB 上限，`
+        + `無法送到${site.hint}。這一組請用本機 pipeline 測。`,
+      );
+    }
+  }
 
   const form = new FormData();
   form.append('upper_stl', upperStl, 'upper.stl');
@@ -117,8 +163,8 @@ const runPipelineJob = async ({
   form.append('fdi', String(fdi));
   if (allToothFdi.trim()) form.append('all_tooth_numbers', allToothFdi.trim());
 
-  onStage('正在上傳上下顎口掃到 pipeline…');
-  const submitted = await axios.post(`${PIPELINE_BASE}/v1/jobs`, form, { timeout: timeoutMs });
+  onStage(`正在上傳上下顎口掃到 ${site.label}（${site.hint}）…`);
+  const submitted = await axios.post(`${base}/v1/jobs`, form, { timeout: timeoutMs });
   const jobId = submitted.data.job_id;
 
   const deadline = Date.now() + timeoutMs;
@@ -128,7 +174,7 @@ const runPipelineJob = async ({
   while (job.status === 'queued' || job.status === 'running') {
     if (Date.now() > deadline) throw new Error(`pipeline job ${jobId} 超過 ${timeoutMs / 1000} 秒未完成`);
     await new Promise(resolve => setTimeout(resolve, pollMs));
-    job = (await axios.get(`${PIPELINE_BASE}/v1/jobs/${jobId}`, { timeout: 30000 })).data;
+    job = (await axios.get(`${base}/v1/jobs/${jobId}`, { timeout: 30000 })).data;
 
     const report = job.status === 'queued'
       ? `排隊中${job.queue_position != null ? `（前面還有 ${job.queue_position} 筆）` : ''}…`
@@ -142,7 +188,7 @@ const runPipelineJob = async ({
   if (job.status !== 'succeeded') throw new Error(describeError(job));
 
   onStage('正在取回結果…');
-  const archive = await axios.get(`${PIPELINE_BASE}/v1/jobs/${jobId}/result`, {
+  const archive = await axios.get(`${base}/v1/jobs/${jobId}/result`, {
     responseType: 'arraybuffer',
     timeout: timeoutMs,
   });
@@ -152,7 +198,10 @@ const runPipelineJob = async ({
     // The service rotates the crown back into the frame the scans arrived in, so this
     // previews against the raw uploads with no matrix of our own.
     blob: new Blob([crown], { type: 'model/ply' }),
-    fileName: `pipeline_crown_FDI${fdi}.ply`,
+    // The target is in the filename so that two downloads of the same case do not collide
+    // in ~/Downloads as "…(1).ply", which is exactly the moment a comparison stops being
+    // one.
+    fileName: `pipeline_crown_FDI${fdi}_${target}.ply`,
     jobId,
     timings: pipelineTimings(job.timings_ms),
     serverSeconds: (job.timings_ms?.total_ms ?? 0) / 1000,
@@ -160,7 +209,10 @@ const runPipelineJob = async ({
     // The service fixes these itself; the panel's Resolution and Chamfer controls do not
     // reach it. Reported so nobody tunes a control that this button ignores.
     crownParams: job.crown_params ?? {},
+    // Which box produced this, for the panel to label the result and its timings.
+    target,
+    site,
   };
 };
 
-export { runPipelineJob };
+export { runPipelineJob, PIPELINE_TARGETS };

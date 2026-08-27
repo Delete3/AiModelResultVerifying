@@ -26,6 +26,20 @@ services:
       # ezai-pipeline, the entry point production calls. The one-click flow goes through
       # this so its timings reflect production rather than the browser's own orchestration.
       - PIPELINE_API_URL=http://host.docker.internal:8031
+      # OPTIONAL. The same pipeline on the Chiayi box (192.168.50.95), which the second
+      # one-click button calls so the two GPUs can be compared on one case. Reached by its
+      # public hostname because the Taichung box has no route into 192.168.50.0/24.
+      #
+      # That hostname sits behind Cloudflare Access, so it needs a Service Token. Put the
+      # two values in a .env file next to this one (gitignored) -- never inline here, and
+      # never in frontend code: vite.config.js attaches them to the proxied request
+      # server-side so they never reach a browser.
+      #
+      # Leave them unset on instances that should not reach Chiayi. The button then reports
+      # that it is not configured instead of failing as an opaque Cloudflare 403.
+      - PIPELINE_RTX5090_API_URL=https://ezai2.inteware.com.tw/pipeline
+      - RTX5090_CF_CLIENT_ID=${RTX5090_CF_CLIENT_ID:-}
+      - RTX5090_CF_CLIENT_SECRET=${RTX5090_CF_CLIENT_SECRET:-}
       - FLOWTOOTH_API_URL=http://host.docker.internal:8010
       # the pinned production instance, for comparison against dev above
       - FLOWTOOTH_PROD_API_URL=http://host.docker.internal:8013
