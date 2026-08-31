@@ -40,6 +40,21 @@ services:
       - PIPELINE_RTX5090_API_URL=https://ezai2.inteware.com.tw/pipeline
       - RTX5090_CF_CLIENT_ID=${RTX5090_CF_CLIENT_ID:-}
       - RTX5090_CF_CLIENT_SECRET=${RTX5090_CF_CLIENT_SECRET:-}
+      # OPTIONAL. Object storage for the third one-click button, which sends the scans to
+      # ezai-pipeline as URLs (upper_stl_url / lower_stl_url) instead of as a request body.
+      # Dev and test only -- this is the shared pori-test bucket, and the viewer deletes
+      # each object as soon as the pipeline has read it.
+      #
+      # Same rule as the Cloudflare token above: the values go in .env, never inline here
+      # and never in anything under src/. vite.config.js signs and performs the upload
+      # server-side, so the browser only ever sees a short-lived presigned GET URL.
+      #
+      # Leave unset on instances that should not reach S3. The button then says it is not
+      # configured instead of failing somewhere less obvious.
+      - S3_BUCKET=${S3_BUCKET:-}
+      - S3_REGION=${S3_REGION:-ap-northeast-1}
+      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID:-}
+      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY:-}
       - FLOWTOOTH_API_URL=http://host.docker.internal:8010
       # the pinned production instance, for comparison against dev above
       - FLOWTOOTH_PROD_API_URL=http://host.docker.internal:8013

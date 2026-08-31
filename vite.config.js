@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import crypto from 'crypto'
 import fs from 'fs'
+import https from 'https'
 import path from 'path'
 
 const TRAINING_DATA_ROOT = '/trainingData'
@@ -26,6 +28,83 @@ const PIPELINE_RTX5090_API_URL = process.env.PIPELINE_RTX5090_API_URL
 const RTX5090_CF_CLIENT_ID = process.env.RTX5090_CF_CLIENT_ID || ''
 const RTX5090_CF_CLIENT_SECRET = process.env.RTX5090_CF_CLIENT_SECRET || ''
 const RTX5090_CONFIGURED = Boolean(RTX5090_CF_CLIENT_ID && RTX5090_CF_CLIENT_SECRET)
+// Object storage for the third one-click button, which sends the scans to ezai-pipeline as
+// URLs instead of as a multipart body (upper_stl_url / lower_stl_url, shipped 2026-08-28).
+//
+// These credentials are read here, in the Vite process on THIS host, for the same reason
+// the Cloudflare token above is: putting them in the bundle would hand working S3 keys to
+// anyone who opens devtools. The browser never sees them -- it sees only a presigned GET
+// URL for the object it just supplied, which is what the pipeline is handed.
+//
+// Dev and test only. This is the shared `pori-test` bucket, and the objects written here
+// are deleted as soon as the pipeline has read them.
+const S3_BUCKET = process.env.S3_BUCKET || ''
+const S3_REGION = process.env.S3_REGION || 'ap-northeast-1'
+const S3_ACCESS_KEY_ID = process.env.S3_ACCESS_KEY_ID || ''
+const S3_SECRET_ACCESS_KEY = process.env.S3_SECRET_ACCESS_KEY || ''
+const S3_CONFIGURED = Boolean(S3_BUCKET && S3_ACCESS_KEY_ID && S3_SECRET_ACCESS_KEY)
+const S3_HOST = `${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com`
+
+/**
+ * A presigned S3 URL, SigV4 in the query string.
+ *
+ * Query-string auth rather than the header form on purpose: it needs no payload hash, so
+ * the body can be streamed straight through without being buffered to compute one.
+ */
+const presignS3 = (method, key, expires = 600) => {
+  const now = new Date()
+  const stamp = now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+  const date = stamp.slice(0, 8)
+  const scope = `${date}/${S3_REGION}/s3/aws4_request`
+  const encode = (s) => encodeURIComponent(s).replace(/[!'()*]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+
+  const query = {
+    'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+    'X-Amz-Credential': `${S3_ACCESS_KEY_ID}/${scope}`,
+    'X-Amz-Date': stamp,
+    'X-Amz-Expires': String(expires),
+    'X-Amz-SignedHeaders': 'host',
+  }
+  const canonicalQuery = Object.keys(query).sort()
+    .map(k => `${encode(k)}=${encode(query[k])}`).join('&')
+  // Each path segment is encoded on its own so that the separators survive; encoding the
+  // whole path would turn every '/' into %2F and sign a key that does not exist.
+  const canonicalUri = `/${key}`.split('/').map(encode).join('/')
+  const canonical = [
+    method, canonicalUri, canonicalQuery, `host:${S3_HOST}\n`, 'host', 'UNSIGNED-PAYLOAD',
+  ].join('\n')
+  const toSign = [
+    'AWS4-HMAC-SHA256', stamp, scope,
+    crypto.createHash('sha256').update(canonical).digest('hex'),
+  ].join('\n')
+
+  let signingKey = Buffer.from(`AWS4${S3_SECRET_ACCESS_KEY}`)
+  for (const part of [date, S3_REGION, 's3', 'aws4_request']) {
+    signingKey = crypto.createHmac('sha256', signingKey).update(part).digest()
+  }
+  const signature = crypto.createHmac('sha256', signingKey).update(toSign).digest('hex')
+  return `https://${S3_HOST}${canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`
+}
+
+/** PUT or DELETE against a presigned URL. Resolves with the status code. */
+const s3Request = (method, key, bodyStream, contentLength) => new Promise((resolve, reject) => {
+  const url = new URL(presignS3(method, key))
+  const request = https.request(url, {
+    method,
+    headers: contentLength != null ? { 'content-length': contentLength } : {},
+  }, (response) => {
+    const chunks = []
+    response.on('data', c => chunks.push(c))
+    response.on('end', () => resolve({
+      status: response.statusCode,
+      body: Buffer.concat(chunks).toString(),
+    }))
+  })
+  request.on('error', reject)
+  if (bodyStream) bodyStream.pipe(request)
+  else request.end()
+})
+
 // The two FlowToothSDF instances on this box. dev tracks whatever is being worked on;
 // prod is pinned and lives in its own checkout (/opt/ai_services/FlowToothSDF-prod), so
 // these two answer "does the change I am looking at differ from what is shipping".
@@ -75,6 +154,103 @@ export default defineConfig({
               + '請在 docker-compose.yml 補上 RTX5090_CF_CLIENT_ID 與 RTX5090_CF_CLIENT_SECRET，'
               + '然後 docker compose up -d 重建容器。',
           }))
+        })
+      },
+    },
+    {
+      // Object storage for the third one-click button. The browser hands the file to this
+      // middleware, which streams it to S3 and answers with a presigned GET URL; the
+      // browser then gives that URL to ezai-pipeline instead of the bytes.
+      //
+      // Why the file goes through this process rather than straight from the browser to
+      // S3: a browser PUT to a bucket needs a CORS rule on that bucket, and `pori-test` is
+      // shared. Routing it here needs no change to anything outside this checkout. The
+      // cost is that the upload is measured on the browser -> this host -> S3 path, so the
+      // seconds it reports are NOT a remote caller's upload time. The button says so.
+      name: 's3-upload-api',
+      configureServer(server) {
+        if (!S3_CONFIGURED) {
+          server.config.logger.warn(
+            '[s3-upload-api] S3_BUCKET / S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY are not '
+            + 'set; the S3 one-click button is disabled on this instance'
+          )
+          server.middlewares.use('/api/s3', (req, res) => {
+            res.writeHead(503, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              detail: '這個實例沒有設定 S3 憑證，無法測試 S3 這條路。'
+                + '請在 .env 補上 S3_BUCKET / S3_REGION / S3_ACCESS_KEY_ID / '
+                + 'S3_SECRET_ACCESS_KEY，然後 docker compose up -d 重建容器。',
+            }))
+          })
+          return
+        }
+
+        server.config.logger.info(`[s3-upload-api] uploads go to s3://${S3_BUCKET} (${S3_REGION})`)
+
+        const json = (res, status, payload) => {
+          res.writeHead(status, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify(payload))
+        }
+
+        // Keys are confined to one prefix and stripped of anything that could climb out of
+        // it. The extension has to survive, because ezai-pipeline reads the file type from
+        // the URL path and refuses a key without one.
+        const cleanKey = (raw) => {
+          const safe = String(raw || '').replace(/[^A-Za-z0-9/._-]/g, '_').replace(/\.\./g, '_')
+          return `viewer/${safe.replace(/^\/+/, '')}`
+        }
+
+        server.middlewares.use('/api/s3/upload', async (req, res) => {
+          if (req.method !== 'POST') return json(res, 405, { detail: 'POST only' })
+          const key = cleanKey(new URL(req.url, 'http://x').searchParams.get('key'))
+          const startedAt = Date.now()
+          try {
+            const length = req.headers['content-length']
+            const result = await s3Request('PUT', key, req, length)
+            if (result.status !== 200) {
+              return json(res, 502, {
+                detail: `S3 PUT ${key} 回應 ${result.status}：${result.body.slice(0, 300)}`,
+              })
+            }
+            return json(res, 200, {
+              key,
+              // Ten minutes is far longer than this needs to live: ezai-pipeline fetches
+              // during the POST, before it answers 202, so the object is only read once
+              // and within seconds.
+              get: presignS3('GET', key, 600),
+              bytes: Number(length) || 0,
+              ms: Date.now() - startedAt,
+            })
+          } catch (error) {
+            return json(res, 502, { detail: `S3 上傳失敗：${error.message}` })
+          }
+        })
+
+        // Called as soon as the pipeline has answered 202, which is after it has read the
+        // objects. These are real clinical scans and the bucket is shared, so they are not
+        // left lying in it for a lifecycle rule to deal with eventually.
+        server.middlewares.use('/api/s3/cleanup', async (req, res) => {
+          if (req.method !== 'POST') return json(res, 405, { detail: 'POST only' })
+          const chunks = []
+          req.on('data', c => chunks.push(c))
+          req.on('end', async () => {
+            let keys = []
+            try {
+              keys = JSON.parse(Buffer.concat(chunks).toString()).keys || []
+            } catch {
+              return json(res, 400, { detail: 'body must be {"keys": [...]}' })
+            }
+            const deleted = []
+            for (const key of keys.slice(0, 16)) {
+              try {
+                const result = await s3Request('DELETE', cleanKey(key.replace(/^viewer\//, '')))
+                deleted.push({ key, status: result.status })
+              } catch (error) {
+                deleted.push({ key, error: error.message })
+              }
+            }
+            return json(res, 200, { deleted })
+          })
         })
       },
     },

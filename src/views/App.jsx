@@ -382,10 +382,30 @@ function App() {
       // The service's own stage timings, plus whatever the browser waited on top of them:
       // uploading both scans and pulling the archive back.
       const transferLabel = site.remote ? '上傳與取回（含 tunnel）' : '上傳與取回';
-      const timings = [
-        ...result.timings,
-        { label: transferLabel, seconds: Math.max(0, totalSeconds - result.serverSeconds) },
-      ];
+      // The S3 route splits that one row in two, because the whole question the button
+      // exists to answer is where the transfer time went. `sources` is what the service
+      // says it fetched; the browser cannot see that leg at all. Both objects are fetched
+      // concurrently, so the leg costs the slower of them rather than their sum.
+      const fetchSeconds = Object.values(result.sources ?? {}).map(s => (s.fetch_ms ?? 0) / 1000);
+      const boxFetchSeconds = fetchSeconds.length ? Math.max(...fetchSeconds) : 0;
+      const timings = site.viaS3
+        ? [
+          {
+            label: 'S3 上傳',
+            seconds: result.uploadSeconds,
+            note: '瀏覽器 → 這台主機 → S3',
+          },
+          ...result.timings,
+          {
+            label: '送出與取回',
+            seconds: Math.max(0, totalSeconds - result.serverSeconds - result.uploadSeconds),
+            note: `其中 5090 從 S3 取檔 ${boxFetchSeconds.toFixed(1)} 秒`,
+          },
+        ]
+        : [
+          ...result.timings,
+          { label: transferLabel, seconds: Math.max(0, totalSeconds - result.serverSeconds) },
+        ];
       const params = Object.entries(result.crownParams)
         .map(([key, value]) => `${key}=${value}`).join(' ');
       const warnings = result.warnings.length ? `\n⚠ ${result.warnings.join('\n⚠ ')}` : '';
@@ -393,9 +413,16 @@ function App() {
       // likely to be compared is the big one at the end -- which for Chiayi includes an
       // internet round trip through Cloudflare and says nothing about the GPU. Say so here
       // rather than letting the panel imply the remote box is slower than it is.
-      const remoteNote = site.remote
-        ? '\n  ⓘ 跨機比較請看上面各階段的推論時間；總計含 tunnel 往返，不是 GPU 的差距'
-        : '';
+      const remoteNote = site.viaS3
+        // The measurement this button makes is honest about only one of its two legs. The
+        // box's pull from S3 is real and is reported above; the browser's push to S3 goes
+        // through this host, so it is not what a remote caller would experience and must
+        // not be read as if it were.
+        ? '\n  ⓘ S3 上傳這一列是「瀏覽器 → 這台主機 → S3」，不等於遠端呼叫端直傳 S3 的時間。'
+          + '\n     有意義的比較是：同一個 case 按上面那顆，看「上傳與取回」差多少'
+        : site.remote
+          ? '\n  ⓘ 跨機比較請看上面各階段的推論時間；總計含 tunnel 往返，不是 GPU 的差距'
+          : '';
       setFlowMessage(
         `一鍵流程完成（${site.label}・${site.hint}）：${result.fileName} · Job ${result.jobId}\n`
         + `${formatTimings(timings, totalSeconds)}\n`
@@ -522,6 +549,20 @@ function App() {
           onClick={() => runFlowToothPipeline('rtx5090')}
         >
           一鍵：擺正 → Margin → 牙冠（嘉義 5090）
+        </Button>
+        {/* The same box and the same job as the button above -- only the scans travel
+            differently, going to S3 first so the POST carries two URLs instead of 30 MB.
+            Directly beneath it because the pair is only worth having if the same case can
+            be run both ways back to back and the two 上傳 rows compared. Dev/test only:
+            the objects land in the shared pori-test bucket and are deleted as soon as the
+            pipeline has read them. */}
+        <Button
+          className='pipeline-button rtx5090-s3-button'
+          loading={flowPipelineTarget === 'rtx5090_s3'}
+          disabled={flowGenerating && flowPipelineTarget !== 'rtx5090_s3'}
+          onClick={() => runFlowToothPipeline('rtx5090_s3')}
+        >
+          一鍵：口掃走 S3 → 擺正 → Margin → 牙冠（嘉義 5090）
         </Button>
         {/* Arrow wrappers, not a bare reference: onClick would hand the button its click
             event as the model argument.

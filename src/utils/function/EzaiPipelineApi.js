@@ -31,6 +31,34 @@ const PIPELINE_TARGETS = {
     hint: '嘉義 · RTX 5090 · 經 Cloudflare tunnel',
     remote: true,
   },
+  // The same box and the same proxy as above -- only how the meshes get there differs. The
+  // scans go to object storage and the POST carries two URLs instead of 30 MB of body, so
+  // ezai-pipeline pulls them from S3 (measured 18-21 MB/s) rather than having them pushed
+  // through the tunnel (~8 MB/s at best, and the ceiling for a slow client is that client).
+  //
+  // Whether this is faster depends entirely on where the caller sits, which is the point of
+  // having the button next to the plain one: run both on the same case and read the two
+  // transfer rows against each other.
+  rtx5090_s3: {
+    base: '/api/pipeline-rtx5090',
+    label: '5090 ezai2 · S3',
+    hint: '嘉義 · RTX 5090 · 口掃走 S3',
+    remote: true,
+    viaS3: true,
+  },
+};
+
+/**
+ * Hand one file to the dev server, which streams it to S3 and answers with a presigned GET
+ * URL for it. The AWS credentials stay in that process; this bundle never holds one.
+ */
+const uploadToS3 = async (file, key, timeoutMs) => {
+  const { data } = await axios.post(
+    `/api/s3/upload?key=${encodeURIComponent(key)}`,
+    file,
+    { headers: { 'Content-Type': 'application/octet-stream' }, timeout: timeoutMs },
+  );
+  return data;
 };
 
 // --- a very small zip reader -----------------------------------------------------------
@@ -147,24 +175,58 @@ const runPipelineJob = async ({
   // scans over that limit fails at the edge with a 413 that says nothing about which file
   // was too big. Catch it here while both sizes are still in hand. The local box has no
   // such limit, which is why this is checked per target rather than always.
-  if (site.remote) {
+  // Not checked for the S3 route: the request body there is a couple of hundred bytes of
+  // URLs, so the edge cap simply does not apply to it. That is one of the things the button
+  // exists to demonstrate.
+  if (site.remote && !site.viaS3) {
     const totalMb = (upperStl.size + lowerStl.size) / 1024 / 1024;
     if (totalMb > 95) {
       throw new Error(
         `上下顎合計 ${totalMb.toFixed(1)} MB，超過 Cloudflare 的 100 MB 上限，`
-        + `無法送到${site.hint}。這一組請用本機 pipeline 測。`,
+        + `無法送到${site.hint}。這一組請改用 S3 那顆按鈕，或用本機 pipeline 測。`,
       );
     }
   }
 
   const form = new FormData();
-  form.append('upper_stl', upperStl, 'upper.stl');
-  form.append('lower_stl', lowerStl, 'lower.stl');
   form.append('fdi', String(fdi));
   if (allToothFdi.trim()) form.append('all_tooth_numbers', allToothFdi.trim());
 
-  onStage(`正在上傳上下顎口掃到 ${site.label}（${site.hint}）…`);
-  const submitted = await axios.post(`${base}/v1/jobs`, form, { timeout: timeoutMs });
+  let uploadSeconds = 0;
+  let s3Keys = [];
+  if (site.viaS3) {
+    // One prefix per run, so two runs of the same case never race for the same key.
+    const prefix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    onStage('正在把上下顎口掃放上 S3…');
+    const startedAt = performance.now();
+    // Concurrently: the two are independent and S3 takes both at once happily.
+    const [upper, lower] = await Promise.all([
+      uploadToS3(upperStl, `${prefix}/upper.stl`, timeoutMs),
+      uploadToS3(lowerStl, `${prefix}/lower.stl`, timeoutMs),
+    ]);
+    uploadSeconds = (performance.now() - startedAt) / 1000;
+    s3Keys = [upper.key, lower.key];
+    // The pipeline reads the file type from the URL path, which is why the keys above end
+    // in .stl and why nothing here relies on a filename or a content type.
+    form.append('upper_stl_url', upper.get);
+    form.append('lower_stl_url', lower.get);
+    onStage(`S3 上傳完成（${uploadSeconds.toFixed(1)} 秒），正在送出 job…`);
+  } else {
+    form.append('upper_stl', upperStl, 'upper.stl');
+    form.append('lower_stl', lowerStl, 'lower.stl');
+    onStage(`正在上傳上下顎口掃到 ${site.label}（${site.hint}）…`);
+  }
+
+  let submitted;
+  try {
+    submitted = await axios.post(`${base}/v1/jobs`, form, { timeout: timeoutMs });
+  } finally {
+    // ezai-pipeline fetches both objects *during* the POST, before it answers 202, so by
+    // the time control returns here they have been read and nothing will want them again.
+    // These are real clinical scans in a shared dev bucket; they do not get left there.
+    // Fire and forget -- a failed cleanup must not fail a job that already succeeded.
+    if (s3Keys.length) axios.post('/api/s3/cleanup', { keys: s3Keys }).catch(() => {});
+  }
   const jobId = submitted.data.job_id;
 
   const deadline = Date.now() + timeoutMs;
@@ -205,6 +267,13 @@ const runPipelineJob = async ({
     jobId,
     timings: pipelineTimings(job.timings_ms),
     serverSeconds: (job.timings_ms?.total_ms ?? 0) / 1000,
+    // The S3 route only: how long this browser spent putting the scans in the bucket, kept
+    // apart from the pipeline's own time so the two buttons can be read against each other.
+    uploadSeconds,
+    // What the service says it fetched, and from where -- the URL with its signature
+    // stripped, plus the bytes and the milliseconds it spent on each. This is the number
+    // that says whether the box pulled them quickly; the browser cannot see that leg.
+    sources: job.sources ?? {},
     warnings: job.warnings ?? [],
     // The service fixes these itself; the panel's Resolution and Chamfer controls do not
     // reach it. Reported so nobody tunes a control that this button ignores.

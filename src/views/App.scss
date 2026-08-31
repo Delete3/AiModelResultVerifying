@@ -122,6 +122,20 @@ body,
       }
     }
 
+    // The S3 variant of the Chiayi button. Same violet family, because it is the same box
+    // and the same job -- but dashed, because the difference that matters is the transport
+    // and a solid third button in the same colour would read as a third machine.
+    .flow-actions .rtx5090-s3-button {
+      border-color: #9254de;
+      border-style: dashed;
+      color: #531dab;
+
+      &:not(:disabled):hover {
+        border-color: #b37feb;
+        color: #722ed1;
+      }
+    }
+
     // Tinted so the two "只用目前檔案生成" buttons cannot be hit interchangeably by muscle
     // memory -- which instance produced a crown is the whole point of the comparison.
     .flow-actions .prod-model-button {
