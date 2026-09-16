@@ -1,216 +1,498 @@
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+}
+
 html,
 body,
+#root,
 .ant-spin-nested-loading,
-.ant-spin-container,
-#root {
+.ant-spin-container {
   height: 100%;
   margin: 0;
 }
 
-.container {
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-  position: relative;
+$accent: #d9480f;
+$border: #e5e7eb;
+$muted: #6b7280;
 
-  .editor {
-    height: 100%;
+.app-shell {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  background: #eef1f5;
+}
+
+// --- side panel ------------------------------------------------------------------------
+
+.side-panel {
+  display: flex;
+  flex: 0 0 400px;
+  flex-direction: column;
+  width: 400px;
+  min-height: 0;
+  background: #fff;
+  border-right: 1px solid $border;
+  box-shadow: 2px 0 12px rgba(15, 23, 42, 0.05);
+  z-index: 2;
+}
+
+.side-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 14px 16px 2px;
+
+  strong {
+    font-size: 16px;
+    color: #111827;
+  }
+
+  span {
+    font-size: 12px;
+    color: $muted;
+  }
+}
+
+.side-tabs {
+  flex: 1;
+  min-height: 0;
+
+  .ant-tabs-nav {
+    margin: 0 16px;
+  }
+
+  .ant-tabs-content-holder {
+    min-height: 0;
+    overflow: auto;
+    padding: 0 16px 24px;
+  }
+}
+
+.panel-section {
+  padding: 14px 0;
+  border-bottom: 1px solid #f0f0f0;
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+
+  .step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: $accent;
+    color: #fff;
+    font-size: 12px;
+  }
+}
+
+.section-body {
+  margin-top: 10px;
+}
+
+.section-alert {
+  margin-top: 10px;
+}
+
+.panel-note {
+  margin: 6px 0 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: $muted;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: #595959;
+  }
+
+  .ant-input-number {
     width: 100%;
   }
 
+  .switch-field {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
 
-  .flowtooth-panel {
-    position: absolute;
-    top: 16px;
-    left: 16px;
-    z-index: 10;
-    width: min(460px, calc(100vw - 32px));
-    max-height: calc(100vh - 32px);
-    box-sizing: border-box;
-    overflow: auto;
-    padding: 16px;
-    border: 1px solid #d9d9d9;
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.96);
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+.scan-slots {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
 
-    .flow-panel-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 8px;
-      font-size: 16px;
+.scan-slot {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: #fafafa;
+
+  &.prep {
+    border-color: #ffc078;
+    background: #fff9f2;
+  }
+
+  .scan-slot-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: #374151;
+
+    .ant-tag {
+      margin: 0;
+    }
+  }
+
+  .ant-upload-wrapper,
+  .ant-upload {
+    display: block;
+    width: 100%;
+  }
+
+  .ant-btn-block {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ant-btn-link {
+    height: auto;
+    padding: 2px 0 0;
+    font-size: 12px;
+  }
+}
+
+.button-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+
+  .ant-upload-wrapper,
+  .ant-upload {
+    display: block;
+    width: 100%;
+  }
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.margin-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f8fafc;
+  font-size: 12px;
+  color: #374151;
+
+  .switch-label {
+    color: $muted;
+    white-space: nowrap;
+  }
+}
+
+.hint-list {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: $muted;
+}
+
+.stacked-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #595959;
+}
+
+.target-row {
+  display: flex;
+  gap: 8px;
+
+  .ant-select {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.target-option {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  padding: 2px 0;
+
+  .ant-tag {
+    margin: 0;
+  }
+
+  .target-hint {
+    flex-basis: 100%;
+    margin: 0;
+  }
+}
+
+.target-hint {
+  margin-left: 6px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.health-line {
+  margin-top: 6px;
+  font-size: 12px;
+  color: $muted;
+
+  &.good {
+    color: #2f9e44;
+  }
+
+  &.bad {
+    color: #c92a2a;
+  }
+}
+
+.generate-summary {
+  margin: 12px 0 8px;
+}
+
+.blocker-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: #b45309;
+}
+
+.result-view {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+
+  .result-meta .ant-tag {
+    margin-bottom: 4px;
+  }
+
+  .job-id {
+    margin-top: 2px;
+    font-size: 12px;
+    color: $muted;
+  }
+}
+
+.warning-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #92400e;
+}
+
+.flow-message {
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #1f2937;
+}
+
+.plain-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+}
+
+.file-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+
+  .file-cell {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+
+    .ant-upload-wrapper {
+      flex: 1;
+      min-width: 0;
     }
 
-    .flow-section-title {
-      margin-top: 16px;
-      font-size: 13px;
-      font-weight: 600;
-      color: #262626;
+    .ant-upload {
+      display: block;
+      width: 100%;
     }
 
-    .flow-files {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-      margin-top: 12px;
-
-      .ant-upload-wrapper,
-      .ant-upload-select {
-        display: block;
-        width: 100%;
-      }
-
-      .flow-file-button {
-        width: 100%;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-    }
-
-    .flow-options {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px 12px;
-      margin-top: 14px;
-
-      label {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        font-size: 12px;
-        color: #595959;
-      }
-
-      .ant-input-number {
-        width: 100%;
-      }
-
-      .flow-switch {
-        flex-direction: row;
-        align-items: center;
-        justify-content: space-between;
-        min-height: 32px;
-      }
-    }
-
-    .flow-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 14px;
-    }
-
-    .flow-actions .pipeline-button {
-      flex: 1 0 100%;
-    }
-
-    // The Chiayi one-click button. Same reasoning as .prod-model-button below: the two
-    // one-click buttons run identical work on different machines, sit one above the other,
-    // and are told apart only by the last three characters of their labels -- so the tint
-    // is what stops a comparison from quietly becoming two runs of the same box. Violet
-    // rather than the green used below, which already means "production weights" here.
-    .flow-actions .rtx5090-button {
-      border-color: #9254de;
-      color: #531dab;
-
-      &:not(:disabled):hover {
-        border-color: #b37feb;
-        color: #722ed1;
-      }
-    }
-
-    // The S3 variant of the Chiayi button. Same violet family, because it is the same box
-    // and the same job -- but dashed, because the difference that matters is the transport
-    // and a solid third button in the same colour would read as a third machine.
-    .flow-actions .rtx5090-s3-button {
-      border-color: #9254de;
-      border-style: dashed;
-      color: #531dab;
-
-      &:not(:disabled):hover {
-        border-color: #b37feb;
-        color: #722ed1;
-      }
-    }
-
-    // Tinted so the two "只用目前檔案生成" buttons cannot be hit interchangeably by muscle
-    // memory -- which instance produced a crown is the whole point of the comparison.
-    .flow-actions .prod-model-button {
-      border-color: #52c41a;
-      color: #389e0d;
-
-      &:not(:disabled):hover {
-        border-color: #73d13d;
-        color: #52c41a;
-      }
-    }
-
-    .panel-divider {
-      height: 1px;
-      margin: 18px -16px 0;
-      background: #f0f0f0;
-    }
-
-    .legacy-title {
-      margin: 12px 0 8px;
-    }
-
-    .legacy-tools {
-      background: transparent;
-
-      .ant-collapse-content-box {
-        padding: 10px;
-      }
-
-      .function-group {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-bottom: 8px;
-      }
-
-      .function-button {
-        flex: 1 1 160px;
-        width: auto;
-        min-width: 0;
-      }
-
-      .ant-select {
-        max-width: 100%;
-      }
-    }
-
-    .flow-message {
-      // The one-click summary is a step-timing table now: header, five rows, rule, total and
-      // sometimes a margin warning. 150px cut the total off the bottom.
-      max-height: 240px;
-      margin: 12px 0 0;
-      overflow: auto;
-      white-space: pre-wrap;
-      word-break: break-word;
-      font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-      color: #135200;
-
-      &.error {
-        color: #a8071a;
-      }
-      &.warning {
-        color: #ad6800;
-      }
+    .ant-btn-block {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
   }
 }
 
-@media (max-width: 760px) {
-  .container .flowtooth-panel {
-    top: auto;
-    bottom: 12px;
-    left: 12px;
-    right: auto;
-    width: calc(100vw - 24px);
-    max-height: 62vh;
+// Tinted so the dev and prod generate buttons cannot be hit interchangeably by muscle
+// memory -- which instance produced a crown is the whole point of the comparison.
+.prod-model-button {
+  border-color: #52c41a;
+  color: #389e0d;
+}
+
+.legacy-tools {
+  background: transparent;
+
+  .ant-collapse-content-box {
+    padding: 10px;
+  }
+
+  .function-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .function-button {
+    flex: 1 1 160px;
+    width: auto;
+    min-width: 0;
+  }
+
+  .ant-select {
+    max-width: 100%;
+  }
+}
+
+// --- 3D view -----------------------------------------------------------------------------
+
+.viewport {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+
+  .editor {
+    position: absolute;
+    inset: 0;
+  }
+}
+
+.scene-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  max-width: calc(100% - 24px);
+  padding: 6px 10px;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+
+  .ant-checkbox-wrapper {
+    margin: 0;
+    font-size: 12px;
+  }
+}
+
+.scene-hint {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  max-width: calc(100% - 32px);
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: rgba(17, 24, 39, 0.86);
+  color: #fff;
+  font-size: 13px;
+  transform: translateX(-50%);
+
+  .hint-sub {
+    font-size: 12px;
+    color: #cbd5e1;
+  }
+}
+
+.scene-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+@media (max-width: 860px) {
+  .app-shell {
+    flex-direction: column-reverse;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .side-panel {
+    flex: none;
+    width: 100%;
+    border-top: 1px solid $border;
+    border-right: 0;
+  }
+
+  .side-tabs .ant-tabs-content-holder {
+    overflow: visible;
+  }
+
+  .viewport {
+    flex: none;
+    height: 55vh;
   }
 }

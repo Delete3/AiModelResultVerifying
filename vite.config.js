@@ -9,6 +9,15 @@ const TRAINING_DATA_ROOT = '/trainingData'
 // ezai-pipeline: the entry point production actually calls. It runs jaw, margin and crown
 // itself, so the browser uploads once instead of shuttling meshes between three services.
 const PIPELINE_API_URL = process.env.PIPELINE_API_URL || 'http://127.0.0.1:8031'
+// A second ezai-pipeline on the same box, running a build that has not been promoted to
+// :8031 -- today, the one that accepts single_arch (a crown from one arch alone). It calls
+// the same jaw/margin/crown services as production; only the orchestrator differs, so
+// trying the new build can never change what :8031 answers.
+//
+// The default is the host's :8033 as seen from inside this container (compose maps
+// host.docker.internal to the host gateway). Set PIPELINE_TEST_API_URL= (empty) on an
+// instance that should not offer it; the target is then shown as unavailable.
+const PIPELINE_TEST_API_URL = process.env.PIPELINE_TEST_API_URL ?? 'http://host.docker.internal:8033'
 // The same ezai-pipeline on the Chiayi box (CADCAM-RTX5090, 192.168.50.95), for comparing
 // the two GPUs on identical input. Reached through its PUBLIC hostname, not its LAN
 // address, because this box has no route into 192.168.50.0/24 -- there is no WARP client
@@ -255,6 +264,31 @@ export default defineConfig({
       },
     },
     {
+      // What this instance is configured to reach, so the panel can grey out a target
+      // before the user picks it instead of after a job fails. Booleans only: never the
+      // URLs, and never anything from .env.
+      name: 'viewer-config',
+      configureServer(server) {
+        server.middlewares.use('/api/viewer-config', (req, res) => {
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+          res.end(JSON.stringify({
+            targets: {
+              z790: true,
+              z790_test: Boolean(PIPELINE_TEST_API_URL),
+              rtx5090: RTX5090_CONFIGURED,
+              rtx5090_s3: RTX5090_CONFIGURED && S3_CONFIGURED,
+            },
+          }))
+        })
+        if (!PIPELINE_TEST_API_URL) {
+          server.middlewares.use('/api/pipeline-test', (req, res) => {
+            res.writeHead(503, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ detail: '這個實例沒有設定 PIPELINE_TEST_API_URL，測試版 pipeline 無法使用。' }))
+          })
+        }
+      },
+    },
+    {
       name: 'training-data-api',
       configureServer(server) {
         // Instances that serve people outside the lab mount no corpus. Answer those
@@ -453,6 +487,12 @@ export default defineConfig({
             delete proxyRes.headers['set-cookie']
           })
         },
+      },
+      // Also before '/api/pipeline', for the same prefix-order reason.
+      '/api/pipeline-test': {
+        target: PIPELINE_TEST_API_URL || 'http://127.0.0.1:9',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/pipeline-test/, ''),
       },
       '/api/pipeline': {
         target: PIPELINE_API_URL,

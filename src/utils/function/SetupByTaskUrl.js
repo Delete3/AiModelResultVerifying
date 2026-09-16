@@ -3,7 +3,7 @@ import _ from 'lodash';
 import * as THREE from 'three';
 
 import { loadGeometry } from '../loader/loadGeometry.js';
-import { onUploadFile } from "../../views/App.jsx";
+import { onUploadFile } from "../../views/legacy/legacyUpload.js";
 import PredictAbutment from "./predict-abutment/PredictAbutment.js";
 import PredictDirection from "./PredictDirection.js";
 import Editor from "../Editor.js";
