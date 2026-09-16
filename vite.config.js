@@ -14,10 +14,12 @@ const PIPELINE_API_URL = process.env.PIPELINE_API_URL || 'http://127.0.0.1:8031'
 // the same jaw/margin/crown services as production; only the orchestrator differs, so
 // trying the new build can never change what :8031 answers.
 //
-// The default is the host's :8033 as seen from inside this container (compose maps
-// host.docker.internal to the host gateway). Set PIPELINE_TEST_API_URL= (empty) on an
-// instance that should not offer it; the target is then shown as unavailable.
-const PIPELINE_TEST_API_URL = process.env.PIPELINE_TEST_API_URL ?? 'http://host.docker.internal:8033'
+// Unset by default: single_arch, the build this was carrying, went to :8031 on 2026-09-16
+// and that instance was stopped. The target then reports itself unavailable rather than
+// failing at the proxy. Point PIPELINE_TEST_API_URL at the next unpromoted instance --
+// http://host.docker.internal:8033 for one started from /opt/ai_services/ezai-pipeline-singlearch
+// -- to bring it back.
+const PIPELINE_TEST_API_URL = process.env.PIPELINE_TEST_API_URL || ''
 // The same ezai-pipeline on the Chiayi box (CADCAM-RTX5090, 192.168.50.95), for comparing
 // the two GPUs on identical input. Reached through its PUBLIC hostname, not its LAN
 // address, because this box has no route into 192.168.50.0/24 -- there is no WARP client

@@ -89,18 +89,18 @@ checkingViewer 會依序執行：
 `ezai-pipeline` README 的 *One arch only* 一節（27 個 case：到技師牙冠的中位距離
 單顎 0.32 mm、上下顎 0.18 mm）。
 
-**台中的正式 pipeline（8031）自 2026-09-16 起支援單顎**；嘉義（ezai2）還沒有，收到單顎 job
-會回 422，所以面板會先擋下並提示改選。哪些目標支援是 `PIPELINE_TARGETS` 裡的 `singleArch`
-旗標，提示文字由它產生，之後嘉義上線時只要改那一個旗標。
+**兩台的正式 pipeline 都自 2026-09-16 起支援單顎**（台中 8031、嘉義 ezai2）。哪些目標支援是
+`PIPELINE_TARGETS` 裡的 `singleArch` 旗標：沒有這個功能的部署會回 422，面板寧可在送出前就
+擋下，所以旗標留著。
 
 ### Pipeline 目標
 
 | 目標 | 送去 | 口掃怎麼傳 | 單顎 |
 |---|---|---|---|
 | z790 8031 | 本機正式 pipeline `:8031` | multipart | 是 |
-| z790 8033 測試版 | 本機另一個 pipeline 容器 `:8033`（`PIPELINE_TEST_API_URL`），放還沒上線的 build | multipart | 是 |
-| 5090 ezai2 | `ezai2.inteware.com.tw`，經 Cloudflare tunnel | multipart | 否 |
-| 5090 ezai2 · S3 | 同上，同一個 proxy | 先上傳 S3，POST 只帶 URL | 否 |
+| z790 8033 測試版 | 本機另一個 pipeline 容器，放還沒上線的 build。**目前沒有實例在跑**（單顎已上 8031），選單裡是灰的；要用時啟動實例並設 `PIPELINE_TEST_API_URL` | multipart | 是 |
+| 5090 ezai2 | `ezai2.inteware.com.tw`，經 Cloudflare tunnel | multipart | 是 |
+| 5090 ezai2 · S3 | 同上，同一個 proxy | 先上傳 S3，POST 只帶 URL | 是 |
 
 選擇會記在瀏覽器（localStorage）。這個實例沒有設定的目標（例如沒有 Service Token）會在
 選單裡變灰，來源是 `GET /api/viewer-config`（只回 true/false，不含任何網址或憑證）。

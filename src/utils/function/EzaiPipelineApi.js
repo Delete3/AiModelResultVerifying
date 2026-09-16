@@ -20,8 +20,9 @@ const PIPELINE_BASE = '/api/pipeline';
 // service's own timings_ms are.
 //
 // `singleArch: true` marks a deployment that accepts single_arch=true, i.e. a crown from the
-// preparation's arch alone. The Taichung box has had it since 2026-09-16; Chiayi has not, and
-// answers such a job with a 422, which is why the panel checks this flag before sending.
+// preparation's arch alone. Both boxes have had it since 2026-09-16. The flag stays because
+// a deployment without it answers such a job with a 422, and the panel would rather say so
+// before sending than after.
 const PIPELINE_TARGETS = {
   z790: {
     base: PIPELINE_BASE,
@@ -33,9 +34,9 @@ const PIPELINE_TARGETS = {
   },
   // A second ezai-pipeline container on the same box and the same GPU services, for a build
   // that has not been promoted to 8031. Kept apart so trying one can never change what the
-  // production pipeline answers. It is empty of anything new right now -- single_arch went
-  // to 8031 -- and the instance behind it can be stopped; the target then greys out by
-  // itself, because vite.config.js reports it as unconfigured.
+  // production pipeline answers. Nothing is running behind it today -- single_arch went to
+  // 8031 on 2026-09-16 and the instance was stopped -- so it greys out until an instance is
+  // started and PIPELINE_TEST_API_URL is set. See the viewer README.
   z790_test: {
     base: '/api/pipeline-test',
     label: 'z790 8033 測試版',
@@ -48,7 +49,7 @@ const PIPELINE_TARGETS = {
     label: '5090 ezai2',
     hint: '嘉義 · RTX 5090 · 經 Cloudflare tunnel',
     remote: true,
-    singleArch: false,
+    singleArch: true,
   },
   // The same box and the same proxy as above -- only how the meshes get there differs. The
   // scans go to object storage and the POST carries two URLs instead of 30 MB of body, so
@@ -64,7 +65,7 @@ const PIPELINE_TARGETS = {
     hint: '嘉義 · RTX 5090 · 口掃走 S3',
     remote: true,
     viaS3: true,
-    singleArch: false,
+    singleArch: true,
   },
 };
 
