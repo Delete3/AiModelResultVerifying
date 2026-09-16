@@ -44,20 +44,73 @@ checkingViewer 會依序執行：
    docker compose -f docker-compose.yml up -d --build
    ```
 
-4. 開啟 http://localhost:5174/，使用左側「AI Checking Viewer」面板。
+4. 開啟 http://localhost:5174/。
 
-一鍵流程只需：
+## 畫面
 
-- FDI
-- 原始 `upper.stl`
-- 原始 `lower.stl`
+左邊是面板，右邊是 3D 畫面。面板有三個分頁：
 
-若同一顎有多顆備牙，請在「同顎所有備牙 FDI」填入完整清單（例如 `14,15`，須包含目標
-FDI）。這會啟用 v6 的 competitor-seed conditioning；單顆備牙可留白。
+| 分頁 | 做什麼 |
+|---|---|
+| 牙冠設計 | 主要流程：病例 → Margin → 生成牙冠，全部走 `ezai-pipeline` |
+| 直接呼叫 FlowTooth | 繞過 pipeline，直接打這台的 FlowToothSDF dev 8010 / prod 8013 做對照 |
+| 舊工具 | 牙冠流程之前的擺正 / margin / task / GT 工具，原封不動搬過來 |
 
-按下「一鍵：擺正 → Margin → 牙冠」後，面板會顯示每一步狀態。生成完成後會顯示半透明上下顎與橘色牙冠，並可下載 PLY。若 margin API 回傳 validity flags，面板會以警告顯示。
+3D 畫面右上角可以切換上顎、下顎、牙冠、AI margin 是否顯示、口掃半透明、全部置中。
+滑鼠：右鍵旋轉、中鍵平移、滾輪縮放；左鍵只給畫 margin 用。
 
-「只用目前檔案生成（dev 8010）」與「只用目前檔案生成（prod 8013）」則是手動模式，另外需要 margin `.pts`。Contacts、jaw matrix 與 abutment points 必須和提交的 STL 在相同座標系；一鍵擺正流程目前不會帶入原座標的這些檔案。
+### 牙冠設計
+
+1. **病例**：FDI、上顎、下顎。FDI 決定哪一顎是「備牙顎」（面板會標出來）。
+   **只上傳備牙顎也可以**，會以單顎模式生成（見下方）。
+2. **Margin**，二選一：
+   - **AI 自動預測**：pipeline `mode=full`。多顆備牙時可填「同顎所有備牙 FDI」
+     （例如 `14,15`，須含目標 FDI），單顆留白。
+     也可以按「先讓 AI 預測 margin，再手動修改」（`mode=margin_only`），結果會載入編輯器。
+   - **自訂（繪製 / 上傳）**：pipeline `mode=margin_override`，用這裡的 margin 生成，
+     margin 模型完全不跑。PEEK abutment 這類 AI 認不得的案例用這個。
+     - 開始繪製：左鍵沿邊緣點選；點第一點（橘色）或 Enter 閉合；Backspace 退一點；Esc 取消
+     - 修改：拖曳綠點；點紅線新增控制點；Shift + 點綠點刪除；Ctrl + Z 復原
+     - 上傳 `.pts`（`BEGIN_<fdi>` 格式、`[[x,y,z],…]` JSON、或舊 job 的 `margin.json`）後同樣可以拖曳修改
+     - 下載 `.pts` 可以把畫好的 margin 存下來
+3. **生成牙冠**：選 Pipeline 目標，按「生成牙冠」。按鈕下方會列出還缺什麼。
+   完成後可下載牙冠 PLY 或整包結果 ZIP；AI 模式另外有「用這條 AI margin 修改」。
+
+**margin 的座標系就是上傳口掃的座標系。** 線是畫在口掃 mesh 上、以 mesh 的區域座標存的，
+這正是 `margin_override` 要求的（`margin_pts` 必須和同一次上傳的口掃同座標系）。
+上傳的 `.pts` 如果離口掃表面中位數超過 0.3 mm，面板會警告它可能是別的座標系
+（例如 `margin_canonical.pts`）——pipeline 自己也用同一個門檻警告。
+
+### 單顎模式
+
+只有備牙顎、沒有對咬顎時自動使用；兩顎都有時也可以勾「忽略對咬顎」拿來比較。
+送出時帶 `single_arch=true` 且不帶對咬顎。pipeline 會用一片「鄰牙高度的平面」當對咬，
+**牙冠咬合面不是依照真實咬合做的**，結果會附警告。品質與選擇依據見
+`ezai-pipeline` README 的 *One arch only* 一節（27 個 case：到技師牙冠的中位距離
+單顎 0.32 mm、上下顎 0.18 mm）。
+
+**台中的正式 pipeline（8031）自 2026-09-16 起支援單顎**；嘉義（ezai2）還沒有，收到單顎 job
+會回 422，所以面板會先擋下並提示改選。哪些目標支援是 `PIPELINE_TARGETS` 裡的 `singleArch`
+旗標，提示文字由它產生，之後嘉義上線時只要改那一個旗標。
+
+### Pipeline 目標
+
+| 目標 | 送去 | 口掃怎麼傳 | 單顎 |
+|---|---|---|---|
+| z790 8031 | 本機正式 pipeline `:8031` | multipart | 是 |
+| z790 8033 測試版 | 本機另一個 pipeline 容器 `:8033`（`PIPELINE_TEST_API_URL`），放還沒上線的 build | multipart | 是 |
+| 5090 ezai2 | `ezai2.inteware.com.tw`，經 Cloudflare tunnel | multipart | 否 |
+| 5090 ezai2 · S3 | 同上，同一個 proxy | 先上傳 S3，POST 只帶 URL | 否 |
+
+選擇會記在瀏覽器（localStorage）。這個實例沒有設定的目標（例如沒有 Service Token）會在
+選單裡變灰，來源是 `GET /api/viewer-config`（只回 true/false，不含任何網址或憑證）。
+「檢查」按鈕打該目標的 `/health`，會列出三個後端是否連得到。
+
+### 直接呼叫 FlowTooth
+
+口掃沿用「牙冠設計」分頁上傳的檔案；margin 用這個分頁上傳的 `.pts`，沒有的話就用
+「牙冠設計」分頁畫好的那條。**不會擺正**：Contacts、jaw matrix 與 abutment points 必須和
+提交的 STL 在相同座標系。
 
 這兩個按鈕送往這台機器上的兩個 FlowToothSDF 服務。dev 跟著目前在改的東西跑，prod 是釘住的正式版、有自己的工作目錄（`/opt/ai_services/FlowToothSDF-prod`），所以這兩顆按鈕回答的是「我現在看的版本跟正在出貨的差多少」。
 
@@ -66,12 +119,12 @@ dev   /api/flowtooth       → FLOWTOOTH_API_URL       (8010)
 prod  /api/flowtooth-prod  → FLOWTOOTH_PROD_API_URL  (8013)
 ```
 
-prod 的下載檔名會多一個 `_prod` 後綴（`outer_crown_FDI45_prod.ply`），兩邊的 job id 也分別帶 `checkingviewer-dev-` 與 `checkingviewer-prod-`，所以下載檔與伺服器 log 都分得出是哪一個服務。「檢查 API」會一次檢查兩個服務。一鍵流程走 dev。
+prod 的下載檔名會多一個 `_prod` 後綴（`outer_crown_FDI45_prod.ply`），兩邊的 job id 也分別帶 `checkingviewer-dev-` 與 `checkingviewer-prod-`，所以下載檔與伺服器 log 都分得出是哪一個服務。「檢查 FlowTooth API」會一次檢查兩個服務。
 
-### 三顆一鍵按鈕
+### 為什麼有三個遠端 / S3 目標（原本的三顆一鍵按鈕）
 
-面板上的一鍵按鈕有三顆，跑的是同一條 `ezai-pipeline` 流程，差別只在**送去哪台機器、
-以及口掃檔怎麼送過去**：
+2026-09-15 以前，這三個目標是面板上的三顆一鍵按鈕；現在收進「Pipeline」選單，行為不變。
+它們跑的是同一條 `ezai-pipeline` 流程，差別只在**送去哪台機器、以及口掃檔怎麼送過去**：
 
 | 按鈕 | 送去 | 口掃檔怎麼傳 |
 |---|---|---|
