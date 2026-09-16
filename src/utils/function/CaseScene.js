@@ -9,6 +9,9 @@ import { disposeMesh } from '../tool/SceneTool';
 
 const SCAN_COLOR = { upper: 0xdbe9f6, lower: 0xe9e1f7 };
 const CROWN_COLOR = 0xff8a3d;
+// Its own slot and its own colour rather than reusing the crown's: an abutment is generated
+// FROM a crown, so the two are shown together and telling them apart matters.
+const ABUTMENT_COLOR = 0x4dabf7;
 const TRANSLUCENT_OPACITY = 0.35;
 
 const UPPER_FDI = new Set([11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28]);
@@ -31,9 +34,9 @@ const jawOfFdi = fdi => {
  */
 class CaseScene {
   constructor() {
-    this.meshes = { upper: null, lower: null, crown: null };
+    this.meshes = { upper: null, lower: null, crown: null, abutment: null };
     this.files = { upper: null, lower: null };
-    this.visible = { upper: true, lower: true, crown: true, reference: true };
+    this.visible = { upper: true, lower: true, crown: true, abutment: true, reference: true };
     this.translucent = false;
     /** @type {Line2|null} */
     this.referenceRing = null;
@@ -57,6 +60,7 @@ class CaseScene {
       hasUpper: Boolean(this.meshes.upper),
       hasLower: Boolean(this.meshes.lower),
       hasCrown: Boolean(this.meshes.crown),
+      hasAbutment: Boolean(this.meshes.abutment),
       hasReference: Boolean(this.referenceRing),
       revision: this.revision,
       upperName: this.files.upper?.name ?? null,
@@ -188,6 +192,41 @@ class CaseScene {
     if (!silent) this.emit();
   }
 
+  // --- abutment ---------------------------------------------------------------------------
+
+  /**
+   * FSAbutment's result. Like the crown it arrives in the frame of the scans it was made
+   * from, so it is added as uploaded -- no matrix, no centring.
+   * @param {Blob} blob a PLY
+   */
+  async setAbutment(blob, fileName = 'abutment.ply') {
+    const geometry = await loadGeometry(new File([blob], fileName, { type: 'model/ply' }));
+    if (!geometry) throw new Error('無法解析回傳的 abutment 模型');
+    this.clearAbutment({ silent: true });
+    const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+      color: ABUTMENT_COLOR,
+      roughness: 0.35,
+      metalness: 0.15,
+      side: THREE.DoubleSide,
+    }));
+    mesh.name = 'abutment';
+    // Above the crown, which is 2: the abutment sits inside it and would otherwise be
+    // hidden by the crown's own surface the moment both are shown.
+    mesh.renderOrder = 3;
+    mesh.visible = this.visible.abutment;
+    Editor.scene.add(mesh);
+    this.meshes.abutment = mesh;
+    this.emit();
+    return mesh;
+  }
+
+  clearAbutment({ silent = false } = {}) {
+    if (!this.meshes.abutment) return;
+    disposeMesh(this.meshes.abutment);
+    this.meshes.abutment = null;
+    if (!silent) this.emit();
+  }
+
   // --- reference ring ---------------------------------------------------------------------
 
   /**
@@ -231,11 +270,12 @@ class CaseScene {
 
   // --- display ----------------------------------------------------------------------------
 
-  /** @param {'upper'|'lower'|'crown'|'reference'} key */
+  /** @param {'upper'|'lower'|'crown'|'abutment'|'reference'} key */
   setVisible(key, visible) {
     this.visible[key] = visible;
     if (key === 'upper' || key === 'lower') this.applyScanLook(key);
     else if (key === 'crown' && this.meshes.crown) this.meshes.crown.visible = visible;
+    else if (key === 'abutment' && this.meshes.abutment) this.meshes.abutment.visible = visible;
     else if (key === 'reference' && this.referenceRing) this.referenceRing.visible = visible;
     this.emit();
   }

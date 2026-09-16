@@ -11,6 +11,7 @@ import MarginEditor from '../utils/function/margin-editor/MarginEditor';
 import { useCaseScene } from '../utils/tool/useStores';
 import DesignPanel from './design/DesignPanel';
 import DirectFlowToothPanel from './advanced/DirectFlowToothPanel';
+import DirectFSAbutmentPanel from './advanced/DirectFSAbutmentPanel';
 import LegacyTools from './legacy/LegacyTools';
 import SceneOverlay from './SceneOverlay';
 
@@ -70,6 +71,14 @@ function App() {
                   key: 'direct',
                   label: '直接呼叫 FlowTooth',
                   children: <DirectFlowToothPanel fdi={fdi} prepJaw={prepJaw} />,
+                },
+                {
+                  // A different project from the ezai chain, on the Chiayi box only, and
+                  // it takes its own four uploads rather than the design tab's scans --
+                  // see the panel for why.
+                  key: 'fsabutment',
+                  label: 'Abutment（5090）',
+                  children: <DirectFSAbutmentPanel />,
                 },
                 {
                   key: 'legacy',

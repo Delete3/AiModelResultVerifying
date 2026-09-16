@@ -36,6 +36,14 @@ const PIPELINE_TEST_API_URL = process.env.PIPELINE_TEST_API_URL || ''
 // services; http-proxy prepends the target's path to the rewritten one.
 const PIPELINE_RTX5090_API_URL = process.env.PIPELINE_RTX5090_API_URL
   || 'https://ezai2.inteware.com.tw/pipeline'
+// FSAbutment on that same Chiayi box (added 2026-09-16). A different project from the ezai
+// chain -- custom implant abutments -- that shares only the gateway, and it is here for one
+// reason: this box cannot route to 192.168.50.0/24, so ezai2 is the only way to reach it.
+//
+// Same token, same reasoning as above: /fsabutment is behind the same Cloudflare Access
+// application as /pipeline, and the prefix belongs in the target because ezai2 is a gateway.
+const FSABUTMENT_RTX5090_API_URL = process.env.FSABUTMENT_RTX5090_API_URL
+  || 'https://ezai2.inteware.com.tw/fsabutment'
 const RTX5090_CF_CLIENT_ID = process.env.RTX5090_CF_CLIENT_ID || ''
 const RTX5090_CF_CLIENT_SECRET = process.env.RTX5090_CF_CLIENT_SECRET || ''
 const RTX5090_CONFIGURED = Boolean(RTX5090_CF_CLIENT_ID && RTX5090_CF_CLIENT_SECRET)
@@ -155,17 +163,22 @@ export default defineConfig({
       configureServer(server) {
         if (RTX5090_CONFIGURED) return
         server.config.logger.warn(
-          '[rtx5090-pipeline] RTX5090_CF_CLIENT_ID / RTX5090_CF_CLIENT_SECRET are not set; '
-          + 'the Chiayi one-click button is disabled on this instance'
+          '[rtx5090] RTX5090_CF_CLIENT_ID / RTX5090_CF_CLIENT_SECRET are not set; '
+          + 'the Chiayi one-click button and the FSAbutment tab are disabled on this instance'
         )
-        server.middlewares.use('/api/pipeline-rtx5090', (req, res) => {
+        const unconfigured = (req, res) => {
           res.writeHead(503, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify({
             detail: '這個實例沒有設定 ezai2 的 Service Token，無法呼叫嘉義 5090。'
               + '請在 docker-compose.yml 補上 RTX5090_CF_CLIENT_ID 與 RTX5090_CF_CLIENT_SECRET，'
               + '然後 docker compose up -d 重建容器。',
           }))
-        })
+        }
+        server.middlewares.use('/api/pipeline-rtx5090', unconfigured)
+        // FSAbutment goes through the same Access application and the same token, so it is
+        // disabled by exactly the same missing credential and deserves the same message
+        // rather than a 403 HTML page the frontend cannot parse.
+        server.middlewares.use('/api/fsabutment-rtx5090', unconfigured)
       },
     },
     {
@@ -485,6 +498,34 @@ export default defineConfig({
           // the Service Token on every single request, so that cookie is of no use to
           // anyone downstream. Drop every Set-Cookie this route would return; nothing
           // behind it legitimately sets one.
+          proxy.on('proxyRes', (proxyRes) => {
+            delete proxyRes.headers['set-cookie']
+          })
+        },
+      },
+      // FSAbutment on the same Chiayi box, through the same Access application (added
+      // 2026-09-16). No shorter '/api/fsabutment' key exists, so declaration order does not
+      // matter for this one -- it sits here because everything it needs is explained above
+      // and the two routes should be read together.
+      //
+      // The `headers` option and both configure() hooks are the same three fixes, and for
+      // the same reasons: setHeader() in a proxyReq hook is too late for a multipart POST
+      // and the credentials never leave; the browser's eztest CF_Authorization cookie must
+      // not be forwarded to a different Access application; and the Set-Cookie coming BACK
+      // must be dropped or it overwrites this page's own session and the NEXT request dies
+      // as a bare "Network Error". Do not simplify any of the three away.
+      '/api/fsabutment-rtx5090': {
+        target: FSABUTMENT_RTX5090_API_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/fsabutment-rtx5090/, ''),
+        headers: {
+          'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
+          'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,
+        },
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.removeHeader('cookie')
+          })
           proxy.on('proxyRes', (proxyRes) => {
             delete proxyRes.headers['set-cookie']
           })
