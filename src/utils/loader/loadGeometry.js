@@ -3,6 +3,11 @@ import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
 
 import { getFileExtension } from '../tool/StringProcessing.js';
+import { parseTRIGeometry } from './TRILoader.js';
+
+// What an arch-scan upload slot accepts. .tri is Inteware's own format (see TRILoader.js).
+const SCAN_FORMATS = ['stl', 'ply', 'tri'];
+const SCAN_ACCEPT = SCAN_FORMATS.map(format => `.${format}`).join(',');
 
 /**
  * @param {File} file 
@@ -18,6 +23,8 @@ const loadGeometry = async file => {
     //     geometry = mesh.geometry;
     // }
     else if (fileFormat == 'ply') geometry = new PLYLoader().parse(await file.arrayBuffer());
+    // Throws with a readable reason for a broken file, rather than returning nothing.
+    else if (fileFormat == 'tri') geometry = parseTRIGeometry(await file.arrayBuffer());
     else return;
 
     geometry.computeVertexNormals();
@@ -44,4 +51,4 @@ const loadMesh = async file => {
     }
 };
 
-export { loadGeometry, loadMesh };
+export { loadGeometry, loadMesh, SCAN_ACCEPT, SCAN_FORMATS };

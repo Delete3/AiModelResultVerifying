@@ -62,6 +62,7 @@ checkingViewer 會依序執行：
 ### 牙冠設計
 
 1. **病例**：FDI、上顎、下顎。FDI 決定哪一顎是「備牙顎」（面板會標出來）。
+   口掃可以是 STL、PLY 或公司的 TRI（見下方〈口掃格式〉）。
    **只上傳備牙顎也可以**，會以單顎模式生成（見下方）。
 2. **Margin**，二選一：
    - **AI 自動預測**：pipeline `mode=full`。多顆備牙時可填「同顎所有備牙 FDI」
@@ -93,14 +94,36 @@ checkingViewer 會依序執行：
 `PIPELINE_TARGETS` 裡的 `singleArch` 旗標：沒有這個功能的部署會回 422，面板寧可在送出前就
 擋下，所以旗標留著。
 
+### 口掃格式（STL / PLY / TRI）
+
+上顎、下顎都可以上傳 `.stl`、`.ply` 或 `.tri`（公司 airdental / airdesign 的格式，V1、V2 都讀；
+讀法在 `src/utils/loader/TRILoader.js`）。TRI 並沒有真的加密：V2 只在檔頭塞了幾個固定數字，
+其餘就是索引三角網格的原始資料，不需要金鑰。
+
+送 pipeline 時，檔名用**口掃真正的副檔名**（`upper.tri`、`lower.ply`…），走 S3 時 key 也一樣，
+因為 pipeline 只看副檔名決定怎麼讀。2026-09-18 以前這裡一律送成 `<jaw>.stl`，所以在這裡上傳 PLY
+雖然畫面看得到，送出後 job 會在第一階段失敗。
+
+目標還不能直接讀的格式，會在瀏覽器裡**從原始檔**轉成 PLY 再送（目前只有「TRI 送台中 8031」
+會發生，結果面板會顯示紫色的「.tri → .ply（瀏覽器轉換）」）。轉換不失真：頂點位元不變、
+面的順序不變，和嘉義 pipeline 自己轉出來的是同一個 mesh。一定要從檔案轉、不能從畫面上的 mesh
+轉：margin 編輯器建 BVH 時會就地重排 index，而擺正模型是依面的順序抽樣的，順序不同就是不同的輸入。
+
+哪個目標能直接讀哪些格式，是 `PIPELINE_TARGETS` 的 `formats`。台中 8031 升級到支援 TRI 的版本後，
+把它改成 `TRI_FORMATS` 就好；沒改也只是多一次轉換，結果不會錯。部署本身支援哪些格式，
+可以看它 `GET /` 回傳的 `mesh_formats`。
+
+「直接呼叫 FlowTooth」分頁：FlowToothSDF 只讀 STL（收到什麼都存成 `upper.stl`），所以 PLY、TRI
+會先在瀏覽器轉成 binary STL 再送。
+
 ### Pipeline 目標
 
-| 目標 | 送去 | 口掃怎麼傳 | 單顎 |
-|---|---|---|---|
-| z790 8031 | 本機正式 pipeline `:8031` | multipart | 是 |
-| z790 8033 測試版 | 本機另一個 pipeline 容器，放還沒上線的 build。**目前沒有實例在跑**（單顎已上 8031），選單裡是灰的；要用時啟動實例並設 `PIPELINE_TEST_API_URL` | multipart | 是 |
-| 5090 ezai2 | `ezai2.inteware.com.tw`，經 Cloudflare tunnel | multipart | 是 |
-| 5090 ezai2 · S3 | 同上，同一個 proxy | 先上傳 S3，POST 只帶 URL | 是 |
+| 目標 | 送去 | 口掃怎麼傳 | 單顎 | TRI |
+|---|---|---|---|---|
+| z790 8031 | 本機正式 pipeline `:8031` | multipart | 是 | 瀏覽器先轉 PLY |
+| z790 8033 測試版 | 本機另一個 pipeline 容器，放還沒上線的 build。**目前沒有實例在跑**（單顎已上 8031），選單裡是灰的；要用時啟動實例並設 `PIPELINE_TEST_API_URL` | multipart | 是 | 瀏覽器先轉 PLY |
+| 5090 ezai2 | `ezai2.inteware.com.tw`，經 Cloudflare tunnel | multipart | 是 | 直接送（2026-09-18 起） |
+| 5090 ezai2 · S3 | 同上，同一個 proxy | 先上傳 S3，POST 只帶 URL | 是 | 直接送（2026-09-18 起） |
 
 選擇會記在瀏覽器（localStorage）。這個實例沒有設定的目標（例如沒有 Service Token）會在
 選單裡變灰，來源是 `GET /api/viewer-config`（只回 true/false，不含任何網址或憑證）。
@@ -108,7 +131,7 @@ checkingViewer 會依序執行：
 
 ### 直接呼叫 FlowTooth
 
-口掃沿用「牙冠設計」分頁上傳的檔案；margin 用這個分頁上傳的 `.pts`，沒有的話就用
+口掃沿用「牙冠設計」分頁上傳的檔案（PLY、TRI 會先轉成 STL，見〈口掃格式〉）；margin 用這個分頁上傳的 `.pts`，沒有的話就用
 「牙冠設計」分頁畫好的那條。**不會擺正**：Contacts、jaw matrix 與 abutment points 必須和
 提交的 STL 在相同座標系。
 

@@ -94,7 +94,7 @@ class CaseScene {
    */
   async setScan(jaw, file) {
     const geometry = await loadGeometry(file);
-    if (!geometry) throw new Error(`${file.name} 不是可讀的 STL / PLY`);
+    if (!geometry) throw new Error(`${file.name} 不是可讀的 STL / PLY / TRI`);
     const firstScan = !this.meshes.upper && !this.meshes.lower;
 
     this.removeScan(jaw, { silent: true });

@@ -6,6 +6,7 @@ import CaseScene from '../../utils/function/CaseScene';
 import MarginEditor from '../../utils/function/margin-editor/MarginEditor';
 import { formatMarginPts } from '../../utils/function/margin-editor/marginPts';
 import { getPipelineHealth, singleArchTargets, PIPELINE_MODES, PIPELINE_TARGETS, runPipelineJob } from '../../utils/function/EzaiPipelineApi';
+import { SCAN_ACCEPT } from '../../utils/loader/loadGeometry';
 import { useMarginEditor } from '../../utils/tool/useStores';
 import MarginSection from './MarginSection';
 import ResultView from './ResultView';
@@ -184,9 +185,9 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
         <span>{JAW_NAME[jaw]}</span>
         {role && <Tag color={role === '備牙顎' ? 'orange' : 'default'}>{role}</Tag>}
       </div>
-      <Upload accept='.stl,.ply' showUploadList={false} beforeUpload={uploadScan(jaw)} disabled={Boolean(running)}>
-        <Button block size='small' type={has[jaw] ? 'default' : 'dashed'} disabled={Boolean(running)} title={fileName ?? ''}>
-          {fileName ?? `上傳 ${jaw}.stl`}
+      <Upload accept={SCAN_ACCEPT} showUploadList={false} beforeUpload={uploadScan(jaw)} disabled={Boolean(running)}>
+        <Button block size='small' type={has[jaw] ? 'default' : 'dashed'} disabled={Boolean(running)} title={fileName ?? `${JAW_NAME[jaw]}口掃：.stl、.ply 或 .tri`}>
+          {fileName ?? '上傳 STL / PLY / TRI'}
         </Button>
       </Upload>
       {has[jaw] && <Button size='small' type='link' danger disabled={Boolean(running)} onClick={() => removeScan(jaw)}>移除</Button>}

@@ -1,5 +1,8 @@
 import axios from 'axios';
 
+import { convertScan } from '../loader/meshConvert';
+import { getFileExtension } from '../tool/StringProcessing';
+
 // The production entry point: one upload of the two raw arch scans, and the service runs
 // jaw → transform → margin → crown itself. Same three models the browser used to call one
 // by one, but without shipping multi-megabyte meshes back out to the client between each
@@ -23,6 +26,16 @@ const PIPELINE_BASE = '/api/pipeline';
 // preparation's arch alone. Both boxes have had it since 2026-09-16. The flag stays because
 // a deployment without it answers such a job with a 422, and the panel would rather say so
 // before sending than after.
+//
+// `formats` is which scan formats a deployment reads as they are. ezai-pipeline has read
+// .stl/.ply/.obj all along and .tri since 2026-09-18 (Chiayi first). A .tri going to a
+// deployment without it is rewritten as PLY in this browser first -- losslessly, from the
+// file, so that box is handed the same mesh the other would have made of it. A stale entry
+// here therefore costs a conversion, never a wrong result; GET / on a deployment lists what
+// it takes under `mesh_formats`.
+const BASE_FORMATS = ['stl', 'ply', 'obj'];
+const TRI_FORMATS = [...BASE_FORMATS, 'tri'];
+
 const PIPELINE_TARGETS = {
   z790: {
     base: PIPELINE_BASE,
@@ -31,6 +44,7 @@ const PIPELINE_TARGETS = {
     remote: false,
     // single_arch was promoted here on 2026-09-16.
     singleArch: true,
+    formats: BASE_FORMATS,
   },
   // A second ezai-pipeline container on the same box and the same GPU services, for a build
   // that has not been promoted to 8031. Kept apart so trying one can never change what the
@@ -43,6 +57,7 @@ const PIPELINE_TARGETS = {
     hint: '台中 · RTX 5080 · 尚未上線的 build',
     remote: false,
     singleArch: true,
+    formats: BASE_FORMATS,
   },
   rtx5090: {
     base: '/api/pipeline-rtx5090',
@@ -50,6 +65,7 @@ const PIPELINE_TARGETS = {
     hint: '嘉義 · RTX 5090 · 經 Cloudflare tunnel',
     remote: true,
     singleArch: true,
+    formats: TRI_FORMATS,
   },
   // The same box and the same proxy as above -- only how the meshes get there differs. The
   // scans go to object storage and the POST carries two URLs instead of 30 MB of body, so
@@ -66,6 +82,7 @@ const PIPELINE_TARGETS = {
     remote: true,
     viaS3: true,
     singleArch: true,
+    formats: TRI_FORMATS,
   },
 };
 
@@ -248,7 +265,18 @@ const runPipelineJob = async ({
   if (mode === PIPELINE_MODES.marginOverride && !marginPts) {
     throw new Error('覆寫 margin 模式需要一條 margin');
   }
-  const sent = Object.entries(scans).filter(([, file]) => file);
+  // Each scan goes out under its REAL extension, because that is all the service reads the
+  // format from: until 2026-09-18 this sent everything as <jaw>.stl, so a PLY uploaded here
+  // was parsed as STL and the job died at its first stage.
+  const inputs = await Promise.all(Object.entries(scans).filter(([, file]) => file)
+    .map(async ([jaw, file]) => {
+      const format = getFileExtension(file.name);
+      if (site.formats.includes(format)) return { jaw, file, format, sentAs: format };
+      onStage(`${site.label} 還不能直接讀 .${format}，正在瀏覽器裡轉成 PLY…`);
+      const converted = await convertScan(file, 'ply');
+      return { jaw, file: converted, format, sentAs: 'ply' };
+    }));
+  const sent = inputs.map(({ jaw, file, sentAs }) => [jaw, file, sentAs]);
 
   // Cloudflare caps a request body at 100 MB and cannot be configured past it, so a pair of
   // scans over that limit fails at the edge with a 413 that says nothing about which file
@@ -289,16 +317,16 @@ const runPipelineJob = async ({
     const startedAt = performance.now();
     // Concurrently: the scans are independent and S3 takes them at once happily.
     const uploaded = await Promise.all(
-      sent.map(([jaw, file]) => uploadToS3(file, `${prefix}/${jaw}.stl`, timeoutMs).then(result => [jaw, result])),
+      sent.map(([jaw, file, ext]) => uploadToS3(file, `${prefix}/${jaw}.${ext}`, timeoutMs).then(result => [jaw, result])),
     );
     uploadSeconds = (performance.now() - startedAt) / 1000;
     s3Keys = uploaded.map(([, result]) => result.key);
     // The pipeline reads the file type from the URL path, which is why the keys above end
-    // in .stl and why nothing here relies on a filename or a content type.
+    // in the scan's real extension and why nothing here relies on a content type.
     for (const [jaw, result] of uploaded) form.append(`${jaw}_stl_url`, result.get);
     onStage(`S3 上傳完成（${uploadSeconds.toFixed(1)} 秒），正在送出 job…`);
   } else {
-    for (const [jaw, file] of sent) form.append(`${jaw}_stl`, file, `${jaw}.stl`);
+    for (const [jaw, file, ext] of sent) form.append(`${jaw}_stl`, file, `${jaw}.${ext}`);
     onStage(`正在上傳${sent.length === 2 ? '上下顎' : '單顎'}口掃到 ${site.label}（${site.hint}）…`);
   }
 
@@ -386,6 +414,9 @@ const runPipelineJob = async ({
     // Which box produced this, for the panel to label the result and its timings.
     target,
     site,
+    // What each scan arrived as and what it was sent as -- the two differ only when this
+    // browser converted it for a target that cannot read it (a .tri going to 8031).
+    inputs: inputs.map(({ jaw, format, sentAs, file }) => ({ jaw, format, sentAs, bytes: file.size })),
   };
 };
 

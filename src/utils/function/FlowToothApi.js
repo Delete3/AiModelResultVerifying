@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+import { convertScan } from '../loader/meshConvert';
+
 // The two FlowToothSDF instances on this box: 8010 (dev) and 8013 (prod). Both proxies are
 // declared in vite.config.js. dev is not "the newer one" — it deliberately holds the
 // Stage-1/Stage-2 pair that production replaced, so the two remain a comparison. Which
@@ -56,10 +58,13 @@ const generateFlowToothCrown = async ({
   chamfer = true,
   abutfit = false,
 }) => {
+  // FlowToothSDF saves whatever arrives in these two fields as upper.stl / lower.stl and
+  // reads it as STL, so a PLY or .tri scan from the design tab is rewritten as STL first.
+  const [upper, lower] = await Promise.all([convertScan(upperStl, 'stl'), convertScan(lowerStl, 'stl')]);
   const formData = new FormData();
   formData.append('fdi', String(fdi));
-  formData.append('upper_stl', upperStl);
-  formData.append('lower_stl', lowerStl);
+  formData.append('upper_stl', upper);
+  formData.append('lower_stl', lower);
   formData.append('margin_pts', marginPts);
   if (contactsPly) formData.append('contacts_ply', contactsPly);
   if (upperMatrix) formData.append('upper_matrix', upperMatrix);

@@ -4,6 +4,15 @@ import { Alert, Button, Collapse, Spin, Tag } from 'antd';
 import { formatTimings } from '../../utils/function/formatTimings';
 import { downloadBlob } from '../../utils/tool/useStores';
 
+const JAW_LABEL = { upper: '上顎', lower: '下顎' };
+
+/** Only worth a tag when a scan was not an STL, or was rewritten on its way out. */
+const formatTags = inputs => (inputs ?? [])
+  .filter(input => input.format !== 'stl' || input.sentAs !== input.format)
+  .map(input => <Tag key={input.jaw} color={input.sentAs !== input.format ? 'purple' : 'default'}>
+    {JAW_LABEL[input.jaw]} .{input.format}{input.sentAs !== input.format ? ` → .${input.sentAs}（瀏覽器轉換）` : ''}
+  </Tag>);
+
 const MODE_LABEL = {
   full: 'AI margin → 牙冠',
   margin_only: '只預測 margin',
@@ -72,6 +81,7 @@ const ResultView = ({ running, progress, error, result, onEditRing }) => {
               ? <Tag color='orange'>單顎 · 對咬為平面替身 {standin?.height_above_margin_mm != null ? `${Number(standin.height_above_margin_mm).toFixed(1)} mm` : ''}</Tag>
               : result.mode !== 'margin_only' && <Tag color='blue'>上下顎</Tag>}
             {relief > 0 && <Tag color='gold'>對咬被移開 {relief.toFixed(2)} mm</Tag>}
+            {formatTags(result.inputs)}
           </div>
           <div className='job-id'>Job {result.jobId} · {result.totalSeconds.toFixed(1)} 秒</div>
         </div>}
