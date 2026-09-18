@@ -59,7 +59,7 @@ const PreviewOverlay = () => {
       <span className='preview-toolbar-count'>{preview.loaded} 個模型</span>
       <Button size='small' onClick={() => PreviewScene.fitView()}>全部置中</Button>
     </div>}
-    {!preview.items.length && !dragging && <div className='scene-empty'>把 STL / PLY / OBJ / TRI 拖曳到這裡（可一次多個）</div>}
+    {!preview.items.length && !dragging && <div className='scene-empty'>把 STL / PLY / OBJ / TRI / PTS 拖曳到這裡（可一次多個）</div>}
     {dragging && <div className='preview-dropzone'>放開以載入模型</div>}
   </>;
 };

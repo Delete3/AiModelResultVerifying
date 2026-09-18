@@ -46,15 +46,28 @@ const PreviewItem = ({ item }) => {
       />
       <span className='preview-percent'>{percent}%</span>
     </div>
-    {(item.hasMesh || item.hasVertexColors) && <div className='preview-switches'>
+    {item.hasRing && <div className='preview-opacity'>
+      <span>線寬</span>
+      <Slider
+        min={1}
+        max={10}
+        step={0.5}
+        value={item.lineWidth}
+        tooltip={{ formatter: value => `${value} px` }}
+        onChange={value => PreviewScene.setLineWidth(item.id, value)}
+      />
+      <span className='preview-percent'>{item.lineWidth}px</span>
+    </div>}
+    {(item.hasMesh || item.hasVertexColors || item.hasRing) && <div className='preview-switches'>
       {item.hasMesh && <Checkbox checked={item.wireframe} onChange={e => PreviewScene.setWireframe(item.id, e.target.checked)}>線框</Checkbox>}
       {item.hasVertexColors && <Checkbox checked={item.vertexColors} onChange={e => PreviewScene.setVertexColors(item.id, e.target.checked)}>檔案內的顏色</Checkbox>}
+      {item.hasRing && <Checkbox checked={item.onTop} onChange={e => PreviewScene.setOnTop(item.id, e.target.checked)}>顯示在最上層（不被模型擋住）</Checkbox>}
     </div>}
   </div>;
 };
 
 /**
- * The model preview tab: drop any number of STL / PLY / OBJ / TRI files here or on the 3D
+ * The model preview tab: drop any number of STL / PLY / OBJ / TRI / PTS files here or on the 3D
  * view (PreviewOverlay) and look at them together. The case on the other tabs is hidden
  * while this tab is open and comes back as it was; see PreviewScene.
  */
@@ -66,7 +79,7 @@ const PreviewPanel = () => {
   return <div className='preview-panel'>
     <section className='panel-section'>
       <p className='panel-note'>
-        把 STL / PLY / OBJ / TRI 拖曳到下面或右邊的 3D 畫面，可以一次多個，每個模型各自調整顏色、透明度與顯示。
+        把 STL / PLY / OBJ / TRI 模型，或 PTS 的 margin 線，拖曳到下面或右邊的 3D 畫面，可以一次多個，每個各自調整顏色、透明度與顯示。
         只在這個分頁看得到，不影響其他分頁的病例。檔案只在這個瀏覽器裡讀取，不會上傳。
       </p>
       <Upload.Dragger
@@ -81,7 +94,7 @@ const PreviewPanel = () => {
         }}
       >
         <p className='preview-drop-title'>拖曳模型到這裡，或點擊選擇檔案</p>
-        <p className='preview-drop-hint'>.stl · .ply · .obj · .tri（V1 / V2）· 可多選</p>
+        <p className='preview-drop-hint'>.stl · .ply · .obj · .tri（V1 / V2）· .pts（margin 線）· 可多選</p>
       </Upload.Dragger>
       {preview.errors.length > 0 && <Alert
         className='section-alert'

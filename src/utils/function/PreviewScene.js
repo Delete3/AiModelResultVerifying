@@ -1,9 +1,12 @@
 import * as THREE from 'three';
+import { Line2 } from 'three/examples/jsm/lines/Line2.js';
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 
 import Editor from '../Editor';
 import { loadModel } from '../loader/loadModel';
 
-// The model preview tab: any number of STL / PLY / OBJ / TRI files, each with its own
+// The model preview tab: any number of STL / PLY / OBJ / TRI / PTS files, each with its own
 // colour, opacity and visibility, for looking at what a service produced or what a case
 // arrived as.
 //
@@ -35,10 +38,18 @@ const describe = (detail, parts, size) => {
     if (indexed) counts.push(`${formatCount(meshes.reduce((sum, { geometry }) => sum + geometry.getAttribute('position').count, 0))} 頂點`);
     counts.push(`${formatCount(faces)} 面`);
   }
+  const rings = parts.filter(part => part.kind === 'ring');
+  if (rings.length) {
+    if (rings.length > 1) counts.push(`${rings.length} 條線`);
+    counts.push(`${formatCount(rings.reduce((sum, ring) => sum + ring.points.length, 0))} 點`);
+    const closed = rings.filter(ring => ring.closed).length;
+    counts.push(closed === rings.length ? '閉合' : closed ? `${closed} 條閉合` : '未閉合');
+    counts.push(`長 ${rings.reduce((sum, ring) => sum + ring.length, 0).toFixed(1)} mm`);
+  }
   const points = parts.filter(part => part.kind === 'points');
   if (points.length) counts.push(`${formatCount(points.reduce((sum, { geometry }) => sum + geometry.getAttribute('position').count, 0))} 點`);
   if (parts.some(part => part.kind === 'lines')) counts.push('含線段');
-  if (parts.length > 1) counts.push(`${parts.length} 個物件`);
+  if (parts.length > 1 && !rings.length) counts.push(`${parts.length} 個物件`);
   return [detail, ...counts, `${size.map(v => v.toFixed(1)).join(' × ')} mm`].join(' · ');
 };
 
@@ -87,6 +98,9 @@ class PreviewScene {
         vertexColors: item.vertexColors,
         hasVertexColors: item.hasVertexColors,
         hasMesh: item.hasMesh,
+        hasRing: item.hasRing,
+        lineWidth: item.lineWidth,
+        onTop: item.onTop,
       })),
       errors: [...this.errors],
     };
@@ -182,10 +196,43 @@ class PreviewScene {
     return this.queue;
   }
 
+  /**
+   * A margin line: a screen-space fat line, since a 1 px GL line disappears against a scan.
+   * Pushed towards the camera like the design tab's reference ring, so a ring lying on a
+   * surface draws over it rather than in and out of it.
+   */
+  buildRing(ring) {
+    if (ring.points.length < 2) {
+      const geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(ring.points.flat(), 3));
+      const material = new THREE.PointsMaterial({ size: 6, sizeAttenuation: false });
+      return { kind: 'points', geometry, material, object: new THREE.Points(geometry, material) };
+    }
+    const flat = (ring.closed ? [...ring.points, ring.points[0]] : ring.points).flat();
+    const geometry = new LineGeometry();
+    geometry.setPositions(flat);
+    const material = new LineMaterial({ linewidth: 3, worldUnits: false });
+    material.polygonOffset = true;
+    material.polygonOffsetFactor = -4;
+    material.polygonOffsetUnits = -4;
+    const object = new Line2(geometry, material);
+    // LineMaterial draws in pixels and has to be told how many there are; three r164's Line2
+    // does not do that itself.
+    object.onBeforeRender = renderer => renderer.getSize(material.resolution);
+    return { kind: 'ring', geometry, material, object };
+  }
+
   build(item, model) {
     const group = new THREE.Group();
     group.name = `preview-${item.id}`;
-    const parts = model.parts.map(({ kind, geometry }) => {
+    const parts = model.parts.map(part => {
+      if (part.kind === 'ring') {
+        const built = this.buildRing(part);
+        built.object.layers.set(PREVIEW_LAYER);
+        group.add(built.object);
+        // The ring's own figures ride along for the summary line.
+        return { ...built, hasColor: false, points: part.points, closed: part.closed, length: part.length };
+      }
+      const { kind, geometry } = part;
       const material = kind === 'mesh'
         ? new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.05, side: THREE.DoubleSide })
         : kind === 'points'
@@ -213,6 +260,9 @@ class PreviewScene {
       visible: true,
       wireframe: false,
       hasMesh: parts.some(part => part.kind === 'mesh'),
+      hasRing: parts.some(part => part.kind === 'ring'),
+      lineWidth: 3,
+      onTop: false,
       hasVertexColors,
       // Off to begin with even when the file has colours: the point of this tab is telling
       // overlapping models apart, and the swatch next to the name should be what the model
@@ -236,6 +286,13 @@ class PreviewScene {
       // of view either, or "transparent" would only show the clear colour.
       material.depthWrite = !translucent;
       if (part.kind === 'mesh') material.wireframe = item.wireframe;
+      if (part.kind === 'ring') {
+        material.linewidth = item.lineWidth;
+        // "On top": skip the depth test, and draw after everything else so nothing that is
+        // drawn later can paint over it either.
+        material.depthTest = !item.onTop;
+        part.object.renderOrder = item.onTop ? 10 : 0;
+      }
       material.needsUpdate = true;
     }
     item.object.visible = item.visible;
@@ -258,6 +315,10 @@ class PreviewScene {
   setWireframe = (id, wireframe) => this.update(id, { wireframe });
 
   setVertexColors = (id, vertexColors) => this.update(id, { vertexColors });
+
+  setLineWidth = (id, lineWidth) => this.update(id, { lineWidth });
+
+  setOnTop = (id, onTop) => this.update(id, { onTop });
 
   /** Every model at once: visibility, or opacity. */
   setAll(changes) {
