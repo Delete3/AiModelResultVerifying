@@ -472,6 +472,149 @@ $muted: #6b7280;
   pointer-events: none;
 }
 
+// --- model preview ---------------------------------------------------------------------
+
+.preview-panel {
+  .ant-upload-drag {
+    background: #fafbfc;
+  }
+
+  .preview-drop-title {
+    margin: 4px 0;
+    font-size: 14px;
+    color: #1f2937;
+  }
+
+  .preview-drop-hint {
+    margin: 0;
+    font-size: 12px;
+    color: $muted;
+  }
+}
+
+.preview-errors {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.preview-list-title {
+  justify-content: space-between;
+
+  .preview-list-actions {
+    display: flex;
+    gap: 6px;
+    font-weight: 400;
+  }
+}
+
+.preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preview-item {
+  padding: 8px 10px;
+  border: 1px solid $border;
+  border-radius: 8px;
+  background: #fff;
+
+  &.is-hidden {
+    background: #f9fafb;
+
+    .preview-name,
+    .preview-meta {
+      color: #9ca3af;
+    }
+  }
+
+  &.loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+}
+
+.preview-item-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  .ant-btn-link {
+    padding: 0 4px;
+  }
+}
+
+.preview-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-meta {
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 11px;
+  color: $muted;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-opacity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #374151;
+
+  .ant-slider {
+    flex: 1;
+    margin: 6px 4px;
+  }
+
+  .preview-percent {
+    width: 34px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.preview-switches {
+  display: flex;
+  gap: 12px;
+
+  .ant-checkbox-wrapper {
+    font-size: 12px;
+  }
+}
+
+.preview-toolbar-count {
+  font-size: 12px;
+  color: #374151;
+}
+
+.preview-dropzone {
+  position: absolute;
+  inset: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed $accent;
+  border-radius: 12px;
+  background: rgba(217, 72, 15, 0.06);
+  color: $accent;
+  font-size: 16px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
 @media (max-width: 860px) {
   .app-shell {
     flex-direction: column-reverse;

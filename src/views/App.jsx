@@ -8,11 +8,14 @@ import Editor from '../utils/Editor';
 import CaseScene, { jawOfFdi } from '../utils/function/CaseScene';
 import CheckGroundTrue from '../utils/function/CheckGroundTrue';
 import MarginEditor from '../utils/function/margin-editor/MarginEditor';
+import PreviewScene from '../utils/function/PreviewScene';
 import { useCaseScene } from '../utils/tool/useStores';
 import DesignPanel from './design/DesignPanel';
 import DirectFlowToothPanel from './advanced/DirectFlowToothPanel';
 import DirectFSAbutmentPanel from './advanced/DirectFSAbutmentPanel';
 import LegacyTools from './legacy/LegacyTools';
+import PreviewOverlay from './preview/PreviewOverlay';
+import PreviewPanel from './preview/PreviewPanel';
 import SceneOverlay from './SceneOverlay';
 
 function App() {
@@ -20,6 +23,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [fdi, setFdi] = useState(null);
   const [allToothFdi, setAllToothFdi] = useState('');
+  const [tab, setTab] = useState('design');
   const scene = useCaseScene();
   const prepJaw = jawOfFdi(fdi);
 
@@ -32,7 +36,16 @@ function App() {
     Editor.scene.background = new THREE.Color(0xeef1f5);
     Editor.scene.add(new THREE.AxesHelper(10));
     CheckGroundTrue.init();
+    // After the lights and the axes exist: it puts them on the preview's layer too.
+    PreviewScene.init();
   }, []);
+
+  // The model preview tab has the view to itself; every other tab shows the case.
+  useEffect(() => {
+    const previewing = tab === 'preview';
+    PreviewScene.setActive(previewing);
+    MarginEditor.setSuspended(previewing);
+  }, [tab]);
 
   // The margin is drawn on the arch that holds the tooth. While the FDI field holds
   // something that is not an FDI yet -- "3" on the way to "36" -- keep whatever is attached,
@@ -54,6 +67,8 @@ function App() {
             <Tabs
               className='side-tabs'
               size='small'
+              activeKey={tab}
+              onChange={setTab}
               items={[
                 {
                   key: 'design',
@@ -66,6 +81,11 @@ function App() {
                     prepJaw={prepJaw}
                     scene={scene}
                   />,
+                },
+                {
+                  key: 'preview',
+                  label: '模型預覽',
+                  children: <PreviewPanel />,
                 },
                 {
                   key: 'direct',
@@ -90,7 +110,7 @@ function App() {
           </aside>
           <main className='viewport'>
             <div ref={containerRef} className='editor' />
-            <SceneOverlay />
+            {tab === 'preview' ? <PreviewOverlay /> : <SceneOverlay />}
           </main>
         </div>
       </Spin>

@@ -15,9 +15,10 @@ import * as THREE from 'three';
 //       uint32[triangles*3], uint32 12528, float32[points*3],
 //       then optional UV and colour blocks
 //
-// Faces come BEFORE vertices in V2 and after them in V1. The colour and UV blocks are not
-// read; nothing in this viewer draws them. ezai-pipeline's app/tri.py reads the same two
-// layouts and was checked against airdesign's reader over 5006 real files.
+// Faces come BEFORE vertices in V2 and after them in V1. The colour block is read only when
+// asked for (the model preview draws it; nothing else here does), and UVs never are.
+// ezai-pipeline's app/tri.py reads the same two layouts and was checked against airdesign's
+// reader over 5006 real files.
 
 const V2_MARK = 'INTEWARE Mesh File';
 const V2_HEADER_BYTES = 80;
@@ -42,13 +43,63 @@ const readWords = (buffer, Type, offset, count) => {
   return out;
 };
 
+// The file stores sRGB bytes; three.js shades in linear. One table instead of a Color per
+// vertex, since an arch has a few hundred thousand of them.
+let srgbToLinear = null;
+const linearTable = () => {
+  if (!srgbToLinear) {
+    const color = new THREE.Color();
+    srgbToLinear = new Float32Array(256).map((_, i) => color.setRGB(i / 255, 0, 0, THREE.SRGBColorSpace).r);
+  }
+  return srgbToLinear;
+};
+
+const COLOR_TOKEN = 17000;
+const UV_TOKEN = 87878;
+
+/**
+ * The per-vertex RGB block, when there is one that fits: V1 appends count + bytes after the
+ * faces; V2 appends optional blocks shaped (token, count, token, data), UVs before colours.
+ * A block that does not fit the file or the vertex count is ignored rather than fatal --
+ * colour is decoration, and the mesh itself has already been read.
+ */
+const readColors = (buffer, version, end, pointCount) => {
+  const view = new DataView(buffer);
+  const size = buffer.byteLength;
+  let bytesAt = -1;
+  if (version === 'V1') {
+    if (size >= end + 4 && view.getUint32(end, true) === pointCount && size >= end + 4 + pointCount * 3) {
+      bytesAt = end + 4;
+    }
+  } else {
+    let at = end;
+    for (let block = 0; block < 2 && size >= at + 12; block += 1) {
+      const token = view.getUint32(at, true);
+      const count = view.getUint32(at + 4, true);
+      if (token === UV_TOKEN) {
+        at += 12 + count * 8;
+      } else {
+        if (token === COLOR_TOKEN && count === pointCount && size >= at + 12 + count * 3) bytesAt = at + 12;
+        break;
+      }
+    }
+  }
+  if (bytesAt < 0) return null;
+  const bytes = new Uint8Array(buffer, bytesAt, pointCount * 3);
+  const table = linearTable();
+  const colors = new Float32Array(pointCount * 3);
+  for (let i = 0; i < colors.length; i += 1) colors[i] = table[bytes[i]];
+  return colors;
+};
+
 /**
  * The mesh in a .tri file, exactly as stored: vertices and faces in the file's order.
  * Throws an Error whose message is meant for the person who picked the file.
  * @param {ArrayBuffer} buffer
- * @returns {{ positions: Float32Array, indices: Uint32Array, version: 'V1'|'V2' }}
+ * @param {{ colors?: boolean }} [options] also read the per-vertex colours, if present
+ * @returns {{ positions: Float32Array, indices: Uint32Array, version: 'V1'|'V2', colors: Float32Array|null }}
  */
-const parseTRI = buffer => {
+const parseTRI = (buffer, { colors = false } = {}) => {
   const size = buffer.byteLength;
   const view = new DataView(buffer);
   const version = isV2(buffer) ? 'V2' : 'V1';
@@ -95,7 +146,8 @@ const parseTRI = buffer => {
     if (!Number.isFinite(positions[i])) throw new Error(`${version} .tri 檔有頂點座標是 NaN 或無限大`);
   }
 
-  return { positions, indices, version };
+  const end = version === 'V2' ? verticesAt + pointCount * 12 : facesAt + triangleCount * 12;
+  return { positions, indices, version, colors: colors ? readColors(buffer, version, end, pointCount) : null };
 };
 
 /** @param {ArrayBuffer} buffer */

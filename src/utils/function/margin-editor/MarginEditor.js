@@ -87,6 +87,9 @@ class MarginEditor {
     this.raycaster.firstHitOnly = true;
     this.listeners = new Set();
     this.listening = false;
+    // Set while another tab owns the view (the model preview hides the scans), so a click
+    // there cannot add a point to a ring on a scan nobody can see.
+    this.suspended = false;
     this.frame = null;
     this.snapshot = this.makeSnapshot();
   }
@@ -521,8 +524,13 @@ class MarginEditor {
 
   // --- input ------------------------------------------------------------------------------
 
+  setSuspended(suspended) {
+    this.suspended = suspended;
+    if (suspended && Editor.container) this.setCursor('');
+  }
+
   onPointerDown = event => {
-    if (event.button !== 0 || this.mode === 'idle' || !this.jawMesh?.visible) return;
+    if (this.suspended || event.button !== 0 || this.mode === 'idle' || !this.jawMesh?.visible) return;
 
     if (this.mode === 'draw') {
       if (this.controlPoints.length >= MIN_POINTS && this.pickNearest(event, [this.controlPoints[0]]) === 0) {
@@ -569,7 +577,7 @@ class MarginEditor {
       this.scheduleRebuild();
       return;
     }
-    if (this.mode === 'idle' || event.buttons !== 0 || !this.jawMesh?.visible) return;
+    if (this.suspended || this.mode === 'idle' || event.buttons !== 0 || !this.jawMesh?.visible) return;
 
     const candidates = this.mode === 'draw'
       ? (this.controlPoints.length >= MIN_POINTS ? [this.controlPoints[0]] : [])
@@ -597,7 +605,7 @@ class MarginEditor {
   };
 
   onKeyDown = event => {
-    if (this.mode === 'idle') return;
+    if (this.suspended || this.mode === 'idle') return;
     const target = event.target;
     if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) return;
 
