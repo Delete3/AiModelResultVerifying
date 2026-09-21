@@ -12,6 +12,10 @@ const CROWN_COLOR = 0xff8a3d;
 // Its own slot and its own colour rather than reusing the crown's: an abutment is generated
 // FROM a crown, so the two are shown together and telling them apart matters.
 const ABUTMENT_COLOR = 0x4dabf7;
+// The virtual stump a no-abutment crown was built over. Muted and see-through: it is a
+// stand-in the crown's intaglio fits, not a design anyone will use, and the crown's outer
+// surface is what should be looked at.
+const STUMP_COLOR = 0x8ce99a;
 const TRANSLUCENT_OPACITY = 0.35;
 
 const UPPER_FDI = new Set([11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28]);
@@ -34,9 +38,9 @@ const jawOfFdi = fdi => {
  */
 class CaseScene {
   constructor() {
-    this.meshes = { upper: null, lower: null, crown: null, abutment: null };
+    this.meshes = { upper: null, lower: null, crown: null, abutment: null, stump: null };
     this.files = { upper: null, lower: null };
-    this.visible = { upper: true, lower: true, crown: true, abutment: true, reference: true };
+    this.visible = { upper: true, lower: true, crown: true, abutment: true, stump: true, reference: true };
     this.translucent = false;
     /** @type {Line2|null} */
     this.referenceRing = null;
@@ -61,6 +65,7 @@ class CaseScene {
       hasLower: Boolean(this.meshes.lower),
       hasCrown: Boolean(this.meshes.crown),
       hasAbutment: Boolean(this.meshes.abutment),
+      hasStump: Boolean(this.meshes.stump),
       hasReference: Boolean(this.referenceRing),
       revision: this.revision,
       upperName: this.files.upper?.name ?? null,
@@ -185,10 +190,52 @@ class CaseScene {
     return mesh;
   }
 
+  // The stump goes with the crown: it describes how that one crown was built, so a stump
+  // left on screen beside a different job's crown would be describing the wrong result.
   clearCrown({ silent = false } = {}) {
-    if (!this.meshes.crown) return;
+    this.clearStump({ silent: true });
+    if (!this.meshes.crown) {
+      if (!silent) this.emit();
+      return;
+    }
     disposeMesh(this.meshes.crown);
     this.meshes.crown = null;
+    if (!silent) this.emit();
+  }
+
+  // --- virtual stump ----------------------------------------------------------------------
+
+  /**
+   * The virtual preparation a no-abutment crown was built over (virtual_prep.ply), in the
+   * frame of the uploaded scans like the crown.
+   * @param {Blob} blob a PLY
+   */
+  async setStump(blob, fileName = 'virtual_prep.ply') {
+    const geometry = await loadGeometry(new File([blob], fileName, { type: 'model/ply' }));
+    if (!geometry) throw new Error('無法解析回傳的虛擬支台齒');
+    this.clearStump({ silent: true });
+    const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+      color: STUMP_COLOR,
+      roughness: 0.6,
+      metalness: 0,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+    }));
+    mesh.name = 'virtual-stump';
+    mesh.renderOrder = 1;
+    mesh.visible = this.visible.stump;
+    Editor.scene.add(mesh);
+    this.meshes.stump = mesh;
+    this.emit();
+    return mesh;
+  }
+
+  clearStump({ silent = false } = {}) {
+    if (!this.meshes.stump) return;
+    disposeMesh(this.meshes.stump);
+    this.meshes.stump = null;
     if (!silent) this.emit();
   }
 
@@ -270,12 +317,13 @@ class CaseScene {
 
   // --- display ----------------------------------------------------------------------------
 
-  /** @param {'upper'|'lower'|'crown'|'abutment'|'reference'} key */
+  /** @param {'upper'|'lower'|'crown'|'abutment'|'stump'|'reference'} key */
   setVisible(key, visible) {
     this.visible[key] = visible;
     if (key === 'upper' || key === 'lower') this.applyScanLook(key);
     else if (key === 'crown' && this.meshes.crown) this.meshes.crown.visible = visible;
     else if (key === 'abutment' && this.meshes.abutment) this.meshes.abutment.visible = visible;
+    else if (key === 'stump' && this.meshes.stump) this.meshes.stump.visible = visible;
     else if (key === 'reference' && this.referenceRing) this.referenceRing.visible = visible;
     this.emit();
   }

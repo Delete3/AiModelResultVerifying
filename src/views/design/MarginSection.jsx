@@ -24,9 +24,12 @@ const SURFACE_WARN_MM = 0.3;
  *
  * Props: marginSource, setMarginSource, fdi, prepJaw, hasPrepScan, busy, onPredict,
  * notice / setNotice (a one-line message about the ring, e.g. a frame warning).
+ * customOnly: no AI option at all, for a case the margin model cannot read (the peek abut
+ * tab, where there is no preparation to find a finish line on); `customNote` replaces it.
  */
 const MarginSection = ({
   marginSource, setMarginSource, fdi, prepJaw, hasPrepScan, busy, onPredict, notice, setNotice,
+  customOnly = false, customNote = null,
 }) => {
   const editor = useMarginEditor();
   const drawing = editor.mode === 'draw';
@@ -65,15 +68,17 @@ const MarginSection = ({
 
   return <section className='panel-section'>
     <div className='section-title'><span className='step'>2</span>Margin</div>
-    <Segmented
-      block
-      value={marginSource}
-      onChange={setMarginSource}
-      options={[
-        { label: 'AI 自動預測', value: 'ai' },
-        { label: '自訂（繪製 / 上傳）', value: 'custom' },
-      ]}
-    />
+    {customOnly
+      ? customNote && <p className='panel-note'>{customNote}</p>
+      : <Segmented
+        block
+        value={marginSource}
+        onChange={setMarginSource}
+        options={[
+          { label: 'AI 自動預測', value: 'ai' },
+          { label: '自訂（繪製 / 上傳）', value: 'custom' },
+        ]}
+      />}
 
     {marginSource === 'ai' && <div className='section-body'>
       <p className='panel-note'>

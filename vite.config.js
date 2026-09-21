@@ -44,6 +44,11 @@ const PIPELINE_RTX5090_API_URL = process.env.PIPELINE_RTX5090_API_URL
 // application as /pipeline, and the prefix belongs in the target because ezai2 is a gateway.
 const FSABUTMENT_RTX5090_API_URL = process.env.FSABUTMENT_RTX5090_API_URL
   || 'https://ezai2.inteware.com.tw/fsabutment'
+// The no-abutment test endpoint on that same box (added 2026-09-21): a third ezai-pipeline
+// built from feature/no-abutment, behind /pipeline-noabut/ on the same gateway and the same
+// Access application, so the same token. Only the "peek abut設計" tab calls it.
+const PIPELINE_NOABUT_API_URL = process.env.PIPELINE_NOABUT_API_URL
+  || 'https://ezai2.inteware.com.tw/pipeline-noabut'
 const RTX5090_CF_CLIENT_ID = process.env.RTX5090_CF_CLIENT_ID || ''
 const RTX5090_CF_CLIENT_SECRET = process.env.RTX5090_CF_CLIENT_SECRET || ''
 const RTX5090_CONFIGURED = Boolean(RTX5090_CF_CLIENT_ID && RTX5090_CF_CLIENT_SECRET)
@@ -179,6 +184,7 @@ export default defineConfig({
         // disabled by exactly the same missing credential and deserves the same message
         // rather than a 403 HTML page the frontend cannot parse.
         server.middlewares.use('/api/fsabutment-rtx5090', unconfigured)
+        server.middlewares.use('/api/pipeline-noabut', unconfigured)
       },
     },
     {
@@ -292,6 +298,7 @@ export default defineConfig({
               z790_test: Boolean(PIPELINE_TEST_API_URL),
               rtx5090: RTX5090_CONFIGURED,
               rtx5090_s3: RTX5090_CONFIGURED && S3_CONFIGURED,
+              rtx5090_noabut: RTX5090_CONFIGURED,
             },
           }))
         })
@@ -518,6 +525,28 @@ export default defineConfig({
         target: FSABUTMENT_RTX5090_API_URL,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/fsabutment-rtx5090/, ''),
+        headers: {
+          'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
+          'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,
+        },
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.removeHeader('cookie')
+          })
+          proxy.on('proxyRes', (proxyRes) => {
+            delete proxyRes.headers['set-cookie']
+          })
+        },
+      },
+      // The no-abutment test endpoint on the Chiayi box (2026-09-21). Before '/api/pipeline',
+      // for the prefix-order reason at the top of this block -- the shorter key would
+      // otherwise send these jobs to the LOCAL production pipeline, which would answer
+      // no_abutment=true with a 422 at best. The same three Access fixes as the two routes
+      // above, for the same reasons; do not simplify any of them away.
+      '/api/pipeline-noabut': {
+        target: PIPELINE_NOABUT_API_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/pipeline-noabut/, ''),
         headers: {
           'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
           'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,

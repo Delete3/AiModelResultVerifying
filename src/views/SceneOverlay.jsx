@@ -12,7 +12,7 @@ import { useCaseScene, useMarginEditor } from '../utils/tool/useStores';
 const SceneOverlay = () => {
   const scene = useCaseScene();
   const editor = useMarginEditor();
-  const anything = scene.hasUpper || scene.hasLower || scene.hasCrown || scene.hasAbutment;
+  const anything = scene.hasUpper || scene.hasLower || scene.hasCrown || scene.hasAbutment || scene.hasStump;
 
   const toggle = (key, label, present) => present && <Checkbox
     checked={scene.visible[key]}
@@ -25,6 +25,7 @@ const SceneOverlay = () => {
       {toggle('lower', '下顎', scene.hasLower)}
       {toggle('crown', '牙冠', scene.hasCrown)}
       {toggle('abutment', 'Abutment', scene.hasAbutment)}
+      {toggle('stump', '虛擬支台齒', scene.hasStump)}
       {toggle('reference', 'AI margin', scene.hasReference)}
       <Checkbox checked={scene.translucent} onChange={e => CaseScene.setTranslucent(e.target.checked)}>口掃半透明</Checkbox>
       <Button size='small' onClick={() => CaseScene.fitView()}>全部置中</Button>

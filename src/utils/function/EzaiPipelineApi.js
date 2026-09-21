@@ -84,6 +84,21 @@ const PIPELINE_TARGETS = {
     singleArch: true,
     formats: TRI_FORMATS,
   },
+  // The no-abutment test endpoint on the Chiayi box (2026-09-21): the same pipeline built
+  // from ezai-pipeline's feature/no-abutment, which also takes no_abutment=true and builds
+  // the crown over a virtual stump inside the ring. `noAbutment` marks a deployment that
+  // accepts it. `panel` keeps it out of the design tab's list: only the peek abut tab uses
+  // it, and in the design tab it would answer exactly like "5090 ezai2".
+  rtx5090_noabut: {
+    base: '/api/pipeline-noabut',
+    label: '5090 無支台齒',
+    hint: '嘉義 · RTX 5090 · 虛擬支台齒（測試端點）',
+    remote: true,
+    singleArch: true,
+    formats: TRI_FORMATS,
+    noAbutment: true,
+    panel: 'peek',
+  },
 };
 
 /**
@@ -168,6 +183,7 @@ const STAGE_LABELS = {
   transform: '座標轉換',
   margin: 'Margin 預測',
   margin_override: '套用自訂 margin',
+  virtual_prep: '放置虛擬支台齒',
   crown: '牙冠',
   packaging: '打包',
 };
@@ -185,6 +201,7 @@ const TIMING_LABELS = [
   ['transform_ms', '座標轉換'],
   ['margin_ms', 'Margin 推論'],
   ['margin_override_ms', '自訂 margin 檢查'],
+  ['virtual_prep_ms', '虛擬支台齒'],
   ['crown_ms', '牙冠推論'],
   ['packaging_ms', '打包與回原座標'],
 ];
@@ -230,6 +247,11 @@ const singleArchTargets = () => Object.values(PIPELINE_TARGETS)
  * `singleArch` sends only the preparation's arch. The target has to support it (see
  * PIPELINE_TARGETS); the service then builds against a stand-in antagonist and says so in
  * the job's warnings.
+ *
+ * `noAbutment` ({ stumpHeightMm, stumpShoulderMm }, either may be null for the service's
+ * own choice) is for a site with no abutment yet: the service puts a virtual stump inside
+ * the ring and builds the crown over it. Needs mode margin_override and a target flagged
+ * `noAbutment`.
  */
 const runPipelineJob = async ({
   upperStl,
@@ -239,6 +261,7 @@ const runPipelineJob = async ({
   mode = PIPELINE_MODES.full,
   marginPts = null,
   singleArch = false,
+  noAbutment = null,
   onStage = () => {},
   pollMs = 500,
   timeoutMs = 15 * 60 * 1000,
@@ -264,6 +287,10 @@ const runPipelineJob = async ({
   }
   if (mode === PIPELINE_MODES.marginOverride && !marginPts) {
     throw new Error('覆寫 margin 模式需要一條 margin');
+  }
+  if (noAbutment) {
+    if (!site.noAbutment) throw new Error(`${site.label} 不支援無支台齒模式`);
+    if (mode !== PIPELINE_MODES.marginOverride) throw new Error('無支台齒模式需要自訂 margin');
   }
   // Each scan goes out under its REAL extension, because that is all the service reads the
   // format from: until 2026-09-18 this sent everything as <jaw>.stl, so a PLY uploaded here
@@ -300,6 +327,11 @@ const runPipelineJob = async ({
   // mode spelled out here is what the job record will say was asked for.
   form.append('mode', mode);
   if (singleArch) form.append('single_arch', 'true');
+  if (noAbutment) {
+    form.append('no_abutment', 'true');
+    if (noAbutment.stumpHeightMm != null) form.append('stump_height_mm', String(noAbutment.stumpHeightMm));
+    if (noAbutment.stumpShoulderMm != null) form.append('stump_shoulder_mm', String(noAbutment.stumpShoulderMm));
+  }
   if (allToothFdi.trim() && mode !== PIPELINE_MODES.marginOverride) {
     form.append('all_tooth_numbers', allToothFdi.trim());
   }
@@ -380,6 +412,9 @@ const runPipelineJob = async ({
   const marginOriginal = parsePts(decoder.decode(await extractFromZip(archive.data, 'margin_original.pts')));
   const manifest = JSON.parse(decoder.decode(await extractFromZip(archive.data, 'manifest.json')));
   const marginMeta = JSON.parse(decoder.decode(await extractFromZip(archive.data, 'margin.json')));
+  // Only a no_abutment job carries it; the manifest's contents list says whether it is there.
+  const virtualPrep = manifest.contents?.['virtual_prep.ply']
+    ? await extractFromZip(archive.data, 'virtual_prep.ply') : null;
 
   return {
     // The service rotates the crown back into the frame the scans arrived in, so this
@@ -391,6 +426,11 @@ const runPipelineJob = async ({
     fileName: `pipeline_crown_FDI${fdi}_${target}${singleArch ? '_single' : ''}.ply`,
     archive: new Blob([archive.data], { type: 'application/zip' }),
     archiveName: `ezai-pipeline-${jobId}-FDI${fdi}.zip`,
+    // The virtual stump the crown was built over (original frame), and the service's record
+    // of it: height and how it was chosen, room to the antagonist, tissue inside the ring.
+    virtualPrep: virtualPrep ? new Blob([virtualPrep], { type: 'model/ply' }) : null,
+    virtualPrepName: `virtual_prep_FDI${fdi}.ply`,
+    noAbutment: manifest.no_abutment ?? null,
     jobId,
     mode,
     singleArch,

@@ -8,6 +8,7 @@ import { formatMarginPts } from '../../utils/function/margin-editor/marginPts';
 import { getPipelineHealth, singleArchTargets, PIPELINE_MODES, PIPELINE_TARGETS, runPipelineJob } from '../../utils/function/EzaiPipelineApi';
 import { SCAN_ACCEPT } from '../../utils/loader/loadGeometry';
 import { useMarginEditor } from '../../utils/tool/useStores';
+import describeFailure from './describeFailure';
 import MarginSection from './MarginSection';
 import ResultView from './ResultView';
 
@@ -17,26 +18,11 @@ const TARGET_STORAGE_KEY = 'checkingViewer.pipelineTarget';
 const readStoredTarget = () => {
   try {
     const stored = window.localStorage.getItem(TARGET_STORAGE_KEY);
-    return PIPELINE_TARGETS[stored] ? stored : 'z790';
+    // A target that belongs to another tab (`panel`) is never offered here.
+    return PIPELINE_TARGETS[stored] && !PIPELINE_TARGETS[stored].panel ? stored : 'z790';
   } catch {
     return 'z790';
   }
-};
-
-/**
- * A job can outlive this page's own Cloudflare Access session. When that session ends, the
- * next same-origin XHR is answered with a 302 to the Access login page, the browser follows
- * it cross-origin, and the request dies as a bare "Network Error" -- which says nothing
- * about logging in again. Name it, since the fix is one reload.
- */
-const describeFailure = (error, site) => {
-  const sessionLikelyExpired = !error.response
-    && (error.code === 'ERR_NETWORK' || /network error/i.test(error.message ?? ''));
-  if (sessionLikelyExpired) {
-    return `${site.label} 連線被擋下。最常見的原因是這個頁面的 Cloudflare Access 登入過期了，`
-      + '請重新整理頁面後再試（工作本身可能已經在伺服器跑完，重試沒有副作用）。';
-  }
-  return error.response?.data?.detail ?? error.message;
 };
 
 /**
@@ -194,7 +180,7 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
     </div>;
   };
 
-  const targetOptions = Object.entries(PIPELINE_TARGETS).map(([key, entry]) => ({
+  const targetOptions = Object.entries(PIPELINE_TARGETS).filter(([, entry]) => !entry.panel).map(([key, entry]) => ({
     value: key,
     disabled: viewerConfig ? !viewerConfig.targets?.[key] : false,
     label: <div className='target-option'>

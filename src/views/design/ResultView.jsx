@@ -59,6 +59,10 @@ const ResultView = ({ running, progress, error, result, onEditRing }) => {
 
   const standin = result?.manifest?.backends?.crown?.antagonist;
   const relief = Number(result?.manifest?.backends?.crown?.antagonist_relief ?? 0);
+  // Only a no_abutment job has these: the stump it was built over, and whether the outer
+  // surface -- the only part of such a crown meant to be used -- actually came back.
+  const stump = result?.noAbutment;
+  const deliveredShell = result?.manifest?.backends?.crown?.shell;
 
   return <div className='result-view'>
     {running && <Alert type='info' showIcon icon={<Spin size='small' />} message={progress || '處理中…'} />}
@@ -81,6 +85,13 @@ const ResultView = ({ running, progress, error, result, onEditRing }) => {
               ? <Tag color='orange'>單顎 · 對咬為平面替身 {standin?.height_above_margin_mm != null ? `${Number(standin.height_above_margin_mm).toFixed(1)} mm` : ''}</Tag>
               : result.mode !== 'margin_only' && <Tag color='blue'>上下顎</Tag>}
             {relief > 0 && <Tag color='gold'>對咬被移開 {relief.toFixed(2)} mm</Tag>}
+            {stump && <Tag color='green'>虛擬支台齒 {Number(stump.height_mm).toFixed(1)} mm{stump.height_source === 'caller' ? '（手動）' : ''}</Tag>}
+            {stump && stump.site_room_mm != null && <Tag color={stump.site_room_mm < 3 ? 'red' : 'default'}>
+              牙齦到對咬 {Number(stump.site_room_mm).toFixed(1)} mm
+            </Tag>}
+            {stump && (deliveredShell === 'outer'
+              ? <Tag color='green'>外壁已分離</Tag>
+              : <Tag color='red'>外壁分離失敗，回傳封閉牙冠</Tag>)}
             {formatTags(result.inputs)}
           </div>
           <div className='job-id'>Job {result.jobId} · {result.totalSeconds.toFixed(1)} 秒</div>
@@ -92,7 +103,10 @@ const ResultView = ({ running, progress, error, result, onEditRing }) => {
       </ul>}
 
       <div className='button-row'>
-        {result.blob && <Button type='primary' onClick={() => downloadBlob(result.blob, result.fileName)}>下載牙冠 PLY</Button>}
+        {result.blob && <Button type='primary' onClick={() => downloadBlob(result.blob, result.fileName)}>
+          {stump ? '下載牙冠外壁 PLY' : '下載牙冠 PLY'}
+        </Button>}
+        {result.virtualPrep && <Button onClick={() => downloadBlob(result.virtualPrep, result.virtualPrepName)}>下載虛擬支台齒</Button>}
         {result.archive && <Button onClick={() => downloadBlob(result.archive, result.archiveName)}>下載完整結果 ZIP</Button>}
         {result.mode === 'full' && result.marginOriginal?.length > 2 && <Button onClick={() => onEditRing(result)}>
           用這條 AI margin 修改

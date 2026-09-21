@@ -14,6 +14,7 @@ import DesignPanel from './design/DesignPanel';
 import DirectFlowToothPanel from './advanced/DirectFlowToothPanel';
 import DirectFSAbutmentPanel from './advanced/DirectFSAbutmentPanel';
 import LegacyTools from './legacy/LegacyTools';
+import PeekAbutPanel from './peek/PeekAbutPanel';
 import PreviewOverlay from './preview/PreviewOverlay';
 import PreviewPanel from './preview/PreviewPanel';
 import SceneOverlay from './SceneOverlay';
@@ -81,6 +82,14 @@ function App() {
                     prepJaw={prepJaw}
                     scene={scene}
                   />,
+                },
+                {
+                  // Crowns for scans with no abutment yet, through the no-abutment test
+                  // endpoint on the Chiayi box. Shares the case (scans, FDI, margin) with
+                  // the design tab.
+                  key: 'peek',
+                  label: 'peek abut設計',
+                  children: <PeekAbutPanel fdi={fdi} setFdi={setFdi} prepJaw={prepJaw} scene={scene} />,
                 },
                 {
                   key: 'preview',
