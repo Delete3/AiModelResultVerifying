@@ -11,6 +11,7 @@ const PEEK_DEFAULTS = {
   tilt_md_deg: 0,
   tilt_bl_deg: 0,
   profile: 0,
+  cavity: true,
 };
 
 /** Only what differs from the defaults goes to the service, so its record says what was asked. */

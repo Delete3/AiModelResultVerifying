@@ -76,11 +76,15 @@ const PeekLowerSection = ({
     />
   </label>;
 
+  // What the shown result was built with, not what the form says now.
+  const cut = state?.record?.parameters?.cavity !== false;
   const wall = state?.record?.min_wall_mm;
+  // With the cavity off the wall is still measured: how much PEEK a later cut would leave.
+  const ifCut = cut ? '' : '若挖孔：';
   const wallTag = wall == null ? null
-    : wall < 0 ? <Tag color='red'>煙囪穿出牙冠 {fmt(-wall)} mm</Tag>
-      : wall < MIN_WALL_WARN_MM ? <Tag color='orange'>最薄 {fmt(wall)} mm</Tag>
-        : <Tag color='green'>最薄 {fmt(wall)} mm</Tag>;
+    : wall < 0 ? <Tag color='red'>{ifCut}煙囪穿出牙冠 {fmt(-wall)} mm</Tag>
+      : wall < MIN_WALL_WARN_MM ? <Tag color='orange'>{ifCut}最薄 {fmt(wall)} mm</Tag>
+        : <Tag color='green'>{ifCut}最薄 {fmt(wall)} mm</Tag>;
   const warnings = (state?.warnings ?? []).filter(w => !w.includes('first version'));
 
   return <section className='panel-section'>
@@ -96,6 +100,18 @@ const PeekLowerSection = ({
     />
 
     <div className='peek-group-title'>鈦基座</div>
+    <Checkbox
+      className='peek-cavity'
+      checked={params.cavity}
+      onChange={e => set('cavity', e.target.checked)}
+      disabled={disabled}
+    >
+      在 PEEK 上挖出鈦基座的孔
+    </Checkbox>
+    {!params.cavity && <p className='panel-note'>
+      {'不挖孔：PEEK 底部在介面圓上封平。鈦基座仍會顯示在原位（可在畫面的圖層開關隱藏），'
+        + '「最薄」量的是之後挖孔會剩下多少 PEEK。'}
+    </p>}
     <div className='field-row peek-grid'>
       {number('interface_diameter_mm', '介面直徑')}
       {number('chimney_diameter_mm', '煙囪直徑')}
@@ -137,6 +153,7 @@ const PeekLowerSection = ({
         <Tag>深度 {fmt(iface.depth_mm)} mm · {SOURCE_LABEL[iface.depth_source] ?? iface.depth_source}</Tag>
         <Tag>近遠心 {fmt(iface.offset_md_mm)} · 頰舌 {fmt(iface.offset_bl_mm)} mm</Tag>
         <Tag>軸向傾斜 {fmt(iface.axis_tilt_from_ring_normal_deg, 1)}°</Tag>
+        {!cut && <Tag color='blue'>未挖鈦基座孔</Tag>}
         {wallTag}
         <Tag color={state.record.watertight ? 'default' : 'red'}>{state.record.watertight ? '封閉實體' : '不封閉'}</Tag>
       </div>
