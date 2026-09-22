@@ -5,12 +5,14 @@ import { Alert, Button, Checkbox, InputNumber, Radio, Tag, Upload } from 'antd';
 import CaseScene from '../../utils/function/CaseScene';
 import MarginEditor from '../../utils/function/margin-editor/MarginEditor';
 import { formatMarginPts } from '../../utils/function/margin-editor/marginPts';
-import { getPipelineHealth, PIPELINE_MODES, PIPELINE_TARGETS, runPipelineJob } from '../../utils/function/EzaiPipelineApi';
+import { getPipelineHealth, PIPELINE_MODES, PIPELINE_TARGETS, rerunPeekLower, runPipelineJob } from '../../utils/function/EzaiPipelineApi';
 import { SCAN_ACCEPT } from '../../utils/loader/loadGeometry';
 import { useMarginEditor } from '../../utils/tool/useStores';
 import describeFailure from '../design/describeFailure';
 import MarginSection from '../design/MarginSection';
 import ResultView from '../design/ResultView';
+import PeekLowerSection from './PeekLowerSection';
+import { PEEK_DEFAULTS, peekOverrides } from './peekParams';
 
 const TARGET = 'rtx5090_noabut';
 const JAW_NAME = { upper: '上顎', lower: '下顎' };
@@ -47,6 +49,11 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
   const [heightMode, setHeightMode] = useState('auto');
   const [height, setHeight] = useState(3.0);
   const [shoulder, setShoulder] = useState(DEFAULT_SHOULDER);
+  const [peekEnabled, setPeekEnabled] = useState(true);
+  const [peekParams, setPeekParams] = useState({ ...PEEK_DEFAULTS });
+  const [peekState, setPeekState] = useState(null);
+  const [peekBusy, setPeekBusy] = useState(false);
+  const [peekError, setPeekError] = useState(null);
 
   useEffect(() => {
     fetch('/api/viewer-config')
@@ -96,6 +103,8 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
     setRunning('crown');
     setError(null);
     setResult(null);
+    setPeekState(null);
+    setPeekError(null);
     setProgress('準備中…');
     CaseScene.resetScanMatrices();
     CaseScene.clearCrown();
@@ -115,18 +124,48 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
           stumpHeightMm: heightMode === 'manual' ? height : null,
           stumpShoulderMm: shoulder !== DEFAULT_SHOULDER ? shoulder : null,
         },
+        peekLower: peekEnabled ? peekOverrides(peekParams) : null,
         target: TARGET,
         onStage: setProgress,
       });
       job.totalSeconds = (performance.now() - startedAt) / 1000;
       await CaseScene.setCrown(job.blob, job.fileName);
       if (job.virtualPrep) await CaseScene.setStump(job.virtualPrep, job.virtualPrepName);
+      if (job.peekCrown) await CaseScene.setPeek(job.peekCrown, job.tibase);
+      if (peekEnabled) {
+        setPeekState({
+          record: job.peekLower,
+          warnings: job.warnings.filter(w => w.startsWith('peek_lower:')),
+          seconds: null,
+        });
+      }
       setResult(job);
       setHealth({ ok: true, text: `${site.label} 正常 · Job ${job.jobId}` });
     } catch (runError) {
       setError(describeFailure(runError, site));
     } finally {
       setRunning(null);
+    }
+  };
+
+  // Only the lower part, with the parameters as they are now, from what the job kept on the
+  // server: about a second, no model runs. The job is kept for an hour.
+  const rerunPeek = async () => {
+    if (!result) return;
+    setPeekBusy(true);
+    setPeekError(null);
+    try {
+      const out = await rerunPeekLower({ target: TARGET, jobId: result.jobId, params: peekOverrides(peekParams) });
+      await CaseScene.setPeek(out.peekCrown, out.tibase);
+      setResult(prev => ({ ...prev, peekCrown: out.peekCrown, tibase: out.tibase, peekLower: out.record }));
+      setPeekState({ record: out.record, warnings: out.warnings, seconds: out.seconds });
+    } catch (rerunError) {
+      const status = rerunError.response?.status;
+      setPeekError(status === 404 || status === 410
+        ? '這個 job 已經過期（服務只保留 1 小時），請重新按「生成牙冠外壁」。'
+        : describeFailure(rerunError, site));
+    } finally {
+      setPeekBusy(false);
     }
   };
 
@@ -237,6 +276,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
       <div className='generate-summary'>
         <Tag>自訂 margin（mode=margin_override）</Tag>
         <Tag color='green'>no_abutment</Tag>
+        {peekEnabled && <Tag color='gold'>peek_lower</Tag>}
         {hasPrep && <Tag color={singleArch ? 'orange' : 'blue'}>{singleArch ? '單顎' : '上下顎'}</Tag>}
       </div>
       <Button
@@ -253,8 +293,29 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
         {blockers.map(blocker => <li key={blocker}>{blocker}</li>)}
       </ul>}
 
-      <ResultView running={running} progress={progress} error={error} result={result} onEditRing={() => {}} />
+      {/* The PEEK lower part's warnings live in step 5, where a re-run replaces them. */}
+      <ResultView
+        running={running}
+        progress={progress}
+        error={error}
+        result={result && { ...result, warnings: result.warnings.filter(w => !w.startsWith('peek_lower:')) }}
+        onEditRing={() => {}}
+      />
     </section>
+
+    <PeekLowerSection
+      enabled={peekEnabled}
+      setEnabled={setPeekEnabled}
+      params={peekParams}
+      setParams={setPeekParams}
+      state={peekState}
+      canRerun={Boolean(result?.peekLower)}
+      busy={peekBusy}
+      error={peekError}
+      onRerun={rerunPeek}
+      result={result}
+      running={running}
+    />
   </div>;
 };
 

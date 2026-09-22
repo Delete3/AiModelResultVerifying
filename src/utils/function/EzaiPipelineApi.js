@@ -184,6 +184,7 @@ const STAGE_LABELS = {
   margin: 'Margin 預測',
   margin_override: '套用自訂 margin',
   virtual_prep: '放置虛擬支台齒',
+  peek_lower: 'PEEK 下半部',
   crown: '牙冠',
   packaging: '打包',
 };
@@ -203,6 +204,7 @@ const TIMING_LABELS = [
   ['margin_override_ms', '自訂 margin 檢查'],
   ['virtual_prep_ms', '虛擬支台齒'],
   ['crown_ms', '牙冠推論'],
+  ['peek_lower_ms', 'PEEK 下半部'],
   ['packaging_ms', '打包與回原座標'],
 ];
 
@@ -262,6 +264,9 @@ const runPipelineJob = async ({
   marginPts = null,
   singleArch = false,
   noAbutment = null,
+  // Overrides for the PEEK crown's lower part ({} = every default), or null for none.
+  // Needs noAbutment. See ezai-pipeline app/peek_lower.py.
+  peekLower = null,
   onStage = () => {},
   pollMs = 500,
   timeoutMs = 15 * 60 * 1000,
@@ -292,6 +297,7 @@ const runPipelineJob = async ({
     if (!site.noAbutment) throw new Error(`${site.label} 不支援無支台齒模式`);
     if (mode !== PIPELINE_MODES.marginOverride) throw new Error('無支台齒模式需要自訂 margin');
   }
+  if (peekLower && !noAbutment) throw new Error('PEEK 下半部需要無支台齒模式');
   // Each scan goes out under its REAL extension, because that is all the service reads the
   // format from: until 2026-09-18 this sent everything as <jaw>.stl, so a PLY uploaded here
   // was parsed as STL and the job died at its first stage.
@@ -331,6 +337,10 @@ const runPipelineJob = async ({
     form.append('no_abutment', 'true');
     if (noAbutment.stumpHeightMm != null) form.append('stump_height_mm', String(noAbutment.stumpHeightMm));
     if (noAbutment.stumpShoulderMm != null) form.append('stump_shoulder_mm', String(noAbutment.stumpShoulderMm));
+  }
+  if (peekLower) {
+    form.append('peek_lower', 'true');
+    form.append('peek_lower_params', JSON.stringify(peekLower));
   }
   if (allToothFdi.trim() && mode !== PIPELINE_MODES.marginOverride) {
     form.append('all_tooth_numbers', allToothFdi.trim());
@@ -415,6 +425,10 @@ const runPipelineJob = async ({
   // Only a no_abutment job carries it; the manifest's contents list says whether it is there.
   const virtualPrep = manifest.contents?.['virtual_prep.ply']
     ? await extractFromZip(archive.data, 'virtual_prep.ply') : null;
+  const peekCrown = manifest.contents?.['peek_crown.ply']
+    ? await extractFromZip(archive.data, 'peek_crown.ply') : null;
+  const tibase = manifest.contents?.['tibase_proxy.ply']
+    ? await extractFromZip(archive.data, 'tibase_proxy.ply') : null;
 
   return {
     // The service rotates the crown back into the frame the scans arrived in, so this
@@ -431,6 +445,11 @@ const runPipelineJob = async ({
     virtualPrep: virtualPrep ? new Blob([virtualPrep], { type: 'model/ply' }) : null,
     virtualPrepName: `virtual_prep_FDI${fdi}.ply`,
     noAbutment: manifest.no_abutment ?? null,
+    // The PEEK crown (outer shell + lower part + titanium-base cavity, one solid), the
+    // placeholder titanium base, and the service's record of how they were placed.
+    peekCrown: peekCrown ? new Blob([peekCrown], { type: 'model/ply' }) : null,
+    tibase: tibase ? new Blob([tibase], { type: 'model/ply' }) : null,
+    peekLower: manifest.peek_lower ?? null,
     jobId,
     mode,
     singleArch,
@@ -460,6 +479,42 @@ const runPipelineJob = async ({
   };
 };
 
+/**
+ * Rebuild the PEEK crown's lower part of a finished job with other parameters -- about a
+ * second, no model runs. `params` are overrides ({} = every default; null for an auto value).
+ * Resolves with the new meshes, the record and its warnings.
+ */
+const rerunPeekLower = async ({ target, jobId, params }) => {
+  const site = PIPELINE_TARGETS[target];
+  const startedAt = performance.now();
+  let response;
+  try {
+    response = await axios.post(`${site.base}/v1/jobs/${jobId}/peek-lower`, params ?? {}, {
+      responseType: 'arraybuffer', timeout: 60000,
+    });
+  } catch (error) {
+    // The body of an error is an arraybuffer too here; decode it for the message.
+    if (error.response?.data instanceof ArrayBuffer) {
+      try {
+        error.response.data = JSON.parse(new TextDecoder().decode(error.response.data));
+      } catch {
+        // leave it as it was
+      }
+    }
+    error.message = describeHttpError(error);
+    throw error;
+  }
+  const decoder = new TextDecoder();
+  const record = JSON.parse(decoder.decode(await extractFromZip(response.data, 'peek_lower.json')));
+  return {
+    peekCrown: new Blob([await extractFromZip(response.data, 'peek_crown.ply')], { type: 'model/ply' }),
+    tibase: new Blob([await extractFromZip(response.data, 'tibase_proxy.ply')], { type: 'model/ply' }),
+    record,
+    warnings: record.warnings ?? [],
+    seconds: (performance.now() - startedAt) / 1000,
+  };
+};
+
 /** GET /health through the same proxy a job would use. Never throws. */
 const getPipelineHealth = async (target) => {
   const site = PIPELINE_TARGETS[target];
@@ -476,4 +531,4 @@ const getPipelineHealth = async (target) => {
   }
 };
 
-export { runPipelineJob, getPipelineHealth, singleArchTargets, PIPELINE_TARGETS, PIPELINE_MODES };
+export { runPipelineJob, rerunPeekLower, getPipelineHealth, singleArchTargets, PIPELINE_TARGETS, PIPELINE_MODES };

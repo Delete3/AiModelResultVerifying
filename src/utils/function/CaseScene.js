@@ -16,6 +16,9 @@ const ABUTMENT_COLOR = 0x4dabf7;
 // stand-in the crown's intaglio fits, not a design anyone will use, and the crown's outer
 // surface is what should be looked at.
 const STUMP_COLOR = 0x8ce99a;
+// PEEK's own beige, and a titanium grey for the placeholder base it sits on.
+const PEEK_COLOR = 0xe6d3a8;
+const TIBASE_COLOR = 0x8d99a6;
 const TRANSLUCENT_OPACITY = 0.35;
 
 const UPPER_FDI = new Set([11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28]);
@@ -38,9 +41,11 @@ const jawOfFdi = fdi => {
  */
 class CaseScene {
   constructor() {
-    this.meshes = { upper: null, lower: null, crown: null, abutment: null, stump: null };
+    this.meshes = { upper: null, lower: null, crown: null, abutment: null, stump: null, peek: null, tibase: null };
     this.files = { upper: null, lower: null };
-    this.visible = { upper: true, lower: true, crown: true, abutment: true, stump: true, reference: true };
+    this.visible = { upper: true, lower: true, crown: true, abutment: true, stump: true, peek: true, tibase: true, reference: true };
+    // Set while a PEEK crown has hidden the crown and stump it contains; see setPeek.
+    this.peekHid = false;
     this.translucent = false;
     /** @type {Line2|null} */
     this.referenceRing = null;
@@ -66,6 +71,8 @@ class CaseScene {
       hasCrown: Boolean(this.meshes.crown),
       hasAbutment: Boolean(this.meshes.abutment),
       hasStump: Boolean(this.meshes.stump),
+      hasPeek: Boolean(this.meshes.peek),
+      hasTibase: Boolean(this.meshes.tibase),
       hasReference: Boolean(this.referenceRing),
       revision: this.revision,
       upperName: this.files.upper?.name ?? null,
@@ -194,6 +201,7 @@ class CaseScene {
   // left on screen beside a different job's crown would be describing the wrong result.
   clearCrown({ silent = false } = {}) {
     this.clearStump({ silent: true });
+    this.clearPeek({ silent: true });
     if (!this.meshes.crown) {
       if (!silent) this.emit();
       return;
@@ -236,6 +244,64 @@ class CaseScene {
     if (!this.meshes.stump) return;
     disposeMesh(this.meshes.stump);
     this.meshes.stump = null;
+    if (!silent) this.emit();
+  }
+
+  // --- PEEK crown and its titanium base ----------------------------------------------------
+
+  async loadSolid(slot, blob, fileName, material, renderOrder) {
+    const geometry = await loadGeometry(new File([blob], fileName, { type: 'model/ply' }));
+    if (!geometry) throw new Error(`無法解析 ${fileName}`);
+    if (this.meshes[slot]) disposeMesh(this.meshes[slot]);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = slot;
+    mesh.renderOrder = renderOrder;
+    mesh.visible = this.visible[slot];
+    Editor.scene.add(mesh);
+    this.meshes[slot] = mesh;
+    return mesh;
+  }
+
+  /**
+   * The PEEK crown (peek_crown.ply): the outer shell, the lower part and the titanium-base
+   * cavity as one solid, in the uploaded frame. It contains the crown's outer shell vertex
+   * for vertex, so the two would fight for the same pixels: the crown and the stump are
+   * hidden while it is shown, and shown again when it goes. Replacing it (a re-run) keeps
+   * them hidden.
+   */
+  async setPeek(blob, tibaseBlob = null) {
+    await this.loadSolid('peek', blob, 'peek_crown.ply', new THREE.MeshStandardMaterial({
+      color: PEEK_COLOR, roughness: 0.55, metalness: 0, side: THREE.DoubleSide,
+    }), 2);
+    if (tibaseBlob) {
+      await this.loadSolid('tibase', tibaseBlob, 'tibase_proxy.ply', new THREE.MeshStandardMaterial({
+        color: TIBASE_COLOR, roughness: 0.35, metalness: 0.5, side: THREE.DoubleSide,
+      }), 3);
+    }
+    if (!this.peekHid) {
+      this.peekHid = true;
+      this.visible.crown = false;
+      this.visible.stump = false;
+      if (this.meshes.crown) this.meshes.crown.visible = false;
+      if (this.meshes.stump) this.meshes.stump.visible = false;
+    }
+    this.emit();
+  }
+
+  clearPeek({ silent = false } = {}) {
+    for (const slot of ['peek', 'tibase']) {
+      if (this.meshes[slot]) {
+        disposeMesh(this.meshes[slot]);
+        this.meshes[slot] = null;
+      }
+    }
+    if (this.peekHid) {
+      this.peekHid = false;
+      this.visible.crown = true;
+      this.visible.stump = true;
+      if (this.meshes.crown) this.meshes.crown.visible = true;
+      if (this.meshes.stump) this.meshes.stump.visible = true;
+    }
     if (!silent) this.emit();
   }
 
@@ -317,13 +383,14 @@ class CaseScene {
 
   // --- display ----------------------------------------------------------------------------
 
-  /** @param {'upper'|'lower'|'crown'|'abutment'|'stump'|'reference'} key */
+  /** @param {'upper'|'lower'|'crown'|'abutment'|'stump'|'peek'|'tibase'|'reference'} key */
   setVisible(key, visible) {
     this.visible[key] = visible;
     if (key === 'upper' || key === 'lower') this.applyScanLook(key);
     else if (key === 'crown' && this.meshes.crown) this.meshes.crown.visible = visible;
     else if (key === 'abutment' && this.meshes.abutment) this.meshes.abutment.visible = visible;
     else if (key === 'stump' && this.meshes.stump) this.meshes.stump.visible = visible;
+    else if ((key === 'peek' || key === 'tibase') && this.meshes[key]) this.meshes[key].visible = visible;
     else if (key === 'reference' && this.referenceRing) this.referenceRing.visible = visible;
     this.emit();
   }
