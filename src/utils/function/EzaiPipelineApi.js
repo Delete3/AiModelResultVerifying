@@ -28,7 +28,7 @@ const PIPELINE_BASE = '/api/pipeline';
 // before sending than after.
 //
 // `formats` is which scan formats a deployment reads as they are. ezai-pipeline has read
-// .stl/.ply/.obj all along and .tri since 2026-09-18 (Chiayi first). A .tri going to a
+// .stl/.ply/.obj all along and .tri since 2026-09-18 on Chiayi, 2026-09-30 on z790. A .tri going to a
 // deployment without it is rewritten as PLY in this browser first -- losslessly, from the
 // file, so that box is handed the same mesh the other would have made of it. A stale entry
 // here therefore costs a conversion, never a wrong result; GET / on a deployment lists what
@@ -42,9 +42,9 @@ const PIPELINE_TARGETS = {
     label: 'z790 8031',
     hint: '台中 · RTX 5080 · 正式 pipeline',
     remote: false,
-    // single_arch was promoted here on 2026-09-16.
+    // single_arch was promoted here on 2026-09-16, .tri (and gzip) on 2026-09-30.
     singleArch: true,
-    formats: BASE_FORMATS,
+    formats: TRI_FORMATS,
   },
   // A second ezai-pipeline container on the same box and the same GPU services, for a build
   // that has not been promoted to 8031. Kept apart so trying one can never change what the
