@@ -16,7 +16,7 @@ const ABUTMENT_COLOR = 0x4dabf7;
 // stand-in the crown's intaglio fits, not a design anyone will use, and the crown's outer
 // surface is what should be looked at.
 const STUMP_COLOR = 0x8ce99a;
-// PEEK's own beige, and a titanium grey for the placeholder base it sits on.
+// PEEK's own beige, and a titanium grey for the base it sits on.
 const PEEK_COLOR = 0xe6d3a8;
 const TIBASE_COLOR = 0x8d99a6;
 const TRANSLUCENT_OPACITY = 0.35;
@@ -249,10 +249,10 @@ class CaseScene {
 
   // --- PEEK crown and its titanium base ----------------------------------------------------
 
-  async loadSolid(slot, blob, fileName, material, renderOrder) {
-    const geometry = await loadGeometry(new File([blob], fileName, { type: 'model/ply' }));
-    if (!geometry) throw new Error(`無法解析 ${fileName}`);
+  setSolid(slot, geometry, material, renderOrder) {
     if (this.meshes[slot]) disposeMesh(this.meshes[slot]);
+    this.meshes[slot] = null;
+    if (!geometry) return null;
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = slot;
     mesh.renderOrder = renderOrder;
@@ -263,21 +263,22 @@ class CaseScene {
   }
 
   /**
-   * The PEEK crown (peek_crown.ply): the outer shell, the lower part and the titanium-base
-   * cavity as one solid, in the uploaded frame. It contains the crown's outer shell vertex
-   * for vertex, so the two would fight for the same pixels: the crown and the stump are
-   * hidden while it is shown, and shown again when it goes. Replacing it (a re-run) keeps
-   * them hidden.
+   * The PEEK crown built in this browser (src/utils/function/peek/): the outer shell, the
+   * lower part and the titanium-base interface as one mesh, and the titanium base (or
+   * null), both in the uploaded frame. The PEEK crown contains the crown's outer shell
+   * almost vertex for vertex, so the two would fight for the same pixels: the crown and the
+   * stump are hidden while it is shown, and shown again when it goes. Replacing it (a
+   * rebuild) keeps them hidden. The geometries are owned by the scene from here on.
+   * @param {THREE.BufferGeometry} peekGeometry
+   * @param {THREE.BufferGeometry|null} tibaseGeometry
    */
-  async setPeek(blob, tibaseBlob = null) {
-    await this.loadSolid('peek', blob, 'peek_crown.ply', new THREE.MeshStandardMaterial({
+  setPeek(peekGeometry, tibaseGeometry = null) {
+    this.setSolid('peek', peekGeometry, new THREE.MeshStandardMaterial({
       color: PEEK_COLOR, roughness: 0.55, metalness: 0, side: THREE.DoubleSide,
     }), 2);
-    if (tibaseBlob) {
-      await this.loadSolid('tibase', tibaseBlob, 'tibase_proxy.ply', new THREE.MeshStandardMaterial({
-        color: TIBASE_COLOR, roughness: 0.35, metalness: 0.5, side: THREE.DoubleSide,
-      }), 3);
-    }
+    this.setSolid('tibase', tibaseGeometry, new THREE.MeshStandardMaterial({
+      color: TIBASE_COLOR, roughness: 0.35, metalness: 0.5, side: THREE.DoubleSide,
+    }), 3);
     if (!this.peekHid) {
       this.peekHid = true;
       this.visible.crown = false;

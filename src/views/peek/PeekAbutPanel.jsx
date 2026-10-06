@@ -1,18 +1,20 @@
 /* eslint-disable react/prop-types -- props are documented at each component; no prop-types dependency here */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, InputNumber, Radio, Tag, Upload } from 'antd';
 
 import CaseScene from '../../utils/function/CaseScene';
 import MarginEditor from '../../utils/function/margin-editor/MarginEditor';
 import { formatMarginPts } from '../../utils/function/margin-editor/marginPts';
-import { getPipelineHealth, PIPELINE_MODES, PIPELINE_TARGETS, rerunPeekLower, runPipelineJob } from '../../utils/function/EzaiPipelineApi';
+import { getPipelineHealth, PIPELINE_MODES, PIPELINE_TARGETS, runPipelineJob } from '../../utils/function/EzaiPipelineApi';
+import { loadLibraryIndex } from '../../utils/function/peek/peekBase';
 import { SCAN_ACCEPT } from '../../utils/loader/loadGeometry';
 import { useMarginEditor } from '../../utils/tool/useStores';
 import describeFailure from '../design/describeFailure';
 import MarginSection from '../design/MarginSection';
 import ResultView from '../design/ResultView';
+import PeekBuilder from './peekBuilder';
 import PeekLowerSection from './PeekLowerSection';
-import { PEEK_DEFAULTS, peekOverrides } from './peekParams';
+import { DEFAULT_LIBRARY_PART, PEEK_DEFAULTS } from './peekParams';
 
 const TARGET = 'rtx5090_noabut';
 const JAW_NAME = { upper: '上顎', lower: '下顎' };
@@ -20,6 +22,19 @@ const JAW_NAME = { upper: '上顎', lower: '下顎' };
 const HEIGHT_RANGE = [1.0, 6.0];
 const SHOULDER_RANGE = [0.3, 1.5];
 const DEFAULT_SHOULDER = 0.8;
+// Parameter edits rebuild the PEEK lower part once they settle for this long.
+const REBUILD_DELAY_MS = 350;
+
+/** A library part that exists in `index`: `wanted` if it does, else the first one. */
+const pickLibraryPart = (index, wanted) => {
+  const find = part => index.systems.find(s => s.name === part.system)
+    ?.types.find(t => t.name === part.type)?.subtypes.some(u => u.name === part.subtype);
+  if (wanted && find(wanted)) return wanted;
+  if (find(DEFAULT_LIBRARY_PART)) return DEFAULT_LIBRARY_PART;
+  const system = index.systems[0];
+  const type = system.types[0];
+  return { system: system.name, type: type.name, subtype: type.subtypes[0].name };
+};
 
 /**
  * "peek abut設計": a crown's outer surface for a scan that has NO abutment yet -- an implant
@@ -32,6 +47,9 @@ const DEFAULT_SHOULDER = 0.8;
  *
  * Shares the case with the design tab -- the same scans, FDI and margin editor -- so a case
  * loaded there can be tried here without uploading it again.
+ *
+ * The service returns the crown's outer shell only. The PEEK crown's lower part is built
+ * here in the browser, the way AIrDesign will build it from the same shell (step 5).
  *
  * Props: fdi, setFdi, prepJaw, scene (CaseScene snapshot).
  */
@@ -51,9 +69,14 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
   const [shoulder, setShoulder] = useState(DEFAULT_SHOULDER);
   const [peekEnabled, setPeekEnabled] = useState(true);
   const [peekParams, setPeekParams] = useState({ ...PEEK_DEFAULTS });
+  const [libraryIndex, setLibraryIndex] = useState(null);
+  const [library, setLibraryState] = useState(null);
   const [peekState, setPeekState] = useState(null);
   const [peekBusy, setPeekBusy] = useState(false);
   const [peekError, setPeekError] = useState(null);
+  const [hasShell, setHasShell] = useState(false);
+  const builder = useRef(null);
+  const buildSeq = useRef(0);
 
   useEffect(() => {
     fetch('/api/viewer-config')
@@ -61,6 +84,69 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
       .then(setViewerConfig)
       .catch(() => setViewerConfig(null));
   }, []);
+
+  // The implant library, when this instance has one: picked by default, since a real
+  // interface says more than the generic placeholder.
+  useEffect(() => {
+    loadLibraryIndex().then(index => {
+      setLibraryIndex(index);
+      if (index) setLibraryState(pickLibraryPart(index, null));
+    });
+  }, []);
+
+  useEffect(() => {
+    builder.current = new PeekBuilder();
+    return () => builder.current.dispose();
+  }, []);
+
+  const setLibrary = value => setLibraryState(value === 'default' ? pickLibraryPart(libraryIndex, library) : value);
+
+  const dropPeek = () => {
+    buildSeq.current++;
+    builder.current?.dispose();
+    setHasShell(false);
+    setPeekState(null);
+    setPeekError(null);
+  };
+
+  // Build (or rebuild) the lower part from the shell held by the builder. A build that a
+  // newer one overtook is thrown away.
+  const rebuildPeek = useCallback(async () => {
+    if (!builder.current?.hasJob) return;
+    const seq = ++buildSeq.current;
+    setPeekBusy(true);
+    setPeekError(null);
+    // Let the busy state paint: the build runs on this thread for up to a second or so.
+    await new Promise(resolve => setTimeout(resolve, 30));
+    try {
+      if (seq !== buildSeq.current) return;
+      const out = await builder.current.build(peekParams, library);
+      if (seq !== buildSeq.current) {
+        out.solid?.dispose();
+        out.tibase?.dispose();
+        return;
+      }
+      if (out.error) {
+        CaseScene.clearPeek();
+        setPeekState(null);
+        setPeekError(out.error);
+        return;
+      }
+      CaseScene.setPeek(out.solid, out.tibase);
+      setPeekState(out);
+    } catch (buildError) {
+      if (seq === buildSeq.current) setPeekError(buildError.message);
+    } finally {
+      if (seq === buildSeq.current) setPeekBusy(false);
+    }
+  }, [peekParams, library]);
+
+  // Parameters changed: rebuild once they settle.
+  useEffect(() => {
+    if (!hasShell || !peekEnabled) return undefined;
+    const timer = setTimeout(rebuildPeek, REBUILD_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [hasShell, peekEnabled, rebuildPeek]);
 
   const site = PIPELINE_TARGETS[TARGET];
   const opposingJaw = prepJaw === 'upper' ? 'lower' : prepJaw === 'lower' ? 'upper' : null;
@@ -75,6 +161,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
     try {
       await CaseScene.setScan(jaw, file);
       CaseScene.clearCrown();
+      dropPeek();
       if (CaseScene.referenceRing?.parent === CaseScene.meshes[jaw] || !CaseScene.meshes[prepJaw]) {
         CaseScene.clearReferenceRing();
       }
@@ -88,6 +175,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
   const removeScan = jaw => {
     CaseScene.removeScan(jaw);
     CaseScene.clearCrown();
+    dropPeek();
     setResult(null);
   };
 
@@ -103,8 +191,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
     setRunning('crown');
     setError(null);
     setResult(null);
-    setPeekState(null);
-    setPeekError(null);
+    dropPeek();
     setProgress('準備中…');
     CaseScene.resetScanMatrices();
     CaseScene.clearCrown();
@@ -124,48 +211,32 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
           stumpHeightMm: heightMode === 'manual' ? height : null,
           stumpShoulderMm: shoulder !== DEFAULT_SHOULDER ? shoulder : null,
         },
-        peekLower: peekEnabled ? peekOverrides(peekParams) : null,
         target: TARGET,
         onStage: setProgress,
       });
       job.totalSeconds = (performance.now() - startedAt) / 1000;
       await CaseScene.setCrown(job.blob, job.fileName);
       if (job.virtualPrep) await CaseScene.setStump(job.virtualPrep, job.virtualPrepName);
-      if (job.peekCrown) await CaseScene.setPeek(job.peekCrown, job.tibase);
-      if (peekEnabled) {
-        setPeekState({
-          record: job.peekLower,
-          warnings: job.warnings.filter(w => w.startsWith('peek_lower:')),
-          seconds: null,
-        });
-      }
       setResult(job);
+      // The shell, the margin and the site go to the builder now; the build itself follows
+      // from hasShell (and from every parameter change after it).
+      try {
+        await builder.current.setJob({
+          crownBlob: job.blob,
+          marginOriginal: job.marginOriginal,
+          rotation: job.rotation,
+          fdi: Number(fdi),
+          prepPositions: CaseScene.meshes[prepJaw].geometry.getAttribute('position').array,
+        });
+        setHasShell(true);
+      } catch (setupError) {
+        setPeekError(setupError.message);
+      }
       setHealth({ ok: true, text: `${site.label} 正常 · Job ${job.jobId}` });
     } catch (runError) {
       setError(describeFailure(runError, site));
     } finally {
       setRunning(null);
-    }
-  };
-
-  // Only the lower part, with the parameters as they are now, from what the job kept on the
-  // server: about a second, no model runs. The job is kept for an hour.
-  const rerunPeek = async () => {
-    if (!result) return;
-    setPeekBusy(true);
-    setPeekError(null);
-    try {
-      const out = await rerunPeekLower({ target: TARGET, jobId: result.jobId, params: peekOverrides(peekParams) });
-      await CaseScene.setPeek(out.peekCrown, out.tibase);
-      setResult(prev => ({ ...prev, peekCrown: out.peekCrown, tibase: out.tibase, peekLower: out.record }));
-      setPeekState({ record: out.record, warnings: out.warnings, seconds: out.seconds });
-    } catch (rerunError) {
-      const status = rerunError.response?.status;
-      setPeekError(status === 404 || status === 410
-        ? '這個 job 已經過期（服務只保留 1 小時），請重新按「生成牙冠外壁」。'
-        : describeFailure(rerunError, site));
-    } finally {
-      setPeekBusy(false);
     }
   };
 
@@ -276,7 +347,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
       <div className='generate-summary'>
         <Tag>自訂 margin（mode=margin_override）</Tag>
         <Tag color='green'>no_abutment</Tag>
-        {peekEnabled && <Tag color='gold'>peek_lower</Tag>}
+        {peekEnabled && <Tag color='gold'>PEEK 下半部：瀏覽器</Tag>}
         {hasPrep && <Tag color={singleArch ? 'orange' : 'blue'}>{singleArch ? '單顎' : '上下顎'}</Tag>}
       </div>
       <Button
@@ -293,12 +364,11 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
         {blockers.map(blocker => <li key={blocker}>{blocker}</li>)}
       </ul>}
 
-      {/* The PEEK lower part's warnings live in step 5, where a re-run replaces them. */}
       <ResultView
         running={running}
         progress={progress}
         error={error}
-        result={result && { ...result, warnings: result.warnings.filter(w => !w.startsWith('peek_lower:')) }}
+        result={result}
         onEditRing={() => {}}
       />
     </section>
@@ -308,11 +378,14 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
       setEnabled={setPeekEnabled}
       params={peekParams}
       setParams={setPeekParams}
+      library={library}
+      setLibrary={setLibrary}
+      libraryIndex={libraryIndex}
       state={peekState}
-      canRerun={Boolean(result?.peekLower)}
       busy={peekBusy}
       error={peekError}
-      onRerun={rerunPeek}
+      hasShell={hasShell}
+      onRebuild={rebuildPeek}
       result={result}
       running={running}
     />

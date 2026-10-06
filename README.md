@@ -53,6 +53,7 @@ checkingViewer 會依序執行：
 | 分頁 | 做什麼 |
 |---|---|
 | 牙冠設計 | 主要流程：病例 → Margin → 生成牙冠，全部走 `ezai-pipeline` |
+| peek abut設計 | 沒有支台齒的口掃（植體位置）→ 牙冠外壁（嘉義 `/pipeline-noabut/`），PEEK 牙冠下半部在瀏覽器裡建置（見〈peek abut設計〉） |
 | 模型預覽 | 拖曳任意多個 STL / PLY / OBJ / TRI 模型與 PTS margin 線進來一起看，各自調整顏色、透明度、顯示（見〈模型預覽〉） |
 | 直接呼叫 FlowTooth | 繞過 pipeline，直接打這台的 FlowToothSDF dev 8010 / prod 8013 做對照 |
 | Abutment（5090） | 呼叫嘉義 5090 上的 FSAbutment（`ezai2` 的 `/fsabutment/`），四個檔案都在這個分頁自己上傳 |
@@ -117,6 +118,30 @@ checkingViewer 會依序執行：
 - TRI 的頂點顏色：V1 讀檔尾的顏色區塊，V2 讀 `17000` 區塊。筆電上 1920 個有顏色的 V1 檔都讀得到；
   V2 目前沒有看到帶顏色的實際檔案，只用自製檔案驗證過。
 - 檔案只在瀏覽器裡讀，不會上傳到任何地方。
+
+### peek abut設計
+
+給植體位置還沒有 abutment 的口掃。和「牙冠設計」共用口掃、FDI 與 margin 編輯器；margin 只能自訂。
+
+1. 送到嘉義 5090 的 `/pipeline-noabut/`（`no_abutment=true`、`mode=margin_override`）：服務在 margin 環內放虛擬支台齒再生成牙冠，
+   **只回外壁**（`crown.ply`）。不再請服務做 PEEK 下半部（`peek_lower`）。
+2. **PEEK 下半部在瀏覽器裡建置**，用的是 AIrDesign（airdental）呼叫端同一套算法：
+   `src/utils/function/peek/AbutmentLoft.js` 是 airdental `workflow/AbutmentDesign/AbutmentLoft.js` 的逐字複製（只改了 import 路徑），
+   airdental 改了就再複製一次。外壁下緣先對齊 margin，再從下緣放樣到鈦基座介面。
+   - 植體位置：這裡沒有 scan body，預設從口掃的軟組織隧道估計（`implantPlacement.js`），深度、偏移、傾斜都可以改；軸向預設是擺正後的咬合方向。
+   - 鈦基座：「通用」是四個尺寸的佔位形狀；「模型庫」用 AIrDesign 的植體模型庫（EZCAD 的 9 個 Inteware 系統，interface 與 TiBase 檔）。
+   - 穿齦段：整體外擴／內縮、bone avoidance，對應 AIrDesign Abutment 設計的同名參數（那邊的 8 個控制點這裡一起移動）。
+   - 改參數會自動重建（約 0.2–0.6 秒）；改植體位置時要重新對齊外壁，久一點。
+   - `cleanShell.js`：pipeline 的外壁有極短的邊（< 0.0001 mm）、下緣自己碰到自己、下緣小段逆行，原樣交給 `AbutmentLoft.js`
+     會失敗或留下破洞，所以先整理。AIrDesign 拿到同樣的外壁也會遇到，之後應該改在 pipeline 端處理。
+
+**模型庫不在 git 裡**（`public/` 整個被 `.gitignore` 排除）。要放到某個實例上：
+
+```bash
+python scripts/make_implant_library.py <airdental>/client/default/airdesign/constants/scanbody-library/ImplantAbutment public/implant-library
+```
+
+（約 29 MB、117 個檔。）沒有這個資料夾時，面板只能用「通用」鈦基座。
 
 ### 單顎模式
 

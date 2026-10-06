@@ -1,22 +1,29 @@
-// ezai-pipeline app/peek_lower.py DEFAULTS -- keep the two in step. null is "auto": the
-// service estimates it from the scan's soft-tissue tunnel.
-const PEEK_DEFAULTS = {
-  interface_diameter_mm: 4.0,
-  chimney_diameter_mm: 3.2,
-  chimney_height_mm: 4.0,
-  collar_height_mm: 0.8,
-  depth_mm: null,
-  offset_md_mm: null,
-  offset_bl_mm: null,
-  tilt_md_deg: 0,
-  tilt_bl_deg: 0,
-  profile: 0,
-  cavity: true,
+import { GENERIC_DEFAULTS, GENERIC_RANGES } from '../../utils/function/peek/peekBase';
+import { PLACEMENT_DEFAULTS, PLACEMENT_RANGES } from '../../utils/function/peek/implantPlacement';
+
+// The emergence controls AIrDesign's abutment step has, applied all round: its eight
+// tissue control points moved out (+) or in (-) together, and bone avoidance (the lower part
+// rises straight up from the interface this far before it flares). AbutmentLoft.js's
+// CONTROL_MAX_RADIAL and BONE_AVOID_MAX are 3 and 2 mm.
+const TISSUE_DEFAULTS = {
+  radial_mm: 0,
+  bone_avoid_mm: 0,
+};
+const TISSUE_RANGES = {
+  radial_mm: [-1, 3],
+  bone_avoid_mm: [0, 2],
 };
 
-/** Only what differs from the defaults goes to the service, so its record says what was asked. */
-const peekOverrides = params => Object.fromEntries(
-  Object.entries(params).filter(([key, value]) => value !== PEEK_DEFAULTS[key]),
-);
+// Everything the PEEK lower part is built from. null in a placement value is "auto": an
+// estimate from the scan's soft-tissue tunnel (implantPlacement.js).
+const PEEK_DEFAULTS = { ...PLACEMENT_DEFAULTS, ...GENERIC_DEFAULTS, ...TISSUE_DEFAULTS };
+const PEEK_RANGES = { ...PLACEMENT_RANGES, ...GENERIC_RANGES, ...TISSUE_RANGES };
 
-export { PEEK_DEFAULTS, peekOverrides };
+// The library part picked when the library is there and nothing has been picked yet.
+const DEFAULT_LIBRARY_PART = {
+  system: 'Inteware Straumann(BoneLevel)',
+  type: 'Straumann(BoneLevel) RC',
+  subtype: '2-Piece',
+};
+
+export { DEFAULT_LIBRARY_PART, PEEK_DEFAULTS, PEEK_RANGES };
