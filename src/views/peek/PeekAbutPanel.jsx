@@ -16,7 +16,9 @@ import PeekBuilder from './peekBuilder';
 import PeekLowerSection from './PeekLowerSection';
 import { DEFAULT_LIBRARY_PART, PEEK_DEFAULTS } from './peekParams';
 
-const TARGET = 'rtx5090_noabut';
+// Chiayi's production pipeline (/pipeline/), since 2026-10-07; before that the test endpoint
+// 'rtx5090_noabut' (/pipeline-noabut/), which also builds the PEEK lower part server-side.
+const TARGET = 'rtx5090';
 const JAW_NAME = { upper: '上顎', lower: '下顎' };
 // The service's own bounds (ezai-pipeline app/virtual_prep.py); it answers 422 outside them.
 const HEIGHT_RANGE = [1.0, 6.0];
@@ -40,9 +42,9 @@ const pickLibraryPart = (index, wanted) => {
  * "peek abut設計": a crown's outer surface for a scan that has NO abutment yet -- an implant
  * site whose abutment (PEEK, AI-designed) will be made from the crown afterwards.
  *
- * FlowToothSDF only knows prepared teeth, so this sends the case to the no-abutment test
- * endpoint on the Chiayi box, which puts a virtual stump inside the ring before building the
- * crown. The margin model cannot find a finish line that is not there, so the ring is always
+ * FlowToothSDF only knows prepared teeth, so this sends the case with no_abutment=true to the
+ * Chiayi box's production pipeline, which puts a virtual stump inside the ring before building
+ * the crown. The margin model cannot find a finish line that is not there, so the ring is always
  * drawn or uploaded here (mode=margin_override).
  *
  * Shares the case with the design tab -- the same scans, FDI and margin editor -- so a case
@@ -271,7 +273,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
       description={<>
         給植體位置還沒有 abutment 的口掃。在牙齦上畫出牙冠要落的位置，服務會在環內放一個
         <b>虛擬支台齒</b>再生成牙冠；只有<b>外壁</b>可以使用，內面是配合虛擬支台齒的。
-        送到嘉義 5090 的測試端點（/pipeline-noabut），正式的 pipeline 不受影響。
+        送到嘉義 5090 的正式 pipeline（/pipeline，no_abutment=true）。
       </>}
     />
 

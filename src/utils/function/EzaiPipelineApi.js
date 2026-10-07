@@ -33,6 +33,11 @@ const PIPELINE_BASE = '/api/pipeline';
 // file, so that box is handed the same mesh the other would have made of it. A stale entry
 // here therefore costs a conversion, never a wrong result; GET / on a deployment lists what
 // it takes under `mesh_formats`.
+//
+// `noAbutment: true` marks a deployment that accepts no_abutment=true: the crown built over a
+// virtual stump inside the ring, for a site with no abutment yet (mode=margin_override only).
+// Both production pipelines have it -- z790 since 2026-10-06, Chiayi since 2026-10-07 -- and
+// a deployment without it answers such a job with a 422.
 const BASE_FORMATS = ['stl', 'ply', 'obj'];
 const TRI_FORMATS = [...BASE_FORMATS, 'tri'];
 
@@ -42,9 +47,11 @@ const PIPELINE_TARGETS = {
     label: 'z790 8031',
     hint: '台中 · RTX 5080 · 正式 pipeline',
     remote: false,
-    // single_arch was promoted here on 2026-09-16, .tri (and gzip) on 2026-09-30.
+    // single_arch was promoted here on 2026-09-16, .tri (and gzip) on 2026-09-30,
+    // no_abutment on 2026-10-06.
     singleArch: true,
     formats: TRI_FORMATS,
+    noAbutment: true,
   },
   // A second ezai-pipeline container on the same box and the same GPU services, for a build
   // that has not been promoted to 8031. Kept apart so trying one can never change what the
@@ -66,6 +73,7 @@ const PIPELINE_TARGETS = {
     remote: true,
     singleArch: true,
     formats: TRI_FORMATS,
+    noAbutment: true,
   },
   // The same box and the same proxy as above -- only how the meshes get there differs. The
   // scans go to object storage and the POST carries two URLs instead of 30 MB of body, so
@@ -83,12 +91,17 @@ const PIPELINE_TARGETS = {
     viaS3: true,
     singleArch: true,
     formats: TRI_FORMATS,
+    noAbutment: true,
   },
   // The no-abutment test endpoint on the Chiayi box (2026-09-21): the same pipeline built
   // from ezai-pipeline's feature/no-abutment, which also takes no_abutment=true and builds
-  // the crown over a virtual stump inside the ring. `noAbutment` marks a deployment that
-  // accepts it. `panel` keeps it out of the design tab's list: only the peek abut tab uses
-  // it, and in the design tab it would answer exactly like "5090 ezai2".
+  // the crown over a virtual stump inside the ring. `panel` keeps it out of the design tab's
+  // list: in the design tab it would answer exactly like "5090 ezai2".
+  //
+  // Unused since 2026-10-07: the peek abut tab now calls "5090 ezai2", whose production
+  // pipeline took no_abutment that day and gives the same outer shell (5/5 cases checked on
+  // the box). Kept, with its proxy route, so that going back to the test endpoint -- which
+  // can still build the PEEK lower part server-side -- is one line in PeekAbutPanel.
   rtx5090_noabut: {
     base: '/api/pipeline-noabut',
     label: '5090 無支台齒',
