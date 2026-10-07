@@ -17,7 +17,7 @@ import PeekLowerSection from './PeekLowerSection';
 import { DEFAULT_LIBRARY_PART, PEEK_DEFAULTS } from './peekParams';
 
 // Chiayi's production pipeline (/pipeline/), since 2026-10-07; before that the test endpoint
-// 'rtx5090_noabut' (/pipeline-noabut/), which also builds the PEEK lower part server-side.
+// /pipeline-noabut/, taken down the same day.
 const TARGET = 'rtx5090';
 const JAW_NAME = { upper: '上顎', lower: '下顎' };
 // The service's own bounds (ezai-pipeline app/virtual_prep.py); it answers 422 outside them.

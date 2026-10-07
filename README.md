@@ -53,7 +53,7 @@ checkingViewer 會依序執行：
 | 分頁 | 做什麼 |
 |---|---|
 | 牙冠設計 | 主要流程：病例 → Margin → 生成牙冠，全部走 `ezai-pipeline` |
-| peek abut設計 | 沒有支台齒的口掃（植體位置）→ 牙冠外壁（嘉義正式 `/pipeline/`，2026-10-07 以前是 `/pipeline-noabut/`），PEEK 牙冠下半部在瀏覽器裡建置（見〈peek abut設計〉） |
+| peek abut設計 | 沒有支台齒的口掃（植體位置）→ 牙冠外壁（嘉義正式 `/pipeline/`，2026-10-07 以前是 `/pipeline-noabut/`，已拆），PEEK 牙冠下半部在瀏覽器裡建置（見〈peek abut設計〉） |
 | 模型預覽 | 拖曳任意多個 STL / PLY / OBJ / TRI 模型與 PTS margin 線進來一起看，各自調整顏色、透明度、顯示（見〈模型預覽〉） |
 | 直接呼叫 FlowTooth | 繞過 pipeline，直接打這台的 FlowToothSDF dev 8010 / prod 8013 做對照 |
 | Abutment（5090） | 呼叫嘉義 5090 上的 FSAbutment（`ezai2` 的 `/fsabutment/`），四個檔案都在這個分頁自己上傳 |
@@ -144,7 +144,7 @@ checkingViewer 會依序執行：
 
 給植體位置還沒有 abutment 的口掃。和「牙冠設計」共用口掃、FDI 與 margin 編輯器；margin 只能自訂。
 
-1. 送到嘉義 5090 的正式 `/pipeline/`（`no_abutment=true`、`mode=margin_override`；2026-10-07 起，之前是測試端點 `/pipeline-noabut/`，
+1. 送到嘉義 5090 的正式 `/pipeline/`（`no_abutment=true`、`mode=margin_override`；2026-10-07 起，之前是測試端點 `/pipeline-noabut/`（同日拆除），
    兩邊的外壁相同，5 筆 case 驗證過）：服務在 margin 環內放虛擬支台齒再生成牙冠，
    **只回外壁**（`crown.ply`）。不再請服務做 PEEK 下半部（`peek_lower`）。
 2. **PEEK 下半部在瀏覽器裡建置**，用的是 AIrDesign（airdental）呼叫端同一套算法：

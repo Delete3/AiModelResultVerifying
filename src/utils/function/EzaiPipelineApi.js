@@ -93,25 +93,12 @@ const PIPELINE_TARGETS = {
     formats: TRI_FORMATS,
     noAbutment: true,
   },
-  // The no-abutment test endpoint on the Chiayi box (2026-09-21): the same pipeline built
-  // from ezai-pipeline's feature/no-abutment, which also takes no_abutment=true and builds
-  // the crown over a virtual stump inside the ring. `panel` keeps it out of the design tab's
-  // list: in the design tab it would answer exactly like "5090 ezai2".
-  //
-  // Unused since 2026-10-07: the peek abut tab now calls "5090 ezai2", whose production
-  // pipeline took no_abutment that day and gives the same outer shell (5/5 cases checked on
-  // the box). Kept, with its proxy route, so that going back to the test endpoint -- which
-  // can still build the PEEK lower part server-side -- is one line in PeekAbutPanel.
-  rtx5090_noabut: {
-    base: '/api/pipeline-noabut',
-    label: '5090 無支台齒',
-    hint: '嘉義 · RTX 5090 · 虛擬支台齒（測試端點）',
-    remote: true,
-    singleArch: true,
-    formats: TRI_FORMATS,
-    noAbutment: true,
-    panel: 'peek',
-  },
+  // There was a no-abutment test endpoint here, 'rtx5090_noabut' (/pipeline-noabut/ on the
+  // Chiayi box, 2026-09-21 to 2026-10-07). It came down once that box's production pipeline
+  // took no_abutment; the peek abut tab calls "5090 ezai2" instead. vite.config.js still
+  // declares its proxy route, which now answers 404 -- left until that file is next edited,
+  // since editing it restarts Vite and reloads every open page. `panel: '<tab>'` on a target
+  // keeps it out of the design tab's list.
   // The contralateral test endpoint on the Chiayi box (2026-10-07): production ezai-pipeline
   // plus contralateral=true, in front of a test FlowToothSDF that refits an anterior crown to
   // the same tooth on the other side of the arch, mirrored (study on that box:
