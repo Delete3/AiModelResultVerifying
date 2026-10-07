@@ -112,6 +112,53 @@ const PIPELINE_TARGETS = {
     noAbutment: true,
     panel: 'peek',
   },
+  // The contralateral test endpoint on the Chiayi box (2026-10-07): production ezai-pipeline
+  // plus contralateral=true, in front of a test FlowToothSDF that refits an anterior crown to
+  // the same tooth on the other side of the arch, mirrored (study on that box:
+  // /data/contralateral-20261007/README.md). With the checkbox off it answers exactly like
+  // "5090 ezai2". `contralateral` is what the design tab's 「參考對側牙」 checkbox looks for.
+  rtx5090_contra: {
+    base: '/api/pipeline-contra',
+    label: '5090 參考對側牙（測試）',
+    hint: '嘉義 · RTX 5090 · 前牙可參考對側牙（測試端點）',
+    remote: true,
+    singleArch: true,
+    formats: TRI_FORMATS,
+    noAbutment: true,
+    contralateral: true,
+  },
+};
+
+/** FDI x1-x3: the teeth the contralateral option is for. */
+const isAnteriorFdi = fdi => [1, 2, 3].includes(Number(fdi) % 10) && [1, 2, 3, 4].includes(Math.floor(Number(fdi) / 10));
+
+/**
+ * What the crown service did with contralateral=true, from the job's manifest: null when it
+ * was not asked, else { applied, reason (Chinese, for the tag), raw (the service's words),
+ * info }.
+ */
+const CONTRA_REASONS = [
+  ['not an anterior tooth', '不是前牙'],
+  ['the arch does not mirror onto itself', '牙弓左右對不起來（可能只掃半邊）'],
+  ['mirror plane tilted', '找到的中線歪斜'],
+  ['no mirror registration', '找不到中線'],
+  ['nothing on the other side', '對側沒有牙'],
+  ['no tooth found on the other side', '對側沒有牙'],
+  ["the other side's tooth is short or missing", '對側牙太短或缺牙'],
+  ['the other side does not look like a tooth here', '對側不像天然牙（可能是支台齒或植體）'],
+  ["could not reach the other side's shape", '模型擬合不到對側牙的形狀'],
+  ['base crown has no outer surface', '牙冠沒有可比對的外壁'],
+  ['error', '錯誤'],
+];
+const contralateralOutcome = manifest => {
+  const crown = manifest?.backends?.crown;
+  if (!manifest?.crown_params?.contralateral) return null;
+  const status = crown?.contralateral;
+  if (!status) return { applied: false, reason: '服務不支援這個選項', raw: '', info: null };
+  if (status === 'applied') return { applied: true, reason: '', raw: status, info: crown.contralateral_info ?? null };
+  const raw = status.replace(/^skipped:\s*/, '');
+  const hit = CONTRA_REASONS.find(([key]) => raw.startsWith(key));
+  return { applied: false, reason: hit ? hit[1] : raw, raw, info: crown.contralateral_info ?? null };
 };
 
 /**
@@ -267,6 +314,10 @@ const singleArchTargets = () => Object.values(PIPELINE_TARGETS)
  * used. Needs mode margin_override and a target flagged `noAbutment`. The PEEK crown's
  * lower part is NOT asked of the service (it can build one, peek_lower, but AIrDesign
  * builds its own from the shell, so this viewer does too: src/utils/function/peek/).
+ *
+ * `contralateral` (anterior teeth, a target flagged `contralateral`): the crown is refitted to
+ * the mirrored same tooth on the other side; the service may decline, and says why
+ * (contralateralOutcome reads it from the manifest).
  */
 const runPipelineJob = async ({
   upperStl,
@@ -277,6 +328,7 @@ const runPipelineJob = async ({
   marginPts = null,
   singleArch = false,
   noAbutment = null,
+  contralateral = false,
   onStage = () => {},
   pollMs = 500,
   timeoutMs = 15 * 60 * 1000,
@@ -307,6 +359,7 @@ const runPipelineJob = async ({
     if (!site.noAbutment) throw new Error(`${site.label} 不支援無支台齒模式`);
     if (mode !== PIPELINE_MODES.marginOverride) throw new Error('無支台齒模式需要自訂 margin');
   }
+  if (contralateral && !site.contralateral) throw new Error(`${site.label} 不支援「參考對側牙」`);
   // Each scan goes out under its REAL extension, because that is all the service reads the
   // format from: until 2026-09-18 this sent everything as <jaw>.stl, so a PLY uploaded here
   // was parsed as STL and the job died at its first stage.
@@ -342,6 +395,7 @@ const runPipelineJob = async ({
   // mode spelled out here is what the job record will say was asked for.
   form.append('mode', mode);
   if (singleArch) form.append('single_arch', 'true');
+  if (contralateral) form.append('contralateral', 'true');
   if (noAbutment) {
     form.append('no_abutment', 'true');
     if (noAbutment.stumpHeightMm != null) form.append('stump_height_mm', String(noAbutment.stumpHeightMm));
@@ -442,7 +496,7 @@ const runPipelineJob = async ({
     // The target is in the filename so that two downloads of the same case do not collide
     // in ~/Downloads as "…(1).ply", which is exactly the moment a comparison stops being
     // one.
-    fileName: `pipeline_crown_FDI${fdi}_${target}${singleArch ? '_single' : ''}.ply`,
+    fileName: `pipeline_crown_FDI${fdi}_${target}${singleArch ? '_single' : ''}${contralateral ? '_contra' : ''}.ply`,
     archive: new Blob([archive.data], { type: 'application/zip' }),
     archiveName: `ezai-pipeline-${jobId}-FDI${fdi}.zip`,
     // The virtual stump the crown was built over (original frame), and the service's record
@@ -496,4 +550,4 @@ const getPipelineHealth = async (target) => {
   }
 };
 
-export { runPipelineJob, getPipelineHealth, singleArchTargets, PIPELINE_TARGETS, PIPELINE_MODES };
+export { runPipelineJob, getPipelineHealth, singleArchTargets, PIPELINE_TARGETS, PIPELINE_MODES, isAnteriorFdi, contralateralOutcome };

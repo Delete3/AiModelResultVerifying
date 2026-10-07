@@ -49,6 +49,12 @@ const FSABUTMENT_RTX5090_API_URL = process.env.FSABUTMENT_RTX5090_API_URL
 // Access application, so the same token. Only the "peek abut設計" tab calls it.
 const PIPELINE_NOABUT_API_URL = process.env.PIPELINE_NOABUT_API_URL
   || 'https://ezai2.inteware.com.tw/pipeline-noabut'
+// The contralateral test endpoint on that same box (added 2026-10-07): production
+// ezai-pipeline plus a contralateral=true field, in front of a test FlowToothSDF that shapes
+// anterior crowns after the mirrored contralateral tooth. Same gateway, same Access
+// application, same token. Only the design tab's 「參考對側牙」 checkbox calls it.
+const PIPELINE_CONTRA_API_URL = process.env.PIPELINE_CONTRA_API_URL
+  || 'https://ezai2.inteware.com.tw/pipeline-contra'
 // ToothRoot on that same box (added 2026-10-07): the orthodontic team's AI tooth
 // segmentation and root generation (htyau/ToothRoot, served by its deploy/deploy_api.py).
 // Not part of the ezai chain; it shares the gateway for FSAbutment's reason -- this box cannot
@@ -192,6 +198,7 @@ export default defineConfig({
         // rather than a 403 HTML page the frontend cannot parse.
         server.middlewares.use('/api/fsabutment-rtx5090', unconfigured)
         server.middlewares.use('/api/pipeline-noabut', unconfigured)
+        server.middlewares.use('/api/pipeline-contra', unconfigured)
         server.middlewares.use('/api/toothroot-rtx5090', unconfigured)
       },
     },
@@ -307,6 +314,7 @@ export default defineConfig({
               rtx5090: RTX5090_CONFIGURED,
               rtx5090_s3: RTX5090_CONFIGURED && S3_CONFIGURED,
               rtx5090_noabut: RTX5090_CONFIGURED,
+              rtx5090_contra: RTX5090_CONFIGURED,
               toothroot: RTX5090_CONFIGURED,
             },
           }))
@@ -556,6 +564,25 @@ export default defineConfig({
         target: PIPELINE_NOABUT_API_URL,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/pipeline-noabut/, ''),
+        headers: {
+          'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
+          'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,
+        },
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.removeHeader('cookie')
+          })
+          proxy.on('proxyRes', (proxyRes) => {
+            delete proxyRes.headers['set-cookie']
+          })
+        },
+      },
+      // The contralateral test endpoint on the Chiayi box (2026-10-07). Before
+      // '/api/pipeline' for the same prefix-order reason, and the same three Access fixes.
+      '/api/pipeline-contra': {
+        target: PIPELINE_CONTRA_API_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/pipeline-contra/, ''),
         headers: {
           'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
           'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,

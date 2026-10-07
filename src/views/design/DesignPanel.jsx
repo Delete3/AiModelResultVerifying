@@ -5,7 +5,7 @@ import { Alert, Button, Checkbox, Input, InputNumber, Select, Tag, Tooltip, Uplo
 import CaseScene from '../../utils/function/CaseScene';
 import MarginEditor from '../../utils/function/margin-editor/MarginEditor';
 import { formatMarginPts } from '../../utils/function/margin-editor/marginPts';
-import { getPipelineHealth, singleArchTargets, PIPELINE_MODES, PIPELINE_TARGETS, runPipelineJob } from '../../utils/function/EzaiPipelineApi';
+import { getPipelineHealth, isAnteriorFdi, singleArchTargets, PIPELINE_MODES, PIPELINE_TARGETS, runPipelineJob } from '../../utils/function/EzaiPipelineApi';
 import { SCAN_ACCEPT } from '../../utils/loader/loadGeometry';
 import { useMarginEditor } from '../../utils/tool/useStores';
 import describeFailure from './describeFailure';
@@ -35,6 +35,7 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
   const [marginSource, setMarginSource] = useState('ai');
   const [marginNotice, setMarginNotice] = useState(null);
   const [ignoreOpposing, setIgnoreOpposing] = useState(false);
+  const [contralateral, setContralateral] = useState(false);
   const [target, setTarget] = useState(readStoredTarget);
   const [viewerConfig, setViewerConfig] = useState(null);
   const [health, setHealth] = useState(null);
@@ -60,6 +61,11 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
   const hasOpposing = Boolean(opposingJaw && has[opposingJaw]);
   const singleArch = hasPrep && (!hasOpposing || ignoreOpposing);
   const targetConfigured = viewerConfig?.targets?.[target] ?? true;
+  const anterior = isAnteriorFdi(fdi);
+  // Only sent for a front tooth on a target that can do it; the checkbox stays ticked across
+  // FDI changes so going 11 -> 21 -> 11 does not lose it.
+  const useContralateral = contralateral && anterior && Boolean(site.contralateral);
+  const contraTarget = Object.keys(PIPELINE_TARGETS).find(key => PIPELINE_TARGETS[key].contralateral);
 
   const chooseTarget = value => {
     setTarget(value);
@@ -101,6 +107,15 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
   }
   if (singleArch && !site.singleArch) blockers.push(`「${site.label}」不支援單顎：改選 ${singleArchTargets()} 或補上對咬顎`);
   if (!targetConfigured) blockers.push(`這個實例沒有設定「${site.label}」`);
+  if (contralateral && anterior && !site.contralateral) blockers.push(`「${site.label}」不能參考對側牙：改選「${PIPELINE_TARGETS[contraTarget]?.label}」或取消勾選`);
+
+  const toggleContralateral = checked => {
+    setContralateral(checked);
+    // The option lives on one test endpoint for now, so ticking it takes the user there;
+    // unticking leaves the target alone, which is what makes an on/off comparison on the
+    // same endpoint one click.
+    if (checked && !site.contralateral && contraTarget) chooseTarget(contraTarget);
+  };
 
   const predictBlockers = blockers.filter(b => !b.includes('margin'));
 
@@ -125,6 +140,7 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
         mode,
         marginPts: ring ? formatMarginPts(ring, fdi) : null,
         singleArch,
+        contralateral: useContralateral,
         target,
         onStage: setProgress,
       });
@@ -257,9 +273,18 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
       </label>
       {health && <div className={`health-line ${health.ok === false ? 'bad' : health.ok ? 'good' : ''}`}>{health.text}</div>}
 
+      <Tooltip title={anterior
+        ? '把整個口掃左右鏡射找出中線，讓牙冠的形狀接近另一側的同名牙（例如 11 參考 21）。位置仍照實際空間。對側缺牙、也是支台齒、或只掃半邊時會自動不套用，並說明原因。每顆約多 2 秒。測試功能，只有「5090 參考對側牙（測試）」能用。'
+        : '只適用前牙（FDI x1–x3）'}>
+        <Checkbox checked={contralateral} onChange={e => toggleContralateral(e.target.checked)} disabled={Boolean(running) || !anterior}>
+          參考對側牙（前牙，測試）
+        </Checkbox>
+      </Tooltip>
+
       <div className='generate-summary'>
         <Tag>{generateMode === PIPELINE_MODES.full ? 'AI margin（mode=full）' : '自訂 margin（mode=margin_override）'}</Tag>
         {hasPrep && <Tag color={singleArch ? 'orange' : 'blue'}>{singleArch ? '單顎' : '上下顎'}</Tag>}
+        {useContralateral && <Tag color='purple'>參考對側牙</Tag>}
       </div>
       <Button
         type='primary'

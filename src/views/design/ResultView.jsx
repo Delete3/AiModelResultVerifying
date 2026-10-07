@@ -1,6 +1,7 @@
 /* eslint-disable react/prop-types -- props are documented at each component; no prop-types dependency here */
-import { Alert, Button, Collapse, Spin, Tag } from 'antd';
+import { Alert, Button, Collapse, Spin, Tag, Tooltip } from 'antd';
 
+import { contralateralOutcome } from '../../utils/function/EzaiPipelineApi';
 import { formatTimings } from '../../utils/function/formatTimings';
 import { downloadBlob } from '../../utils/tool/useStores';
 
@@ -63,6 +64,9 @@ const ResultView = ({ running, progress, error, result, onEditRing }) => {
   // surface -- the only part of such a crown meant to be used -- actually came back.
   const stump = result?.noAbutment;
   const deliveredShell = result?.manifest?.backends?.crown?.shell;
+  // Only when 「參考對側牙」 was ticked: whether the crown service used the other side's tooth.
+  const contra = contralateralOutcome(result?.manifest);
+  const contraDetail = contra?.info ? Object.entries(contra.info).map(([k, v]) => `${k}=${v}`).join(' · ') : '';
 
   return <div className='result-view'>
     {running && <Alert type='info' showIcon icon={<Spin size='small' />} message={progress || '處理中…'} />}
@@ -92,6 +96,11 @@ const ResultView = ({ running, progress, error, result, onEditRing }) => {
             {stump && (deliveredShell === 'outer'
               ? <Tag color='green'>外壁已分離</Tag>
               : <Tag color='red'>外壁分離失敗，回傳封閉牙冠</Tag>)}
+            {contra && <Tooltip title={[contra.raw, contraDetail].filter(Boolean).join(' · ')}>
+              {contra.applied
+                ? <Tag color='purple'>已參考對側牙{contra.info?.shift_mm != null ? ` · 平移 ${contra.info.shift_mm} mm` : ''}</Tag>
+                : <Tag color='default'>未參考對側牙：{contra.reason}</Tag>}
+            </Tooltip>}
             {formatTags(result.inputs)}
           </div>
           <div className='job-id'>Job {result.jobId} · {result.totalSeconds.toFixed(1)} 秒</div>
