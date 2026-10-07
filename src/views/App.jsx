@@ -9,6 +9,7 @@ import CaseScene, { jawOfFdi } from '../utils/function/CaseScene';
 import CheckGroundTrue from '../utils/function/CheckGroundTrue';
 import MarginEditor from '../utils/function/margin-editor/MarginEditor';
 import PreviewScene from '../utils/function/PreviewScene';
+import ToothSegScene from '../utils/function/ToothSegScene';
 import { useCaseScene } from '../utils/tool/useStores';
 import DesignPanel from './design/DesignPanel';
 import DirectFlowToothPanel from './advanced/DirectFlowToothPanel';
@@ -18,6 +19,8 @@ import PeekAbutPanel from './peek/PeekAbutPanel';
 import PreviewOverlay from './preview/PreviewOverlay';
 import PreviewPanel from './preview/PreviewPanel';
 import SceneOverlay from './SceneOverlay';
+import ToothSegOverlay from './toothseg/ToothSegOverlay';
+import ToothSegPanel from './toothseg/ToothSegPanel';
 
 function App() {
   const containerRef = useRef();
@@ -37,15 +40,20 @@ function App() {
     Editor.scene.background = new THREE.Color(0xeef1f5);
     Editor.scene.add(new THREE.AxesHelper(10));
     CheckGroundTrue.init();
-    // After the lights and the axes exist: it puts them on the preview's layer too.
+    // After the lights and the axes exist: each puts them on its own layer too.
     PreviewScene.init();
+    ToothSegScene.init();
   }, []);
 
-  // The model preview tab has the view to itself; every other tab shows the case.
+  // The model preview and AI分牙 tabs each have the view to themselves, on their own layer;
+  // every other tab shows the case. Leave before entering: each one saves the camera view it
+  // hands back, so the tab being left has to go first.
   useEffect(() => {
-    const previewing = tab === 'preview';
-    PreviewScene.setActive(previewing);
-    MarginEditor.setSuspended(previewing);
+    if (tab !== 'preview') PreviewScene.setActive(false);
+    if (tab !== 'toothseg') ToothSegScene.setActive(false);
+    if (tab === 'preview') PreviewScene.setActive(true);
+    if (tab === 'toothseg') ToothSegScene.setActive(true);
+    MarginEditor.setSuspended(tab === 'preview' || tab === 'toothseg');
   }, [tab]);
 
   // The margin is drawn on the arch that holds the tooth. While the FDI field holds
@@ -110,6 +118,14 @@ function App() {
                   children: <DirectFSAbutmentPanel />,
                 },
                 {
+                  // The orthodontic team's ToothRoot on the Chiayi box: AI tooth
+                  // segmentation and root generation. Its own layer and its own pair of
+                  // scans (or the design tab's, one click away).
+                  key: 'toothseg',
+                  label: 'AI分牙',
+                  children: <ToothSegPanel />,
+                },
+                {
                   key: 'legacy',
                   label: '舊工具',
                   children: <LegacyTools setIsLoading={setIsLoading} />,
@@ -119,7 +135,7 @@ function App() {
           </aside>
           <main className='viewport'>
             <div ref={containerRef} className='editor' />
-            {tab === 'preview' ? <PreviewOverlay /> : <SceneOverlay />}
+            {tab === 'preview' ? <PreviewOverlay /> : tab === 'toothseg' ? <ToothSegOverlay /> : <SceneOverlay />}
           </main>
         </div>
       </Spin>

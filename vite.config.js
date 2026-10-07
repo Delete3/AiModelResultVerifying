@@ -49,6 +49,13 @@ const FSABUTMENT_RTX5090_API_URL = process.env.FSABUTMENT_RTX5090_API_URL
 // Access application, so the same token. Only the "peek abut設計" tab calls it.
 const PIPELINE_NOABUT_API_URL = process.env.PIPELINE_NOABUT_API_URL
   || 'https://ezai2.inteware.com.tw/pipeline-noabut'
+// ToothRoot on that same box (added 2026-10-07): the orthodontic team's AI tooth
+// segmentation and root generation (htyau/ToothRoot, served by its deploy/deploy_api.py).
+// Not part of the ezai chain; it shares the gateway for FSAbutment's reason -- this box cannot
+// route to 192.168.50.0/24 -- and sits behind the same Access application, so the same token.
+// Only the "AI分牙" tab calls it.
+const TOOTHROOT_RTX5090_API_URL = process.env.TOOTHROOT_RTX5090_API_URL
+  || 'https://ezai2.inteware.com.tw/toothroot'
 const RTX5090_CF_CLIENT_ID = process.env.RTX5090_CF_CLIENT_ID || ''
 const RTX5090_CF_CLIENT_SECRET = process.env.RTX5090_CF_CLIENT_SECRET || ''
 const RTX5090_CONFIGURED = Boolean(RTX5090_CF_CLIENT_ID && RTX5090_CF_CLIENT_SECRET)
@@ -185,6 +192,7 @@ export default defineConfig({
         // rather than a 403 HTML page the frontend cannot parse.
         server.middlewares.use('/api/fsabutment-rtx5090', unconfigured)
         server.middlewares.use('/api/pipeline-noabut', unconfigured)
+        server.middlewares.use('/api/toothroot-rtx5090', unconfigured)
       },
     },
     {
@@ -299,6 +307,7 @@ export default defineConfig({
               rtx5090: RTX5090_CONFIGURED,
               rtx5090_s3: RTX5090_CONFIGURED && S3_CONFIGURED,
               rtx5090_noabut: RTX5090_CONFIGURED,
+              toothroot: RTX5090_CONFIGURED,
             },
           }))
         })
@@ -547,6 +556,28 @@ export default defineConfig({
         target: PIPELINE_NOABUT_API_URL,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/pipeline-noabut/, ''),
+        headers: {
+          'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
+          'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,
+        },
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.removeHeader('cookie')
+          })
+          proxy.on('proxyRes', (proxyRes) => {
+            delete proxyRes.headers['set-cookie']
+          })
+        },
+      },
+      // ToothRoot on the Chiayi box (2026-10-07), for the "AI分牙" tab. No shorter key
+      // matches it, so its place in this list is free. The same three Access fixes as the
+      // routes above, for the same reasons; do not simplify any of them away. Its uploads are
+      // two gzipped arch scans and its downloads are gzipped PLYs (Content-Encoding passes
+      // straight through to the browser, which inflates them).
+      '/api/toothroot-rtx5090': {
+        target: TOOTHROOT_RTX5090_API_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/toothroot-rtx5090/, ''),
         headers: {
           'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
           'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,

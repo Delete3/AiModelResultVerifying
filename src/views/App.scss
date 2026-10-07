@@ -689,3 +689,95 @@ $muted: #6b7280;
   font-size: 12px;
   color: #595959;
 }
+
+// --- AI分牙 tab ---------------------------------------------------------------------------
+
+.toothseg-timing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  margin-bottom: 8px;
+}
+
+.toothseg-jaw {
+  margin-top: 10px;
+}
+
+.toothseg-jaw-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
+
+  .ant-tag {
+    margin: 0;
+  }
+}
+
+.toothseg-file {
+  overflow: hidden;
+  max-width: 120px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: $muted;
+}
+
+.toothseg-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+
+  th,
+  td {
+    padding: 2px 4px;
+    border-bottom: 1px solid #f0f0f0;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  th:nth-child(-n + 2),
+  td:nth-child(-n + 2) {
+    text-align: left;
+  }
+
+  th {
+    font-weight: 500;
+    color: $muted;
+  }
+
+  .bad,
+  tr.bad td {
+    color: #c92a2a;
+  }
+
+  tr.bad td:last-child {
+    text-align: left;
+    white-space: normal;
+  }
+}
+
+.fdi-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+
+.toothseg-switches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+
+  .ant-checkbox-wrapper {
+    margin: 0;
+    font-size: 12px;
+  }
+}
