@@ -1,11 +1,11 @@
 /* eslint-disable react/prop-types -- props are documented at each component; no prop-types dependency here */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Checkbox, InputNumber, Radio, Tag, Upload } from 'antd';
+import { Alert, Button, Checkbox, InputNumber, Radio, Tag, Tooltip, Upload } from 'antd';
 
 import CaseScene from '../../utils/function/CaseScene';
 import MarginEditor from '../../utils/function/margin-editor/MarginEditor';
 import { formatMarginPts } from '../../utils/function/margin-editor/marginPts';
-import { getPipelineHealth, PIPELINE_MODES, PIPELINE_TARGETS, runPipelineJob } from '../../utils/function/EzaiPipelineApi';
+import { getPipelineHealth, isAnteriorFdi, PIPELINE_MODES, PIPELINE_TARGETS, runPipelineJob } from '../../utils/function/EzaiPipelineApi';
 import { loadLibraryIndex } from '../../utils/function/peek/peekBase';
 import { SCAN_ACCEPT } from '../../utils/loader/loadGeometry';
 import { useMarginEditor } from '../../utils/tool/useStores';
@@ -19,6 +19,10 @@ import { DEFAULT_LIBRARY_PART, PEEK_DEFAULTS } from './peekParams';
 // Chiayi's production pipeline (/pipeline/), since 2026-10-07; before that the test endpoint
 // /pipeline-noabut/, taken down the same day.
 const TARGET = 'rtx5090';
+// 「參考對側牙」 (front teeth only) goes to Chiayi's contralateral test endpoint instead, which is
+// production main plus that option: the same no_abutment shell, refitted to the mirrored same
+// tooth on the other side of the arch. See the design tab's checkbox for the same thing.
+const CONTRA_TARGET = 'rtx5090_contra';
 const JAW_NAME = { upper: '上顎', lower: '下顎' };
 // The service's own bounds (ezai-pipeline app/virtual_prep.py); it answers 422 outside them.
 const HEIGHT_RANGE = [1.0, 6.0];
@@ -59,6 +63,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
   const editor = useMarginEditor();
   const [marginNotice, setMarginNotice] = useState(null);
   const [ignoreOpposing, setIgnoreOpposing] = useState(false);
+  const [contralateral, setContralateral] = useState(false);
   const [viewerConfig, setViewerConfig] = useState(null);
   const [health, setHealth] = useState(null);
   const [running, setRunning] = useState(null);
@@ -150,13 +155,16 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
     return () => clearTimeout(timer);
   }, [hasShell, peekEnabled, rebuildPeek]);
 
-  const site = PIPELINE_TARGETS[TARGET];
+  const anterior = isAnteriorFdi(fdi);
+  const useContralateral = contralateral && anterior;
+  const target = useContralateral ? CONTRA_TARGET : TARGET;
+  const site = PIPELINE_TARGETS[target];
   const opposingJaw = prepJaw === 'upper' ? 'lower' : prepJaw === 'lower' ? 'upper' : null;
   const has = { upper: scene.hasUpper, lower: scene.hasLower };
   const hasPrep = Boolean(prepJaw && has[prepJaw]);
   const hasOpposing = Boolean(opposingJaw && has[opposingJaw]);
   const singleArch = hasPrep && (!hasOpposing || ignoreOpposing);
-  const configured = viewerConfig?.targets?.[TARGET] ?? true;
+  const configured = viewerConfig?.targets?.[target] ?? true;
 
   const uploadScan = jaw => async file => {
     setScanError(null);
@@ -213,7 +221,8 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
           stumpHeightMm: heightMode === 'manual' ? height : null,
           stumpShoulderMm: shoulder !== DEFAULT_SHOULDER ? shoulder : null,
         },
-        target: TARGET,
+        contralateral: useContralateral,
+        target,
         onStage: setProgress,
       });
       job.totalSeconds = (performance.now() - startedAt) / 1000;
@@ -244,7 +253,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
 
   const checkHealth = async () => {
     setHealth({ ok: null, text: '檢查中…' });
-    setHealth(await getPipelineHealth(TARGET));
+    setHealth(await getPipelineHealth(target));
   };
 
   const scanSlot = jaw => {
@@ -346,10 +355,18 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
         <Button onClick={checkHealth} disabled={Boolean(running)}>檢查</Button>
       </div>
       {health && <div className={`health-line ${health.ok === false ? 'bad' : health.ok ? 'good' : ''}`}>{health.text}</div>}
+      <Tooltip title={anterior
+        ? '把整個口掃左右鏡射找出中線，讓牙冠外壁的形狀接近另一側的同名牙（例如 11 參考 21）。位置仍照實際空間。對側缺牙、也是支台齒、或只掃半邊時會自動不套用，並說明原因。每顆約多 2 秒。測試功能：勾選時改送「5090 參考對側牙（測試）」。'
+        : '只適用前牙（FDI x1–x3）'}>
+        <Checkbox checked={contralateral} onChange={e => { setContralateral(e.target.checked); setHealth(null); }} disabled={Boolean(running) || !anterior}>
+          參考對側牙（前牙，測試）
+        </Checkbox>
+      </Tooltip>
       <div className='generate-summary'>
         <Tag>自訂 margin（mode=margin_override）</Tag>
         <Tag color='green'>no_abutment</Tag>
         {peekEnabled && <Tag color='gold'>PEEK 下半部：瀏覽器</Tag>}
+        {useContralateral && <Tag color='purple'>參考對側牙</Tag>}
         {hasPrep && <Tag color={singleArch ? 'orange' : 'blue'}>{singleArch ? '單顎' : '上下顎'}</Tag>}
       </div>
       <Button
