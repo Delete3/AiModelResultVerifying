@@ -48,10 +48,11 @@ const PIPELINE_TARGETS = {
     hint: '台中 · RTX 5080 · 正式 pipeline',
     remote: false,
     // single_arch was promoted here on 2026-09-16, .tri (and gzip) on 2026-09-30,
-    // no_abutment on 2026-10-06.
+    // no_abutment on 2026-10-06, contralateral=true on 2026-10-08 (as Chiayi's, same day).
     singleArch: true,
     formats: TRI_FORMATS,
     noAbutment: true,
+    contralateral: true,
   },
   // A second ezai-pipeline container on the same box and the same GPU services, for a build
   // that has not been promoted to 8031. Kept apart so trying one can never change what the
@@ -95,6 +96,7 @@ const PIPELINE_TARGETS = {
     singleArch: true,
     formats: TRI_FORMATS,
     noAbutment: true,
+    contralateral: true,
   },
   // There was a no-abutment test endpoint here, 'rtx5090_noabut' (/pipeline-noabut/ on the
   // Chiayi box, 2026-09-21 to 2026-10-07). It came down once that box's production pipeline
