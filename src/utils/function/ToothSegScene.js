@@ -206,6 +206,20 @@ class ToothSegScene {
     this.raw[jaw] = null;
   }
 
+  /** Drop one jaw's scan and whatever was made from it. */
+  clearJaw(jaw) {
+    this.removeRaw(jaw);
+    this.removeSeg(jaw);
+    for (const [key, sprite] of [...this.labels]) {
+      if (sprite.userData.jaw !== jaw) continue;
+      disposeObject(sprite);
+      this.root.remove(sprite);
+      this.labels.delete(key);
+    }
+    for (const key of [...this.teeth.keys()]) if (key.startsWith(`${jaw}:`)) this.removeTooth(key);
+    this.applyLook();
+  }
+
   /** `<jaw>_seg.ply`: the whole arch painted by FDI. */
   setSegmentation(jaw, buffer) {
     this.removeSeg(jaw);

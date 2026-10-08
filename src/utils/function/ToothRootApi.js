@@ -54,27 +54,31 @@ const getToothRootHealth = async () => {
 const getToothRootInfo = async () => (await axios.get(`${TOOTHROOT_PROXY_BASE}/`, { timeout: 20000 })).data;
 
 /**
- * Upload both arches and queue a job. `roots` false stops after the segmentation.
+ * Upload one or both arches and queue a job. `roots` false stops after the segmentation.
+ *
+ * One arch is enough since 2026-10-08: the opposing jaw only seeded the sign of the
+ * crown->apex axis, which ToothRoot's vote over the crowns' own shapes overrides anyway. What
+ * one arch loses is the automatic upper/lower swap check, which compares the two.
  * @returns {{ jobId: string, uploadSeconds: number, sentBytes: number, rawBytes: number }}
  */
 const submitToothRootJob = async ({ upper, lower, roots = true, res = 192, swap = 'auto', seed = 0, onStage = () => {} }) => {
-  for (const [jaw, file] of [['上顎', upper], ['下顎', lower]]) {
-    if (!file) throw new Error(`缺少${jaw}口掃：牙根軸向是用上下顎一起投票決定的，兩顎都要`);
+  const scans = [['upper', upper], ['lower', lower]].filter(([, file]) => file);
+  if (!scans.length) throw new Error('至少要一顎的口掃');
+  for (const [, file] of scans) {
     if (!TOOTHROOT_FORMATS.includes(getFileExtension(file.name))) {
       throw new Error(`${file.name}：只收 ${TOOTHROOT_FORMATS.map(f => `.${f}`).join(' / ')}`);
     }
   }
   onStage('正在壓縮口掃（gzip）…');
-  const packed = await Promise.all([upper, lower].map(gzipFile));
-  const rawBytes = upper.size + lower.size;
-  const sentBytes = packed[0].size + packed[1].size;
+  const packed = await Promise.all(scans.map(([, file]) => gzipFile(file)));
+  const rawBytes = scans.reduce((sum, [, file]) => sum + file.size, 0);
+  const sentBytes = packed.reduce((sum, blob) => sum + blob.size, 0);
   if (sentBytes > 95 * 1024 * 1024) {
     throw new Error(`壓縮後仍有 ${(sentBytes / 1048576).toFixed(0)} MB，超過 Cloudflare 的 100 MB 上限`);
   }
 
   const form = new FormData();
-  form.append('upper', packed[0], `upper.${getFileExtension(upper.name)}.gz`);
-  form.append('lower', packed[1], `lower.${getFileExtension(lower.name)}.gz`);
+  scans.forEach(([jaw, file], i) => form.append(jaw, packed[i], `${jaw}.${getFileExtension(file.name)}.gz`));
   form.append('roots', roots ? '1' : '0');
   form.append('res', String(res));
   form.append('swap', swap);

@@ -55,8 +55,9 @@ const pooled = async (tasks, size = 6) => {
  *   step 2  生成牙根   per crown, a rectified flow samples a whole-tooth shape and the SDF
  *                      decoder marches it -- the crown as scanned, the root generated
  *
- * Its own pair of scans, or the design tab's: both arches are required, because the sign of
- * each tooth's crown->apex axis is voted across the arch and needs the opposing jaw.
+ * Its own scans, or the design tab's. One arch is enough (2026-10-08): the opposing jaw only
+ * seeded the sign of the crown->apex axis, which the vote over the crowns' own shapes overrides
+ * anyway. One arch does lose the automatic upper/lower swap check.
  */
 const ToothSegPanel = () => {
   const view = useToothSegScene();
@@ -94,9 +95,15 @@ const ToothSegPanel = () => {
     const next = { upper: CaseScene.files.upper, lower: CaseScene.files.lower };
     setFiles(next);
     setError(null);
-    Promise.all(['upper', 'lower'].map(jaw => ToothSegScene.setRaw(jaw, next[jaw])))
+    for (const jaw of ['upper', 'lower']) if (!next[jaw]) ToothSegScene.clearJaw(jaw);
+    Promise.all(['upper', 'lower'].filter(jaw => next[jaw]).map(jaw => ToothSegScene.setRaw(jaw, next[jaw])))
       .then(() => ToothSegScene.fitView())
       .catch(e => setError(e.message));
+  };
+
+  const dropFile = jaw => {
+    setFiles(previous => ({ ...previous, [jaw]: null }));
+    ToothSegScene.clearJaw(jaw);
   };
 
   const forgetJob = () => {
@@ -111,8 +118,9 @@ const ToothSegPanel = () => {
     if (segmentation) {
       ToothSegScene.clearResults();
       setStage('正在取回分牙結果…');
-      const segs = await Promise.all(['upper', 'lower'].map(jaw => fetchToothRootFile(doc.job_id, `segmentation/${jaw}_seg.ply`)));
-      ['upper', 'lower'].forEach((jaw, i) => ToothSegScene.setSegmentation(jaw, segs[i]));
+      const jaws = ['upper', 'lower'].filter(jaw => doc.summary?.[jaw]);
+      const segs = await Promise.all(jaws.map(jaw => fetchToothRootFile(doc.job_id, `segmentation/${jaw}_seg.ply`)));
+      jaws.forEach((jaw, i) => ToothSegScene.setSegmentation(jaw, segs[i]));
       ToothSegScene.setLabels(doc.crowns);
     } else {
       ToothSegScene.clearTeeth();
@@ -150,8 +158,8 @@ const ToothSegPanel = () => {
   };
 
   const run = async ({ roots }) => {
-    if (!files.upper || !files.lower) {
-      setError('上下顎都要：牙根的方向是整個牙弓一起投票決定的，需要知道對顎在哪一側');
+    if (!files.upper && !files.lower) {
+      setError('至少選一顎的口掃');
       return;
     }
     setRunning(roots ? 'all' : 'segment');
@@ -254,19 +262,24 @@ const ToothSegPanel = () => {
   const summary = job?.summary;
   const hasSegmentation = Boolean(summary);
   const busy = Boolean(running);
-  const caseReady = Boolean(caseScene.hasUpper && caseScene.hasLower);
+  const caseReady = Boolean(caseScene.hasUpper || caseScene.hasLower);
+  const oneJaw = Boolean(files.upper) !== Boolean(files.lower);
 
   return <div className='direct-panel toothseg-panel'>
     <p className='panel-note'>
       矯正 AI 分牙（ToothRoot，嘉義 5090）：上下顎口掃 → 每顆牙標上 FDI 並切出牙冠 → 依牙冠生成完整牙齒（含牙根）。
-      <b>上下顎都要</b>：牙根朝哪個方向是整個牙弓一起投票決定的。口掃會先在瀏覽器 gzip 壓縮再送出；結果在 5090 上保留 2 小時。
+      可以只給一顎（只做那一顎）；只給一顎時沒有「上下顎檔案對調」的自動檢查，請確認檔案放在對的那一格。
+      口掃會先在瀏覽器 gzip 壓縮再送出；結果在 5090 上保留 2 小時。
     </p>
 
     <section className='panel-section'>
       <div className='section-title'><span className='step'>1</span>上下顎口掃</div>
       <div className='scan-slots'>
         {['upper', 'lower'].map(jaw => <div key={jaw} className='scan-slot'>
-          <div className='scan-slot-head'>{JAW_NAME[jaw]}</div>
+          <div className='scan-slot-head'>
+            {JAW_NAME[jaw]}
+            {files[jaw] && <Button size='small' type='link' disabled={busy} onClick={() => dropFile(jaw)}>移除</Button>}
+          </div>
           <Upload accept={TOOTHROOT_ACCEPT} showUploadList={false} beforeUpload={pickFile(jaw)} disabled={busy}>
             <Button block size='small' type={files[jaw] ? 'primary' : 'default'} title={files[jaw]?.name}>
               {files[jaw]?.name ?? '選擇檔案（STL / PLY / OBJ / TRI）'}
@@ -275,7 +288,7 @@ const ToothSegPanel = () => {
         </div>)}
       </div>
       <div className='button-row'>
-        <Tooltip title={caseReady ? `${caseScene.upperName} + ${caseScene.lowerName}` : '牙冠設計分頁還沒有載入上下顎'}>
+        <Tooltip title={caseReady ? [caseScene.upperName, caseScene.lowerName].filter(Boolean).join(' + ') : '牙冠設計分頁還沒有載入口掃'}>
           <Button size='small' disabled={busy || !caseReady} onClick={takeCaseScans}>使用牙冠設計分頁的上下顎</Button>
         </Tooltip>
         <Button size='small' disabled={busy} onClick={clearAll}>全部清除</Button>
@@ -289,9 +302,9 @@ const ToothSegPanel = () => {
           牙根網格解析度
           <Select size='small' value={res} onChange={setRes} options={RES_OPTIONS} disabled={busy} />
         </label>
-        <label title='檔名標錯上下顎時，模型會自動發現並對調（看兩種擺法各有幾種翻轉被判成正確的顎）'>
+        <label title={oneJaw ? '只給一顎時沒有東西可以比，不做對調檢查' : '檔名標錯上下顎時，模型會自動發現並對調（看兩種擺法各有幾種翻轉被判成正確的顎）'}>
           上下顎檔案對調
-          <Select size='small' value={swap} onChange={setSwap} disabled={busy} options={[
+          <Select size='small' value={oneJaw ? 'no' : swap} onChange={setSwap} disabled={busy || oneJaw} options={[
             { value: 'auto', label: '自動偵測' },
             { value: 'no', label: '不對調' },
             { value: 'yes', label: '強制對調' },
