@@ -23,10 +23,6 @@ const TARGET = 'rtx5090';
 // production main plus that option: the same no_abutment shell, refitted to the mirrored same
 // tooth on the other side of the arch. See the design tab's checkbox for the same thing.
 const CONTRA_TARGET = 'rtx5090_contra';
-// 「頸部平順」 (2026-10-08, test): the same endpoint's crown service, asked to bend the shell
-// onto the margin over 5 mm instead of 2. A crown wider than the ring (FDI 12 here) is otherwise
-// squeezed back within 2 mm: a vertical wall from the margin and a corner, the palatal bulge.
-const RIM_FALLOFF_MM = 5;
 const JAW_NAME = { upper: '上顎', lower: '下顎' };
 // The service's own bounds (ezai-pipeline app/virtual_prep.py); it answers 422 outside them.
 const HEIGHT_RANGE = [1.0, 6.0];
@@ -68,7 +64,6 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
   const [marginNotice, setMarginNotice] = useState(null);
   const [ignoreOpposing, setIgnoreOpposing] = useState(false);
   const [contralateral, setContralateral] = useState(false);
-  const [smoothRim, setSmoothRim] = useState(false);
   const [viewerConfig, setViewerConfig] = useState(null);
   const [health, setHealth] = useState(null);
   const [running, setRunning] = useState(null);
@@ -162,7 +157,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
 
   const anterior = isAnteriorFdi(fdi);
   const useContralateral = contralateral && anterior;
-  const target = useContralateral || smoothRim ? CONTRA_TARGET : TARGET;
+  const target = useContralateral ? CONTRA_TARGET : TARGET;
   const site = PIPELINE_TARGETS[target];
   const opposingJaw = prepJaw === 'upper' ? 'lower' : prepJaw === 'lower' ? 'upper' : null;
   const has = { upper: scene.hasUpper, lower: scene.hasLower };
@@ -227,7 +222,6 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
           stumpShoulderMm: shoulder !== DEFAULT_SHOULDER ? shoulder : null,
         },
         contralateral: useContralateral,
-        rimFalloff: smoothRim ? RIM_FALLOFF_MM : null,
         target,
         onStage: setProgress,
       });
@@ -368,17 +362,11 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
           參考對側牙（前牙，測試）
         </Checkbox>
       </Tooltip>
-      <Tooltip title={`牙冠比畫的 margin 寬時（例如 FDI 12 的舌側），服務會在 margin 往上 2 mm 內把外壁拉回 margin，留下一段垂直的牆和一個轉角（舌側凸起）。勾選後改在 ${RIM_FALLOFF_MM} mm 內拉回，變成平順的弧線。和「參考對側牙」一起用、支台齒高度設 1 mm 時，舌側最接近天然牙。測試功能：勾選時改送「5090 參考對側牙（測試）」。`}>
-        <Checkbox checked={smoothRim} onChange={e => { setSmoothRim(e.target.checked); setHealth(null); }} disabled={Boolean(running)}>
-          頸部平順（測試）
-        </Checkbox>
-      </Tooltip>
       <div className='generate-summary'>
         <Tag>自訂 margin（mode=margin_override）</Tag>
         <Tag color='green'>no_abutment</Tag>
         {peekEnabled && <Tag color='gold'>PEEK 下半部：瀏覽器</Tag>}
         {useContralateral && <Tag color='purple'>參考對側牙</Tag>}
-        {smoothRim && <Tag color='cyan'>頸部平順 {RIM_FALLOFF_MM} mm</Tag>}
         {hasPrep && <Tag color={singleArch ? 'orange' : 'blue'}>{singleArch ? '單顎' : '上下顎'}</Tag>}
       </div>
       <Button

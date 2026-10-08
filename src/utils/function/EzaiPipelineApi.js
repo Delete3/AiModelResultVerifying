@@ -113,10 +113,6 @@ const PIPELINE_TARGETS = {
     formats: TRI_FORMATS,
     noAbutment: true,
     contralateral: true,
-    // Since 2026-10-08 its test crown service also takes r_morph (how far up from the margin
-    // the outer shell is bent onto it; the service default is 2 mm): the peek tab's
-    // 「頸部平順」 checkbox. Chiayi /data/fdi12-lingual-20261008/README.md.
-    rimFalloff: true,
   },
 };
 
@@ -320,8 +316,6 @@ const runPipelineJob = async ({
   singleArch = false,
   noAbutment = null,
   contralateral = false,
-  // mm, or null for the crown service's own 2; only a target flagged `rimFalloff` takes it.
-  rimFalloff = null,
   onStage = () => {},
   pollMs = 500,
   timeoutMs = 15 * 60 * 1000,
@@ -353,7 +347,6 @@ const runPipelineJob = async ({
     if (mode !== PIPELINE_MODES.marginOverride) throw new Error('無支台齒模式需要自訂 margin');
   }
   if (contralateral && !site.contralateral) throw new Error(`${site.label} 不支援「參考對側牙」`);
-  if (rimFalloff != null && !site.rimFalloff) throw new Error(`${site.label} 不支援「頸部平順」`);
   // Each scan goes out under its REAL extension, because that is all the service reads the
   // format from: until 2026-09-18 this sent everything as <jaw>.stl, so a PLY uploaded here
   // was parsed as STL and the job died at its first stage.
@@ -390,7 +383,6 @@ const runPipelineJob = async ({
   form.append('mode', mode);
   if (singleArch) form.append('single_arch', 'true');
   if (contralateral) form.append('contralateral', 'true');
-  if (rimFalloff != null) form.append('r_morph', String(rimFalloff));
   if (noAbutment) {
     form.append('no_abutment', 'true');
     if (noAbutment.stumpHeightMm != null) form.append('stump_height_mm', String(noAbutment.stumpHeightMm));
@@ -499,8 +491,6 @@ const runPipelineJob = async ({
     virtualPrep: virtualPrep ? new Blob([virtualPrep], { type: 'model/ply' }) : null,
     virtualPrepName: `virtual_prep_FDI${fdi}.ply`,
     noAbutment: manifest.no_abutment ?? null,
-    // What the crown service used (it echoes it); null when not asked for.
-    rimFalloff: manifest.backends?.crown?.r_morph ?? null,
     rotation: alignment?.rotation_matrix ?? null,
     jobId,
     mode,
