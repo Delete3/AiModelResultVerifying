@@ -18,15 +18,17 @@ import {
 import { downloadBlob, useCaseScene, useToothSegScene } from '../../utils/tool/useStores';
 
 const JAW_NAME = { upper: '上顎', lower: '下顎' };
-// Step 2's marching-cubes grid. Measured on 95 on 2026-10-07, one real case (27 teeth, 13 + 16 MB
-// STL): 33 / 50 / 80 s. Against 192, 128 moves a tooth by 0.070 mm (Chamfer median, max 0.099)
-// and 160 by 0.059 mm -- while the same 192 run with another seed moves it by 0.157 mm (max
-// 0.48), so the grid costs less than the sampler's own randomness. Hence 128 by default; 192
-// is what the ToothRoot package's own numbers were measured at.
+// Step 2's marching-cubes grid. Roots for one real case (27 teeth, 13 + 16 MB STL) on 95: 33 / 50
+// / 80 s on 2026-10-07, and 25 / 26 / 36 s since 2026-10-08, when the service moved to
+// htyau/ToothRoot perf/root-decode (the fine grid is evaluated only near the surface). Against
+// 192, 128 moves a tooth by 0.070 mm (Chamfer median, max 0.099) and 160 by 0.059 mm -- while
+// the same 192 run with another seed moves it by 0.157 mm (max 0.48), so the grid costs less
+// than the sampler's own randomness. Hence 128 by default; 192 is what the ToothRoot
+// package's own numbers were measured at.
 const RES_OPTIONS = [
-  { value: 128, label: '128（約 33 秒）' },
-  { value: 160, label: '160（約 50 秒）' },
-  { value: 192, label: '192（約 80 秒，作者量測用）' },
+  { value: 128, label: '128（牙根約 25 秒）' },
+  { value: 160, label: '160（約 26 秒）' },
+  { value: 192, label: '192（約 36 秒，作者量測用）' },
 ];
 // The package README's reading of crown fit: over ~1 mm is the pipeline failing, not a shape
 // error. All 140 of its own teeth were 0.09-0.17 mm.
