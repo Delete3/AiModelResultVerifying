@@ -274,10 +274,10 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
       {health && <div className={`health-line ${health.ok === false ? 'bad' : health.ok ? 'good' : ''}`}>{health.text}</div>}
 
       <Tooltip title={anterior
-        ? '把整個口掃左右鏡射找出中線，讓牙冠的形狀接近另一側的同名牙（例如 11 參考 21）。位置仍照實際空間。對側缺牙、也是支台齒、或只掃半邊時會自動不套用，並說明原因。每顆約多 2 秒。測試功能，只有「5090 參考對側牙（測試）」能用。'
+        ? '把整個口掃左右鏡射找出中線，讓牙冠的形狀接近另一側的同名牙（例如 11 參考 21）。位置仍照實際空間。對側缺牙、也是支台齒、或只掃半邊時會自動不套用，並說明原因。每顆約多 2 秒。只有「5090 ezai2」能用。'
         : '只適用前牙（FDI x1–x3）'}>
         <Checkbox checked={contralateral} onChange={e => toggleContralateral(e.target.checked)} disabled={Boolean(running) || !anterior}>
-          參考對側牙（前牙，測試）
+          參考對側牙（前牙）
         </Checkbox>
       </Tooltip>
 

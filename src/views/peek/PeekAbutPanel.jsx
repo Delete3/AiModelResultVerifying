@@ -19,10 +19,6 @@ import { DEFAULT_LIBRARY_PART, PEEK_DEFAULTS } from './peekParams';
 // Chiayi's production pipeline (/pipeline/), since 2026-10-07; before that the test endpoint
 // /pipeline-noabut/, taken down the same day.
 const TARGET = 'rtx5090';
-// 「參考對側牙」 (front teeth only) goes to Chiayi's contralateral test endpoint instead, which is
-// production main plus that option: the same no_abutment shell, refitted to the mirrored same
-// tooth on the other side of the arch. See the design tab's checkbox for the same thing.
-const CONTRA_TARGET = 'rtx5090_contra';
 const JAW_NAME = { upper: '上顎', lower: '下顎' };
 // The service's own bounds (ezai-pipeline app/virtual_prep.py); it answers 422 outside them.
 const HEIGHT_RANGE = [1.0, 6.0];
@@ -157,7 +153,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
 
   const anterior = isAnteriorFdi(fdi);
   const useContralateral = contralateral && anterior;
-  const target = useContralateral ? CONTRA_TARGET : TARGET;
+  const target = TARGET;
   const site = PIPELINE_TARGETS[target];
   const opposingJaw = prepJaw === 'upper' ? 'lower' : prepJaw === 'lower' ? 'upper' : null;
   const has = { upper: scene.hasUpper, lower: scene.hasLower };
@@ -356,10 +352,10 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
       </div>
       {health && <div className={`health-line ${health.ok === false ? 'bad' : health.ok ? 'good' : ''}`}>{health.text}</div>}
       <Tooltip title={anterior
-        ? '把整個口掃左右鏡射找出中線，讓牙冠外壁的形狀接近另一側的同名牙（例如 11 參考 21）。位置仍照實際空間。對側缺牙、也是支台齒、或只掃半邊時會自動不套用，並說明原因。每顆約多 2 秒。測試功能：勾選時改送「5090 參考對側牙（測試）」。'
+        ? '把整個口掃左右鏡射找出中線，讓牙冠外壁的形狀接近另一側的同名牙（例如 11 參考 21）。位置仍照實際空間。對側缺牙、也是支台齒、或只掃半邊時會自動不套用，並說明原因。每顆約多 2 秒。'
         : '只適用前牙（FDI x1–x3）'}>
         <Checkbox checked={contralateral} onChange={e => { setContralateral(e.target.checked); setHealth(null); }} disabled={Boolean(running) || !anterior}>
-          參考對側牙（前牙，測試）
+          參考對側牙（前牙）
         </Checkbox>
       </Tooltip>
       <div className='generate-summary'>

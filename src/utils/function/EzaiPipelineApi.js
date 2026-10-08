@@ -74,6 +74,9 @@ const PIPELINE_TARGETS = {
     singleArch: true,
     formats: TRI_FORMATS,
     noAbutment: true,
+    // contralateral=true since 2026-10-08 (FlowToothSDF bc3281b on Chiayi's production crown
+    // service; before that only the test endpoint /pipeline-contra/ had it).
+    contralateral: true,
   },
   // The same box and the same proxy as above -- only how the meshes get there differs. The
   // scans go to object storage and the POST carries two URLs instead of 30 MB of body, so
@@ -99,21 +102,8 @@ const PIPELINE_TARGETS = {
   // declares its proxy route, which now answers 404 -- left until that file is next edited,
   // since editing it restarts Vite and reloads every open page. `panel: '<tab>'` on a target
   // keeps it out of the design tab's list.
-  // The contralateral test endpoint on the Chiayi box (2026-10-07): production ezai-pipeline
-  // plus contralateral=true, in front of a test FlowToothSDF that refits an anterior crown to
-  // the same tooth on the other side of the arch, mirrored (study on that box:
-  // /data/contralateral-20261007/README.md). With the checkbox off it answers exactly like
-  // "5090 ezai2". `contralateral` is what the design tab's 「參考對側牙」 checkbox looks for.
-  rtx5090_contra: {
-    base: '/api/pipeline-contra',
-    label: '5090 參考對側牙（測試）',
-    hint: '嘉義 · RTX 5090 · 前牙可參考對側牙（測試端點）',
-    remote: true,
-    singleArch: true,
-    formats: TRI_FORMATS,
-    noAbutment: true,
-    contralateral: true,
-  },
+  // 'rtx5090_contra' (/pipeline-contra/, 2026-10-07 to 2026-10-08) was the contralateral test
+  // endpoint; the option moved into 'rtx5090' and the endpoint came down.
 };
 
 /** FDI x1-x3: the teeth the contralateral option is for. */

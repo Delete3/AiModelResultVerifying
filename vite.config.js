@@ -44,17 +44,6 @@ const PIPELINE_RTX5090_API_URL = process.env.PIPELINE_RTX5090_API_URL
 // application as /pipeline, and the prefix belongs in the target because ezai2 is a gateway.
 const FSABUTMENT_RTX5090_API_URL = process.env.FSABUTMENT_RTX5090_API_URL
   || 'https://ezai2.inteware.com.tw/fsabutment'
-// The no-abutment test endpoint on that same box (added 2026-09-21): a third ezai-pipeline
-// built from feature/no-abutment, behind /pipeline-noabut/ on the same gateway and the same
-// Access application, so the same token. Only the "peek abut設計" tab calls it.
-const PIPELINE_NOABUT_API_URL = process.env.PIPELINE_NOABUT_API_URL
-  || 'https://ezai2.inteware.com.tw/pipeline-noabut'
-// The contralateral test endpoint on that same box (added 2026-10-07): production
-// ezai-pipeline plus a contralateral=true field, in front of a test FlowToothSDF that shapes
-// anterior crowns after the mirrored contralateral tooth. Same gateway, same Access
-// application, same token. Only the design tab's 「參考對側牙」 checkbox calls it.
-const PIPELINE_CONTRA_API_URL = process.env.PIPELINE_CONTRA_API_URL
-  || 'https://ezai2.inteware.com.tw/pipeline-contra'
 // ToothRoot on that same box (added 2026-10-07): the orthodontic team's AI tooth
 // segmentation and root generation (htyau/ToothRoot, served by its deploy/deploy_api.py).
 // Not part of the ezai chain; it shares the gateway for FSAbutment's reason -- this box cannot
@@ -197,8 +186,6 @@ export default defineConfig({
         // disabled by exactly the same missing credential and deserves the same message
         // rather than a 403 HTML page the frontend cannot parse.
         server.middlewares.use('/api/fsabutment-rtx5090', unconfigured)
-        server.middlewares.use('/api/pipeline-noabut', unconfigured)
-        server.middlewares.use('/api/pipeline-contra', unconfigured)
         server.middlewares.use('/api/toothroot-rtx5090', unconfigured)
       },
     },
@@ -313,8 +300,6 @@ export default defineConfig({
               z790_test: Boolean(PIPELINE_TEST_API_URL),
               rtx5090: RTX5090_CONFIGURED,
               rtx5090_s3: RTX5090_CONFIGURED && S3_CONFIGURED,
-              rtx5090_noabut: RTX5090_CONFIGURED,
-              rtx5090_contra: RTX5090_CONFIGURED,
               toothroot: RTX5090_CONFIGURED,
             },
           }))
@@ -542,47 +527,6 @@ export default defineConfig({
         target: FSABUTMENT_RTX5090_API_URL,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/fsabutment-rtx5090/, ''),
-        headers: {
-          'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
-          'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,
-        },
-        configure: (proxy) => {
-          proxy.on('proxyReq', (proxyReq) => {
-            proxyReq.removeHeader('cookie')
-          })
-          proxy.on('proxyRes', (proxyRes) => {
-            delete proxyRes.headers['set-cookie']
-          })
-        },
-      },
-      // The no-abutment test endpoint on the Chiayi box (2026-09-21). Before '/api/pipeline',
-      // for the prefix-order reason at the top of this block -- the shorter key would
-      // otherwise send these jobs to the LOCAL production pipeline, which would answer
-      // no_abutment=true with a 422 at best. The same three Access fixes as the two routes
-      // above, for the same reasons; do not simplify any of them away.
-      '/api/pipeline-noabut': {
-        target: PIPELINE_NOABUT_API_URL,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/pipeline-noabut/, ''),
-        headers: {
-          'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
-          'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,
-        },
-        configure: (proxy) => {
-          proxy.on('proxyReq', (proxyReq) => {
-            proxyReq.removeHeader('cookie')
-          })
-          proxy.on('proxyRes', (proxyRes) => {
-            delete proxyRes.headers['set-cookie']
-          })
-        },
-      },
-      // The contralateral test endpoint on the Chiayi box (2026-10-07). Before
-      // '/api/pipeline' for the same prefix-order reason, and the same three Access fixes.
-      '/api/pipeline-contra': {
-        target: PIPELINE_CONTRA_API_URL,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/pipeline-contra/, ''),
         headers: {
           'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
           'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,
