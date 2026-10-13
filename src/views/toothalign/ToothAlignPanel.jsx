@@ -6,6 +6,7 @@ import CaseScene from '../../utils/function/CaseScene';
 import ToothAlignScene, { CROWN_HEX, ROOT_HEX } from '../../utils/function/ToothAlignScene';
 import {
   TOOTHSSM_ACCEPT,
+  TOOTHSSM_SEG_OPTIONS,
   TOOTHSSM_TARGETS,
   deleteToothSsmJob,
   fetchToothSsmArchive,
@@ -19,12 +20,12 @@ import {
 import { downloadBlob, useCaseScene, useToothAlignScene } from '../../utils/tool/useStores';
 
 const JAW_NAME = { upper: '上顎', lower: '下顎' };
-// The marching-cubes grid of 72_zhu_rawcase.py. The author's viewer offers 128 (its default)
-// and 192 (the script's own default, what the README's numbers were measured at).
+// The marching-cubes grid the roots are decoded on, ToothRoot's or tooth_ssm's (72_zhu_rawcase.py).
+// On the 5080, 192 against 128 costs ToothRoot ~10 s and tooth_ssm ~10 s more for a full case.
 const RES_OPTIONS = [
-  { value: 128, label: '128（作者 viewer 預設）' },
+  { value: 128, label: '128（預設）' },
   { value: 160, label: '160' },
-  { value: 192, label: '192（較慢，README 量測用）' },
+  { value: 192, label: '192（較慢）' },
 ];
 // The eight ABO criteria, all penalty points (lower is better). RA reads the generated roots,
 // so the scale for scans is ABO7 = TOTAL - RA. Only for comparing before / after -- not
@@ -35,6 +36,9 @@ const ABO_ROWS = [
 ];
 const STEP_LABEL = { segment: '分牙', generate: '牙根', align: '排牙' };
 const DETAIL_LABEL = {
+  toothroot_segment: 'ToothRoot 分牙',
+  articulate: '咬合檢查',
+  toothroot_roots: 'ToothRoot 生成牙根',
   'seg+articulate': '分牙＋咬合檢查',
   roots: '生成牙根（DeepSDF）',
   'publish+merge+export': '整理輸出',
@@ -79,6 +83,7 @@ const ToothAlignPanel = () => {
   const [files, setFiles] = useState({ upper: null, lower: null });
   const [target, setTarget] = useState('z790');
   const [res, setRes] = useState(128);
+  const [seg, setSeg] = useState('toothroot');
   const [running, setRunning] = useState(null);
   const [stage, setStage] = useState('');
   const [progress, setProgress] = useState(null);
@@ -169,15 +174,18 @@ const ToothAlignPanel = () => {
       onUpdate: update => {
         setJob(update);
         const elapsed = update.step_elapsed_s != null ? `，${Math.round(update.step_elapsed_s)} 秒` : '';
+        const viaToothRoot = update.params?.seg === 'toothroot';
         if (update.state === 'queued') {
           setStage(`排隊中${update.queue_position ? `（前面還有 ${update.queue_position} 筆）` : ''}…`);
           setProgress(null);
         } else if (update.state === 'segmenting') {
-          setStage(`AI 分牙中（25 視角 YOLO → FDI 排序 → 邊界修整 → 咬合檢查${elapsed}）…`);
+          setStage(viaToothRoot
+            ? `AI 分牙中（ToothRoot → 咬合檢查${elapsed}）…`
+            : `AI 分牙中（25 視角 YOLO → FDI 排序 → 邊界修整 → 咬合檢查${elapsed}）…`);
           setProgress(null);
         } else if (update.state === 'generating') {
           const p = update.progress;
-          setStage(`生成牙根中（DeepSDF${p ? `，${p.teeth_done} / ${p.teeth_total} 顆` : ''}${elapsed}）…`);
+          setStage(`生成牙根中（${viaToothRoot ? 'ToothRoot' : 'DeepSDF'}${p ? `，${p.teeth_done} / ${p.teeth_total} 顆` : ''}${elapsed}）…`);
           setProgress(p && p.teeth_total ? Math.round((100 * p.teeth_done) / p.teeth_total) : null);
         } else if (update.state === 'aligning') {
           setStage(`排牙中（地標 → diffusion 50 步 → 套回整顆牙${elapsed}）…`);
@@ -201,7 +209,7 @@ const ToothAlignPanel = () => {
     ToothAlignScene.clearResults();
     const startedAt = performance.now();
     try {
-      const submitted = await submitToothSsmJob({ target, upper: files.upper, lower: files.lower, res, until, onStage: setStage });
+      const submitted = await submitToothSsmJob({ target, upper: files.upper, lower: files.lower, res, until, seg, onStage: setStage });
       jobRef.current = { id: submitted.jobId, target };
       const doc = await follow();
       const download = await loadResults(doc, 'segment');
@@ -214,6 +222,7 @@ const ToothAlignPanel = () => {
         download,
         total: (performance.now() - startedAt) / 1000,
         res: doc.params?.res,
+        seg: doc.params?.seg,
         box: TOOTHSSM_TARGETS[target].box,
       });
       setStage('');
@@ -313,6 +322,7 @@ const ToothAlignPanel = () => {
   return <div className='direct-panel toothseg-panel'>
     <p className='panel-note'>
       矯正 AI 排牙（tooth_ssm）：上下顎口掃 → AI 分牙 → 依牙冠生成整顆牙（含牙根）→ 排牙模型移動每顆牙（牙根跟著動）→ ABO 評分。
+      分牙和牙根預設由 ToothRoot 做（矯正專案檔的口掃是減過面的，tooth_ssm 自己的分牙在這種檔上會漏牙），排牙一律用 tooth_ssm 的模型。
       上下顎都要。上下顎朝同一方向時，服務會把上顎轉成估計的咬合位置再分一次。結果在服務端保留 2 小時。
     </p>
 
@@ -348,6 +358,10 @@ const ToothAlignPanel = () => {
             value: key, label: value.label + (reach[key] === 'down' ? '（目前無法使用）' : reach[key] === 'ok' ? '' : '（檢查中）'),
           }))} />
         </label>
+        <label title='誰負責分牙和生成牙根；排牙一律是 tooth_ssm 的排牙模型。矯正專案檔裡的口掃是減過面的（約 1.2 萬面），tooth_ssm 自己的分牙在這種檔上會漏掉大部分的牙'>
+          分牙＋牙根
+          <Select size='small' value={seg} onChange={setSeg} options={TOOTHSSM_SEG_OPTIONS} disabled={busy} />
+        </label>
         <label>
           牙齒網格解析度
           <Select size='small' value={res} onChange={setRes} options={RES_OPTIONS} disabled={busy} />
@@ -361,7 +375,8 @@ const ToothAlignPanel = () => {
           只做 AI 分牙
         </Button>
         <Tooltip title='用同一份分牙結果、目前選的解析度，重新生成牙根，再排牙'>
-          <Button loading={running === 'generate'} disabled={!hasSeg || (busy && running !== 'generate')} onClick={() => rerun('generate')}>
+          <Button loading={running === 'generate'} disabled={!hasSeg || (busy && running !== 'generate')} onClick={() => rerun('generate')}
+            title={job?.params?.seg ? `沿用這筆的「${TOOTHSSM_SEG_OPTIONS.find(o => o.value === job.params.seg)?.label}」` : undefined}>
             {hasTeeth ? '重新生成牙根＋排牙' : '生成牙根＋排牙'}
           </Button>
         </Tooltip>
@@ -382,10 +397,13 @@ const ToothAlignPanel = () => {
       <div className='section-title'><span className='step'>3</span>結果</div>
       {timing && <div className='toothseg-timing'>
         {timing.box && <Tag>{timing.box}</Tag>}
+        {timing.seg && <Tag>{timing.seg === 'toothroot' ? 'ToothRoot 分牙＋牙根' : 'tooth_ssm 原流程'}</Tag>}
         {timing.upload != null && <Tag>上傳 {fmtSeconds(timing.upload)}（{timing.sentMb.toFixed(1)} MB，原檔 {timing.rawMb.toFixed(1)} MB）</Tag>}
         {['segment', 'generate', 'align'].map(step => t[`${step}_s`] != null && <Tooltip key={step} title={
           Object.entries(t.detail ?? {}).filter(([name]) => ({
-            segment: ['seg+articulate'], generate: ['roots', 'publish+merge+export', 'colour'], align: ['align', 'abo', 'colour_aligned'],
+            segment: ['seg+articulate', 'toothroot_segment', 'articulate'],
+            generate: ['roots', 'publish+merge+export', 'colour', 'toothroot_roots'],
+            align: ['align', 'abo', 'colour_aligned'],
           })[step].includes(name)).map(([name, s]) => `${DETAIL_LABEL[name] ?? name} ${s.toFixed(1)} 秒`).join('、')
         }>
           <Tag color={{ segment: 'blue', generate: 'magenta', align: 'purple' }[step]}>
@@ -443,6 +461,13 @@ const ToothAlignPanel = () => {
         {r.crown_stats.worst && `，最大 ${r.crown_stats.worst.fdi} 的 ${r.crown_stats.worst.mm.toFixed(3)} mm`}
         ，封閉 {r.crown_stats.watertight} / {r.crown_stats.n}
         {r.crown_stats.failed?.length > 0 && <span className='bad'>，失敗：{r.crown_stats.failed.map(f => `${f.fdi}（${f.why}）`).join('、')}</span>}
+      </div>}
+
+      {r?.toothroot_stats && <div className='health-line'>
+        ToothRoot 牙齒：{r.toothroot_stats.ok} / {r.toothroot_stats.n} 顆生成，封閉 {r.toothroot_stats.watertight}；
+        掃描牙冠到生成牙齒的 p90 距離中位數 {r.toothroot_stats.fit_p90_median_mm?.toFixed(2)} mm
+        {r.toothroot_stats.worst && `（最大 ${r.toothroot_stats.worst.fdi} 的 ${r.toothroot_stats.worst.mm.toFixed(2)} mm；> 1 mm 代表生成失敗）`}
+        {r.toothroot_stats.failed?.length > 0 && <span className='bad'>，失敗：{r.toothroot_stats.failed.map(f => `${f.fdi}（${f.why ?? '?'}）`).join('、')}</span>}
       </div>}
 
       {(abo?.input || abo?.aligned) && <table className='toothseg-table abo-table'>
