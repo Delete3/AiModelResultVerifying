@@ -3,6 +3,7 @@ import { useSyncExternalStore } from 'react';
 import CaseScene from '../function/CaseScene';
 import MarginEditor from '../function/margin-editor/MarginEditor';
 import PreviewScene from '../function/PreviewScene';
+import ToothAlignScene from '../function/ToothAlignScene';
 import ToothSegScene from '../function/ToothSegScene';
 
 /** What is on screen: which scans, crown and reference ring exist, and what is visible. */
@@ -17,6 +18,9 @@ const usePreviewScene = () => useSyncExternalStore(PreviewScene.subscribe, Previ
 /** The AI分牙 tab's scans, segmentation and generated teeth. */
 const useToothSegScene = () => useSyncExternalStore(ToothSegScene.subscribe, ToothSegScene.getSnapshot);
 
+/** The AI排牙 tab's scans, segmentation, generated teeth and arranged teeth. */
+const useToothAlignScene = () => useSyncExternalStore(ToothAlignScene.subscribe, ToothAlignScene.getSnapshot);
+
 /** Save a Blob under a file name. */
 const downloadBlob = (blob, fileName) => {
   const url = URL.createObjectURL(blob);
@@ -27,4 +31,4 @@ const downloadBlob = (blob, fileName) => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
-export { useCaseScene, useMarginEditor, usePreviewScene, useToothSegScene, downloadBlob };
+export { useCaseScene, useMarginEditor, usePreviewScene, useToothAlignScene, useToothSegScene, downloadBlob };

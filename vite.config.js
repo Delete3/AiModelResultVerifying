@@ -51,6 +51,14 @@ const FSABUTMENT_RTX5090_API_URL = process.env.FSABUTMENT_RTX5090_API_URL
 // Only the "AI分牙" tab calls it.
 const TOOTHROOT_RTX5090_API_URL = process.env.TOOTHROOT_RTX5090_API_URL
   || 'https://ezai2.inteware.com.tw/toothroot'
+// tooth_ssm (added 2026-10-13): the orthodontic team's AI tooth arrangement (htyau/ssm_project,
+// served by its deploy/deploy_api.py), for the "AI排牙" tab. On THIS box it is bound to docker0
+// (172.17.0.1:8036) and this container sees the host as host.docker.internal, so it needs no
+// credential. The Chiayi box's copy would be reached like ToothRoot's, through ezai2 and the same
+// Access application and token.
+const TOOTHSSM_Z790_API_URL = process.env.TOOTHSSM_Z790_API_URL || 'http://host.docker.internal:8036'
+const TOOTHSSM_RTX5090_API_URL = process.env.TOOTHSSM_RTX5090_API_URL
+  || 'https://ezai2.inteware.com.tw/toothssm'
 const RTX5090_CF_CLIENT_ID = process.env.RTX5090_CF_CLIENT_ID || ''
 const RTX5090_CF_CLIENT_SECRET = process.env.RTX5090_CF_CLIENT_SECRET || ''
 const RTX5090_CONFIGURED = Boolean(RTX5090_CF_CLIENT_ID && RTX5090_CF_CLIENT_SECRET)
@@ -187,6 +195,7 @@ export default defineConfig({
         // rather than a 403 HTML page the frontend cannot parse.
         server.middlewares.use('/api/fsabutment-rtx5090', unconfigured)
         server.middlewares.use('/api/toothroot-rtx5090', unconfigured)
+        server.middlewares.use('/api/toothssm-rtx5090', unconfigured)
       },
     },
     {
@@ -301,6 +310,7 @@ export default defineConfig({
               rtx5090: RTX5090_CONFIGURED,
               rtx5090_s3: RTX5090_CONFIGURED && S3_CONFIGURED,
               toothroot: RTX5090_CONFIGURED,
+              toothssm_rtx5090: RTX5090_CONFIGURED,
             },
           }))
         })
@@ -549,6 +559,31 @@ export default defineConfig({
         target: TOOTHROOT_RTX5090_API_URL,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/toothroot-rtx5090/, ''),
+        headers: {
+          'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
+          'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,
+        },
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.removeHeader('cookie')
+          })
+          proxy.on('proxyRes', (proxyRes) => {
+            delete proxyRes.headers['set-cookie']
+          })
+        },
+      },
+      // tooth_ssm (2026-10-13), for the "AI排牙" tab. No shorter key matches either route. This
+      // box's copy is on docker0 and needs nothing but the address; the Chiayi one goes through
+      // Access and gets the same three fixes as the routes above, for the same reasons.
+      '/api/toothssm-z790': {
+        target: TOOTHSSM_Z790_API_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/toothssm-z790/, ''),
+      },
+      '/api/toothssm-rtx5090': {
+        target: TOOTHSSM_RTX5090_API_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/toothssm-rtx5090/, ''),
         headers: {
           'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
           'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,
