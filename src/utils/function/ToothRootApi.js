@@ -2,14 +2,22 @@ import axios from 'axios';
 
 import { getFileExtension } from '../tool/StringProcessing.js';
 
-// ToothRoot on the Chiayi 5090 box (CADCAM-RTX5090, 192.168.50.95): the orthodontic team's
-// AI tooth segmentation (archnorm + a 25-view 2D U-Net) and root generation (an SDF
-// autoencoder + rectified flow). htyau/ToothRoot, served by deploy/deploy_api.py on that box.
+// ToothRoot: the orthodontic team's AI tooth segmentation (archnorm + a 25-view 2D U-Net) and
+// root generation (an SDF autoencoder + rectified flow). htyau/ToothRoot, served by
+// deploy/deploy_api.py on two boxes with the same API and defaults.
 //
-// Reached the same way as FSAbutment: this box has no route into 192.168.50.0/24, so it goes
-// through ezai2's public hostname, and the Cloudflare Access Service Token is attached by the
-// proxy in vite.config.js -- server-side, never in this bundle.
-const TOOTHROOT_PROXY_BASE = '/api/toothroot-rtx5090';
+// The Chiayi 5090 box (CADCAM-RTX5090, 192.168.50.95, since 2026-10-07) is reached the same way
+// as FSAbutment: this box has no route into 192.168.50.0/24, so it goes through ezai2's public
+// hostname, and the Cloudflare Access Service Token is attached by the proxy in vite.config.js
+// -- server-side, never in this bundle. This box (z790, RTX 5080) has had a copy since
+// 2026-10-12 as its standby, bound to docker0, which this viewer's container reaches as
+// host.docker.internal with no credential. A job lives only on the box that took it.
+const TOOTHROOT_TARGETS = {
+  rtx5090: { label: '嘉義 5090', base: '/api/toothroot-rtx5090', box: '嘉義 5090' },
+  z790: { label: '台中 5080', base: '/api/toothroot-z790', box: '台中 5080' },
+};
+
+const baseOf = target => (TOOTHROOT_TARGETS[target] ?? TOOTHROOT_TARGETS.rtx5090).base;
 
 // What the service reads (it picks the reader from the name). Anything may also be sent
 // gzipped as <name>.gz, which is what upload() does with every scan: an arch STL is ~20-30 MB
@@ -34,6 +42,7 @@ const describeHttpError = error => {
   }
   const status = error.response?.status;
   if (status === 403) return 'Cloudflare Access 拒絕（403）：這個 viewer 實例的 Service Token 可能失效';
+  if (status === 502 || status === 504) return `${status}：服務沒有回應（容器沒有在跑？）`;
   return detail ? `${status ? `${status}：` : ''}${detail}` : (error.message || '連線失敗');
 };
 
@@ -43,15 +52,19 @@ const gzipFile = async file => {
   return new Response(stream).blob();
 };
 
-const getToothRootHealth = async () => {
+/** /health answers 503 with a body after a CUDA fault; that body is the useful part. */
+const getToothRootHealth = async target => {
   try {
-    return (await axios.get(`${TOOTHROOT_PROXY_BASE}/health`, { timeout: 20000 })).data;
+    return (await axios.get(`${baseOf(target)}/health`, { timeout: 20000 })).data;
   } catch (error) {
+    if (error.response?.status === 503 && error.response.data && typeof error.response.data === 'object') {
+      return error.response.data;
+    }
     throw new Error(describeHttpError(error));
   }
 };
 
-const getToothRootInfo = async () => (await axios.get(`${TOOTHROOT_PROXY_BASE}/`, { timeout: 20000 })).data;
+const getToothRootInfo = async target => (await axios.get(`${baseOf(target)}/`, { timeout: 20000 })).data;
 
 /**
  * Upload one or both arches and queue a job. `roots` false stops after the segmentation.
@@ -61,7 +74,7 @@ const getToothRootInfo = async () => (await axios.get(`${TOOTHROOT_PROXY_BASE}/`
  * one arch loses is the automatic upper/lower swap check, which compares the two.
  * @returns {{ jobId: string, uploadSeconds: number, sentBytes: number, rawBytes: number }}
  */
-const submitToothRootJob = async ({ upper, lower, roots = true, res = 192, swap = 'auto', seed = 0, onStage = () => {} }) => {
+const submitToothRootJob = async ({ target, upper, lower, roots = true, res = 192, swap = 'auto', seed = 0, onStage = () => {} }) => {
   const scans = [['upper', upper], ['lower', lower]].filter(([, file]) => file);
   if (!scans.length) throw new Error('至少要一顎的口掃');
   for (const [, file] of scans) {
@@ -84,10 +97,11 @@ const submitToothRootJob = async ({ upper, lower, roots = true, res = 192, swap 
   form.append('swap', swap);
   form.append('seed', String(seed));
 
-  onStage(`正在上傳 ${(sentBytes / 1048576).toFixed(1)} MB 到嘉義 5090（原檔 ${(rawBytes / 1048576).toFixed(1)} MB）…`);
+  const box = (TOOTHROOT_TARGETS[target] ?? TOOTHROOT_TARGETS.rtx5090).box;
+  onStage(`正在上傳 ${(sentBytes / 1048576).toFixed(1)} MB 到${box}（原檔 ${(rawBytes / 1048576).toFixed(1)} MB）…`);
   const startedAt = performance.now();
   try {
-    const response = await axios.post(`${TOOTHROOT_PROXY_BASE}/v1/jobs`, form, { timeout: 10 * 60 * 1000 });
+    const response = await axios.post(`${baseOf(target)}/v1/jobs`, form, { timeout: 10 * 60 * 1000 });
     return { jobId: response.data.job_id, uploadSeconds: (performance.now() - startedAt) / 1000, sentBytes, rawBytes };
   } catch (error) {
     throw new Error(describeHttpError(error));
@@ -95,20 +109,20 @@ const submitToothRootJob = async ({ upper, lower, roots = true, res = 192, swap 
 };
 
 /** Step 2 again on a finished job's segmentation, e.g. at another resolution. */
-const rerunToothRootRoots = async (jobId, { res, seed = 0 }) => {
+const rerunToothRootRoots = async (target, jobId, { res, seed = 0 }) => {
   const form = new FormData();
   form.append('res', String(res));
   form.append('seed', String(seed));
   try {
-    await axios.post(`${TOOTHROOT_PROXY_BASE}/v1/jobs/${jobId}/roots`, form, { timeout: 60000 });
+    await axios.post(`${baseOf(target)}/v1/jobs/${jobId}/roots`, form, { timeout: 60000 });
   } catch (error) {
     throw new Error(describeHttpError(error));
   }
 };
 
-const getToothRootJob = async jobId => {
+const getToothRootJob = async (target, jobId) => {
   try {
-    return (await axios.get(`${TOOTHROOT_PROXY_BASE}/v1/jobs/${jobId}`, { timeout: 30000 })).data;
+    return (await axios.get(`${baseOf(target)}/v1/jobs/${jobId}`, { timeout: 30000 })).data;
   } catch (error) {
     throw new Error(describeHttpError(error));
   }
@@ -118,10 +132,10 @@ const getToothRootJob = async jobId => {
  * Poll until the job leaves the queue/GPU. `onUpdate` gets every status document.
  * Resolves with the final one; throws on a failed job.
  */
-const waitForToothRootJob = async (jobId, { onUpdate = () => {}, pollMs = 1000, timeoutMs = 20 * 60 * 1000 } = {}) => {
+const waitForToothRootJob = async (target, jobId, { onUpdate = () => {}, pollMs = 1000, timeoutMs = 20 * 60 * 1000 } = {}) => {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const job = await getToothRootJob(jobId);
+    const job = await getToothRootJob(target, jobId);
     onUpdate(job);
     if (job.state === 'done') return job;
     if (job.state === 'failed') throw new Error(job.error || '工作失敗');
@@ -131,9 +145,9 @@ const waitForToothRootJob = async (jobId, { onUpdate = () => {}, pollMs = 1000, 
 };
 
 /** One output file as an ArrayBuffer. The service gzips PLY on the wire; the browser inflates it. */
-const fetchToothRootFile = async (jobId, path) => {
+const fetchToothRootFile = async (target, jobId, path) => {
   try {
-    const response = await axios.get(`${TOOTHROOT_PROXY_BASE}/v1/jobs/${jobId}/files/${path}`, {
+    const response = await axios.get(`${baseOf(target)}/v1/jobs/${jobId}/files/${path}`, {
       responseType: 'arraybuffer',
       timeout: 5 * 60 * 1000,
     });
@@ -143,9 +157,9 @@ const fetchToothRootFile = async (jobId, path) => {
   }
 };
 
-const fetchToothRootArchive = async jobId => {
+const fetchToothRootArchive = async (target, jobId) => {
   try {
-    const response = await axios.get(`${TOOTHROOT_PROXY_BASE}/v1/jobs/${jobId}/archive`, {
+    const response = await axios.get(`${baseOf(target)}/v1/jobs/${jobId}/archive`, {
       responseType: 'arraybuffer',
       timeout: 10 * 60 * 1000,
     });
@@ -156,11 +170,12 @@ const fetchToothRootArchive = async jobId => {
 };
 
 /** Fire and forget: the outputs are the patient's scan, and the box keeps them 2 h at most anyway. */
-const deleteToothRootJob = jobId => axios.delete(`${TOOTHROOT_PROXY_BASE}/v1/jobs/${jobId}`, { timeout: 20000 }).catch(() => {});
+const deleteToothRootJob = (target, jobId) => axios.delete(`${baseOf(target)}/v1/jobs/${jobId}`, { timeout: 20000 }).catch(() => {});
 
 export {
   TOOTHROOT_ACCEPT,
   TOOTHROOT_FORMATS,
+  TOOTHROOT_TARGETS,
   deleteToothRootJob,
   fetchToothRootArchive,
   fetchToothRootFile,

@@ -51,6 +51,9 @@ const FSABUTMENT_RTX5090_API_URL = process.env.FSABUTMENT_RTX5090_API_URL
 // Only the "AI分牙" tab calls it.
 const TOOTHROOT_RTX5090_API_URL = process.env.TOOTHROOT_RTX5090_API_URL
   || 'https://ezai2.inteware.com.tw/toothroot'
+// The same ToothRoot on THIS box since 2026-10-12, as Chiayi's standby: bound to docker0
+// (172.17.0.1:8035), which this container sees as host.docker.internal, so no credential.
+const TOOTHROOT_Z790_API_URL = process.env.TOOTHROOT_Z790_API_URL || 'http://host.docker.internal:8035'
 // tooth_ssm (added 2026-10-13): the orthodontic team's AI tooth arrangement (htyau/ssm_project,
 // served by its deploy/deploy_api.py), for the "AI排牙" tab. On THIS box it is bound to docker0
 // (172.17.0.1:8036) and this container sees the host as host.docker.internal, so it needs no
@@ -571,6 +574,13 @@ export default defineConfig({
             delete proxyRes.headers['set-cookie']
           })
         },
+      },
+      // ToothRoot on this box (2026-10-12), Chiayi's standby. On docker0, like tooth_ssm below:
+      // nothing but the address, and no shorter key matches it.
+      '/api/toothroot-z790': {
+        target: TOOTHROOT_Z790_API_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/toothroot-z790/, ''),
       },
       // tooth_ssm (2026-10-13), for the "AI排牙" tab. No shorter key matches either route. This
       // box's copy is on docker0 and needs nothing but the address; the Chiayi one goes through

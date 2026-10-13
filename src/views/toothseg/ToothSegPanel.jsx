@@ -6,6 +6,7 @@ import CaseScene from '../../utils/function/CaseScene';
 import ToothSegScene, { GENERATED_HEX, OBSERVED_HEX } from '../../utils/function/ToothSegScene';
 import {
   TOOTHROOT_ACCEPT,
+  TOOTHROOT_TARGETS,
   deleteToothRootJob,
   fetchToothRootArchive,
   fetchToothRootFile,
@@ -24,12 +25,17 @@ const JAW_NAME = { upper: '上顎', lower: '下顎' };
 // 192, 128 moves a tooth by 0.070 mm (Chamfer median, max 0.099) and 160 by 0.059 mm -- while
 // the same 192 run with another seed moves it by 0.157 mm (max 0.48), so the grid costs less
 // than the sampler's own randomness. Hence 128 by default; 192 is what the ToothRoot
-// package's own numbers were measured at.
-const RES_OPTIONS = [
-  { value: 128, label: '128（牙根約 25 秒）' },
-  { value: 160, label: '160（約 26 秒）' },
-  { value: 192, label: '192（約 36 秒，作者量測用）' },
-];
+// package's own numbers were measured at. The same case on z790's RTX 5080 (2026-10-12): 36 /
+// 35 / 47 s.
+const ROOT_SECONDS = { rtx5090: { 128: 25, 160: 26, 192: 36 }, z790: { 128: 36, 160: 35, 192: 47 } };
+const resOptions = target => {
+  const s = ROOT_SECONDS[target] ?? ROOT_SECONDS.rtx5090;
+  return [
+    { value: 128, label: `128（牙根約 ${s[128]} 秒）` },
+    { value: 160, label: `160（約 ${s[160]} 秒）` },
+    { value: 192, label: `192（約 ${s[192]} 秒，作者量測用）` },
+  ];
+};
 // The package README's reading of crown fit: over ~1 mm is the pipeline failing, not a shape
 // error. All 140 of its own teeth were 0.09-0.17 mm.
 const FIT_WARN_MM = 1.0;
@@ -50,7 +56,9 @@ const pooled = async (tasks, size = 6) => {
 };
 
 /**
- * The "AI分牙" tab: ToothRoot (htyau/ToothRoot) on the Chiayi 5090 box.
+ * The "AI分牙" tab: ToothRoot (htyau/ToothRoot) on the Chiayi 5090 box, or on this z790 box,
+ * its standby since 2026-10-12 (same API and defaults; results agree to well within what a
+ * different seed changes, but not to the byte).
  *
  *   step 1  AI 分牙    archnorm puts each arch in a canonical pose, a 25-view 2D U-Net labels
  *                      every vertex with its FDI number, and each tooth's crown is cut out
@@ -65,6 +73,7 @@ const ToothSegPanel = () => {
   const view = useToothSegScene();
   const caseScene = useCaseScene();
   const [files, setFiles] = useState({ upper: null, lower: null });
+  const [target, setTarget] = useState('rtx5090');
   const [res, setRes] = useState(128);
   const [swap, setSwap] = useState('auto');
   const [running, setRunning] = useState(null);
@@ -75,14 +84,38 @@ const ToothSegPanel = () => {
   const [timing, setTiming] = useState(null);
   const [health, setHealth] = useState(null);
   const [palette, setPalette] = useState({});
+  // target -> 'ok' | 'down' | undefined (not answered yet): each box's /health when the tab opened
+  const [reach, setReach] = useState({});
+  // Set once the user picks a box, so the automatic fallback below never overrides a choice.
+  const pickedRef = useRef(false);
+  // { id, target }: the job lives on the box that took it, so polls, files and deletes go there.
   const jobRef = useRef(null);
 
   useEffect(() => {
-    getToothRootInfo().then(info => {
+    for (const key of Object.keys(TOOTHROOT_TARGETS)) {
+      getToothRootHealth(key)
+        .then(h => setReach(previous => ({ ...previous, [key]: h.status === 'ok' && h.cuda !== false ? 'ok' : 'down' })))
+        .catch(() => setReach(previous => ({ ...previous, [key]: 'down' })));
+    }
+  }, []);
+
+  // Chiayi is the default; when it is down at the moment the tab opens and Taichung answers,
+  // start on Taichung instead -- unless someone already chose, or a job is already out.
+  useEffect(() => {
+    if (!pickedRef.current && !jobRef.current && reach.rtx5090 === 'down' && reach.z790 === 'ok') setTarget('z790');
+  }, [reach]);
+
+  useEffect(() => {
+    getToothRootInfo(target).then(info => {
       setPalette(info.palette ?? {});
       ToothSegScene.setPalette(info.palette ?? {});
     }).catch(() => {});
-  }, []);
+  }, [target]);
+
+  const pickTarget = key => {
+    pickedRef.current = true;
+    setTarget(key);
+  };
 
   const pickFile = jaw => file => {
     setFiles(previous => ({ ...previous, [jaw]: file }));
@@ -109,19 +142,20 @@ const ToothSegPanel = () => {
   };
 
   const forgetJob = () => {
-    if (jobRef.current) deleteToothRootJob(jobRef.current);
+    if (jobRef.current) deleteToothRootJob(jobRef.current.target, jobRef.current.id);
     jobRef.current = null;
     setJob(null);
   };
 
   /** Pull what a finished job made into the scene. Returns the seconds it took. */
   const loadResults = async (doc, { segmentation = true } = {}) => {
+    const box = jobRef.current.target;
     const startedAt = performance.now();
     if (segmentation) {
       ToothSegScene.clearResults();
       setStage('正在取回分牙結果…');
       const jaws = ['upper', 'lower'].filter(jaw => doc.summary?.[jaw]);
-      const segs = await Promise.all(jaws.map(jaw => fetchToothRootFile(doc.job_id, `segmentation/${jaw}_seg.ply`)));
+      const segs = await Promise.all(jaws.map(jaw => fetchToothRootFile(box, doc.job_id, `segmentation/${jaw}_seg.ply`)));
       jaws.forEach((jaw, i) => ToothSegScene.setSegmentation(jaw, segs[i]));
       ToothSegScene.setLabels(doc.crowns);
     } else {
@@ -132,7 +166,7 @@ const ToothSegPanel = () => {
       let done = 0;
       setStage(`正在取回牙齒（0 / ${teeth.length}）…`);
       await pooled(teeth.map(({ jaw, fdi }) => async () => {
-        const buffer = await fetchToothRootFile(doc.job_id, `roots/${jaw}/tooth_${fdi}.ply`);
+        const buffer = await fetchToothRootFile(box, doc.job_id, `roots/${jaw}/tooth_${fdi}.ply`);
         ToothSegScene.addTooth(jaw, fdi, buffer);
         setStage(`正在取回牙齒（${++done} / ${teeth.length}）…`);
       }));
@@ -140,8 +174,9 @@ const ToothSegPanel = () => {
     return (performance.now() - startedAt) / 1000;
   };
 
-  const follow = async (jobId, startedAt, extra = {}) => {
-    const doc = await waitForToothRootJob(jobId, {
+  const follow = async (startedAt, extra = {}) => {
+    const { id, target: box } = jobRef.current;
+    const doc = await waitForToothRootJob(box, id, {
       onUpdate: update => {
         setJob(update);
         if (update.state === 'queued') {
@@ -170,12 +205,13 @@ const ToothSegPanel = () => {
     forgetJob();
     const startedAt = performance.now();
     try {
-      const submitted = await submitToothRootJob({ upper: files.upper, lower: files.lower, roots, res, swap, onStage: setStage });
-      jobRef.current = submitted.jobId;
-      const followed = await follow(submitted.jobId, startedAt);
+      const submitted = await submitToothRootJob({ target, upper: files.upper, lower: files.lower, roots, res, swap, onStage: setStage });
+      jobRef.current = { id: submitted.jobId, target };
+      const followed = await follow(startedAt);
       const download = await loadResults(followed.doc);
       setJob(followed.doc);
       setTiming({
+        box: TOOTHROOT_TARGETS[target].box,
         upload: submitted.uploadSeconds,
         sentMb: submitted.sentBytes / 1048576,
         rawMb: submitted.rawBytes / 1048576,
@@ -197,14 +233,13 @@ const ToothSegPanel = () => {
   };
 
   const rerunRoots = async () => {
-    const jobId = jobRef.current;
-    if (!jobId) return;
+    if (!jobRef.current) return;
     setRunning('roots');
     setError(null);
     const startedAt = performance.now();
     try {
-      await rerunToothRootRoots(jobId, { res });
-      const followed = await follow(jobId, startedAt);
+      await rerunToothRootRoots(jobRef.current.target, jobRef.current.id, { res });
+      const followed = await follow(startedAt);
       const download = await loadResults(followed.doc, { segmentation: false });
       setJob(followed.doc);
       setTiming(previous => ({
@@ -228,16 +263,20 @@ const ToothSegPanel = () => {
 
   const checkHealth = async () => {
     setHealth({ type: 'info', text: '檢查中…' });
+    const box = TOOTHROOT_TARGETS[target].box;
     try {
-      const h = await getToothRootHealth();
+      const h = await getToothRootHealth(target);
       const missing = Object.entries(h.checkpoints ?? {}).filter(([, ok]) => !ok).map(([name]) => name);
+      setReach(previous => ({ ...previous, [target]: h.status === 'ok' && h.cuda !== false ? 'ok' : 'down' }));
       setHealth({
-        type: h.status === 'ok' && !missing.length ? 'success' : 'error',
-        text: `ToothRoot ${h.status} · ${h.gpu ?? 'CPU'} · torch ${h.torch} · 佇列 ${h.queue}`
-          + (missing.length ? ` · 缺 checkpoint：${missing.join('、')}` : ''),
+        type: h.status === 'ok' && h.cuda !== false && !missing.length ? 'success' : 'error',
+        text: `${box} · ToothRoot ${h.status} · ${h.gpu ?? 'GPU 無法使用（只有 CPU）'} · torch ${h.torch} · 佇列 ${h.queue}`
+          + (missing.length ? ` · 缺 checkpoint：${missing.join('、')}` : '')
+          + (h.error ? ` · ${h.error}` : ''),
       });
     } catch (e) {
-      setHealth({ type: 'error', text: `無法連線：${e.message}` });
+      setReach(previous => ({ ...previous, [target]: 'down' }));
+      setHealth({ type: 'error', text: `${box} 無法連線：${e.message}` });
     }
   };
 
@@ -245,7 +284,8 @@ const ToothSegPanel = () => {
     if (!jobRef.current) return;
     setStage('正在打包下載…');
     try {
-      downloadBlob(await fetchToothRootArchive(jobRef.current), `toothroot-${jobRef.current}.zip`);
+      const { id, target: box } = jobRef.current;
+      downloadBlob(await fetchToothRootArchive(box, id), `toothroot-${id}.zip`);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -269,9 +309,9 @@ const ToothSegPanel = () => {
 
   return <div className='direct-panel toothseg-panel'>
     <p className='panel-note'>
-      矯正 AI 分牙（ToothRoot，嘉義 5090）：上下顎口掃 → 每顆牙標上 FDI 並切出牙冠 → 依牙冠生成完整牙齒（含牙根）。
+      矯正 AI 分牙（ToothRoot，嘉義 5090 或台中 5080）：上下顎口掃 → 每顆牙標上 FDI 並切出牙冠 → 依牙冠生成完整牙齒（含牙根）。
       可以只給一顎（只做那一顎）；只給一顎時沒有「上下顎檔案對調」的自動檢查，請確認檔案放在對的那一格。
-      口掃會先在瀏覽器 gzip 壓縮再送出；結果在 5090 上保留 2 小時。
+      口掃會先在瀏覽器 gzip 壓縮再送出；結果在執行的那台主機上保留 2 小時。
     </p>
 
     <section className='panel-section'>
@@ -300,9 +340,15 @@ const ToothSegPanel = () => {
     <section className='panel-section'>
       <div className='section-title'><span className='step'>2</span>執行</div>
       <div className='field-row'>
+        <label title='兩台是同一套服務與設定；結果幾何上等效（差異比換亂數種子還小），但不是逐位元組相同'>
+          主機
+          <Select size='small' value={target} onChange={pickTarget} disabled={busy} options={Object.entries(TOOTHROOT_TARGETS).map(([key, value]) => ({
+            value: key, label: value.label + (reach[key] === 'down' ? '（目前無法使用）' : reach[key] === 'ok' ? '' : '（檢查中）'),
+          }))} />
+        </label>
         <label>
           牙根網格解析度
-          <Select size='small' value={res} onChange={setRes} options={RES_OPTIONS} disabled={busy} />
+          <Select size='small' value={res} onChange={setRes} options={resOptions(target)} disabled={busy} />
         </label>
         <label title={oneJaw ? '只給一顎時沒有東西可以比，不做對調檢查' : '檔名標錯上下顎時，模型會自動發現並對調（看兩種擺法各有幾種翻轉被判成正確的顎）'}>
           上下顎檔案對調
@@ -336,13 +382,14 @@ const ToothSegPanel = () => {
     {(timing || summary) && <section className='panel-section'>
       <div className='section-title'><span className='step'>3</span>結果</div>
       {timing && <div className='toothseg-timing'>
+        {timing.box && <Tag color='geekblue'>{timing.box}</Tag>}
         {timing.upload != null && <Tag>上傳 {fmtSeconds(timing.upload)}（{timing.sentMb.toFixed(1)} MB，原檔 {timing.rawMb.toFixed(1)} MB）</Tag>}
         {timing.segment != null && !timing.rerun && <Tag color='blue'>分牙 {fmtSeconds(timing.segment)}</Tag>}
         {timing.roots != null && <Tag color='magenta'>牙根 {fmtSeconds(timing.roots)}（res {timing.res}）</Tag>}
         <Tag>下載 {fmtSeconds(timing.download)}</Tag>
         <Tag color='green'>總共 {fmtSeconds(timing.total)}</Tag>
       </div>}
-      {job?.job_id && <div className='health-line'>Job {job.job_id}</div>}
+      {job?.job_id && <div className='health-line'>Job {job.job_id}{jobRef.current ? ` · ${TOOTHROOT_TARGETS[jobRef.current.target].box}` : ''}</div>}
       {job?.warnings?.length > 0 && <Alert className='section-alert' type='warning' showIcon message={
         <ul className='warning-list'>{job.warnings.map(w => <li key={w}>{w}</li>)}</ul>
       } />}
