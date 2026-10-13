@@ -17,13 +17,14 @@ const TOOTHSSM_TARGETS = {
   rtx5090: { label: '嘉義 5090', base: '/api/toothssm-rtx5090', box: '嘉義 5090' },
 };
 
-// Who segments the scans and grows the roots. ToothRoot by default (2026-10-13): the orthodontic
-// project files' scans are decimated to ~12k faces, tooth_ssm's own segmentation finds a few teeth
-// on them and its roots step refuses every crown under 300 vertices, while ToothRoot segments them
-// fully. Either way tooth_ssm's alignment model arranges the teeth.
+// Who segments the scans and grows the roots; either way tooth_ssm's alignment model arranges the
+// teeth. The orthodontic project files' scans are decimated to ~12k faces: tooth_ssm's own
+// segmentation finds a few teeth on them and its roots step refuses every crown under 300
+// vertices, while ToothRoot segments them fully. The author's pipeline is the default all the same
+// (user, 2026-10-13), so that QC tests it first; ToothRoot is one click away.
 const TOOTHSSM_SEG_OPTIONS = [
-  { value: 'toothroot', label: 'ToothRoot 分牙＋牙根（預設）' },
-  { value: 'ssm', label: 'tooth_ssm 原作者流程' },
+  { value: 'ssm', label: 'tooth_ssm 原作者流程（預設）' },
+  { value: 'toothroot', label: 'ToothRoot 分牙＋牙根' },
 ];
 
 // What the service reads (it picks the reader from the name). Every scan is sent gzipped as
@@ -80,7 +81,7 @@ const getToothSsmInfo = async target => (await axios.get(`${baseOf(target)}/`, {
  * the alignment model is dual-arch.
  * @returns {{ jobId: string, uploadSeconds: number, sentBytes: number, rawBytes: number }}
  */
-const submitToothSsmJob = async ({ target, upper, lower, res = 128, until = 'align', seg = 'toothroot', onStage = () => {} }) => {
+const submitToothSsmJob = async ({ target, upper, lower, res = 128, until = 'align', seg = 'ssm', onStage = () => {} }) => {
   if (!upper || !lower) throw new Error('上下顎口掃都要：分牙與咬合是成對處理的，排牙模型也是上下顎一起看');
   const scans = [['upper', upper], ['lower', lower]];
   for (const [, file] of scans) {

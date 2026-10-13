@@ -83,7 +83,7 @@ const ToothAlignPanel = () => {
   const [files, setFiles] = useState({ upper: null, lower: null });
   const [target, setTarget] = useState('z790');
   const [res, setRes] = useState(128);
-  const [seg, setSeg] = useState('toothroot');
+  const [seg, setSeg] = useState('ssm');
   const [running, setRunning] = useState(null);
   const [stage, setStage] = useState('');
   const [progress, setProgress] = useState(null);
@@ -322,7 +322,7 @@ const ToothAlignPanel = () => {
   return <div className='direct-panel toothseg-panel'>
     <p className='panel-note'>
       矯正 AI 排牙（tooth_ssm）：上下顎口掃 → AI 分牙 → 依牙冠生成整顆牙（含牙根）→ 排牙模型移動每顆牙（牙根跟著動）→ ABO 評分。
-      分牙和牙根預設由 ToothRoot 做（矯正專案檔的口掃是減過面的，tooth_ssm 自己的分牙在這種檔上會漏牙），排牙一律用 tooth_ssm 的模型。
+      預設是 tooth_ssm 原作者流程；矯正專案檔的口掃是減過面的（約 1.2 萬面），原流程在這種檔上常會漏牙，可改選「ToothRoot 分牙＋牙根」。排牙一律用 tooth_ssm 的模型。
       上下顎都要。上下顎朝同一方向時，服務會把上顎轉成估計的咬合位置再分一次。結果在服務端保留 2 小時。
     </p>
 
