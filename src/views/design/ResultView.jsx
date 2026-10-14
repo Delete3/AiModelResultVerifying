@@ -18,7 +18,23 @@ const MODE_LABEL = {
   full: 'AI margin → 牙冠',
   margin_only: '只預測 margin',
   margin_override: '自訂 margin → 牙冠',
+  stump: '自訂 margin → 資料庫支台齒',
 };
+
+const HEIGHT_SOURCE = { natural: '自然高度', caller: '指定高度' };
+/** A library stump's record (manifest stump / no_abutment), as tags. */
+const libraryStumpTags = record => <>
+  <Tag color='gold'>
+    資料庫支台齒 {Number(record.height_mm).toFixed(1)} mm（{HEIGHT_SOURCE[record.height_source.split('+')[0]] ?? record.height_source}
+    {record.height_source.includes('clearance') ? '，為對咬降低' : ''}）
+  </Tag>
+  {record.antagonist_gap_mm != null && <Tag color={record.antagonist_gap_mm < record.clearance_mm - 0.05 ? 'red' : 'default'}>
+    離對咬 {Number(record.antagonist_gap_mm).toFixed(2)} mm
+  </Tag>}
+  <Tag>{record.axis_source === 'caller' ? '插入方向：指定' : '插入方向：自然傾斜'} {Number(record.axis_from_occlusal_deg).toFixed(1)}°</Tag>
+  <Tag>{record.cap}</Tag>
+  {record.open_margin_edges > 0 && <Tag color='red'>margin 有 {record.open_margin_edges} 條邊沒縫合</Tag>}
+</>;
 
 /** The per-stage table, plus whatever the browser waited on top of the service's own time. */
 const timingBlock = result => {
@@ -63,6 +79,7 @@ const ResultView = ({ running, progress, error, result, onEditRing }) => {
   // Only a no_abutment job has these: the stump it was built over, and whether the outer
   // surface -- the only part of such a crown meant to be used -- actually came back.
   const stump = result?.noAbutment;
+  const library = result?.stump ?? (stump?.kind === 'library_stump' ? stump : null);
   const deliveredShell = result?.manifest?.backends?.crown?.shell;
   // Only when 「參考對側牙」 was ticked: whether the crown service used the other side's tooth.
   const contra = contralateralOutcome(result?.manifest);
@@ -81,15 +98,16 @@ const ResultView = ({ running, progress, error, result, onEditRing }) => {
       <Alert
         type={result.warnings.length ? 'warning' : 'success'}
         showIcon
-        message={`${result.mode === 'margin_only' ? 'Margin 已預測' : '牙冠已生成'} · ${result.site.label}`}
+        message={`${result.mode === 'margin_only' ? 'Margin 已預測' : result.mode === 'stump' ? '支台齒已生成' : '牙冠已生成'} · ${result.site.label}`}
         description={<div className='result-meta'>
           <div>
             <Tag>{MODE_LABEL[result.mode] ?? result.mode}</Tag>
             {result.singleArch
               ? <Tag color='orange'>單顎 · 對咬為平面替身 {standin?.height_above_margin_mm != null ? `${Number(standin.height_above_margin_mm).toFixed(1)} mm` : ''}</Tag>
               : result.mode !== 'margin_only' && <Tag color='blue'>上下顎</Tag>}
+            {library && libraryStumpTags(library)}
             {relief > 0 && <Tag color='gold'>對咬被移開 {relief.toFixed(2)} mm</Tag>}
-            {stump && <Tag color='green'>虛擬支台齒 {Number(stump.height_mm).toFixed(1)} mm{stump.height_source === 'caller' ? '（手動）' : ''}</Tag>}
+            {stump && !library && <Tag color='green'>虛擬支台齒 {Number(stump.height_mm).toFixed(1)} mm{stump.height_source === 'caller' ? '（手動）' : ''}</Tag>}
             {stump && stump.site_room_mm != null && <Tag color={stump.site_room_mm < 3 ? 'red' : 'default'}>
               牙齦到對咬 {Number(stump.site_room_mm).toFixed(1)} mm
             </Tag>}
@@ -115,7 +133,11 @@ const ResultView = ({ running, progress, error, result, onEditRing }) => {
         {result.blob && <Button type='primary' onClick={() => downloadBlob(result.blob, result.fileName)}>
           {stump ? '下載牙冠外壁 PLY' : '下載牙冠 PLY'}
         </Button>}
-        {result.virtualPrep && <Button onClick={() => downloadBlob(result.virtualPrep, result.virtualPrepName)}>下載虛擬支台齒</Button>}
+        {result.virtualPrep && <Button onClick={() => downloadBlob(result.virtualPrep, result.virtualPrepName)}>
+          {library ? '下載資料庫支台齒' : '下載虛擬支台齒'}
+        </Button>}
+        {result.stumpMesh && <Button type='primary' onClick={() => downloadBlob(result.stumpMesh, result.stumpMeshName)}>下載支台齒 PLY</Button>}
+        {result.stumpScan && <Button onClick={() => downloadBlob(result.stumpScan, result.stumpScanName)}>下載補好的口掃 PLY</Button>}
         {result.archive && <Button onClick={() => downloadBlob(result.archive, result.archiveName)}>下載完整結果 ZIP</Button>}
         {result.mode === 'full' && result.marginOriginal?.length > 2 && <Button onClick={() => onEditRing(result)}>
           用這條 AI margin 修改

@@ -98,6 +98,23 @@ const PIPELINE_TARGETS = {
     noAbutment: true,
     contralateral: true,
   },
+  // The library-stump test pipeline on the Chiayi box (/pipeline-stump/, 2026-10-14):
+  // production main plus mode=stump (a stump from EZCAD's abutment library grown on the margin
+  // and stitched into the scan, no crown) and stump_shape=library for no_abutment jobs. Used by
+  // the 「AI支台齒」 tab, and by the peek abut tab when its stump is set to the library one;
+  // `panel` keeps it out of the design tab's list.
+  rtx5090_stump: {
+    base: '/api/pipeline-stump',
+    label: '5090 資料庫支台齒（測試）',
+    hint: '嘉義 · RTX 5090 · /pipeline-stump · 經 Cloudflare tunnel',
+    remote: true,
+    singleArch: true,
+    formats: TRI_FORMATS,
+    noAbutment: true,
+    libraryStump: true,
+    contralateral: true,
+    panel: 'stump',
+  },
   // There was a no-abutment test endpoint here, 'rtx5090_noabut' (/pipeline-noabut/ on the
   // Chiayi box, 2026-09-21 to 2026-10-07). It came down once that box's production pipeline
   // took no_abutment; the peek abut tab calls "5090 ezai2" instead. vite.config.js still
@@ -223,6 +240,7 @@ const STAGE_LABELS = {
   margin: 'Margin 預測',
   margin_override: '套用自訂 margin',
   virtual_prep: '放置虛擬支台齒',
+  stump: '長出支台齒',
   crown: '牙冠',
   packaging: '打包',
 };
@@ -232,6 +250,8 @@ const PIPELINE_MODES = {
   full: 'full',
   marginOnly: 'margin_only',
   marginOverride: 'margin_override',
+  // A library stump stitched into the scan along the caller's ring; no crown.
+  stump: 'stump',
 };
 
 /** Row labels for the service's timings_ms, in the order the stages run. */
@@ -241,6 +261,7 @@ const TIMING_LABELS = [
   ['margin_ms', 'Margin 推論'],
   ['margin_override_ms', '自訂 margin 檢查'],
   ['virtual_prep_ms', '虛擬支台齒'],
+  ['stump_ms', '長出支台齒'],
   ['crown_ms', '牙冠推論'],
   ['packaging_ms', '打包與回原座標'],
 ];
@@ -294,6 +315,15 @@ const singleArchTargets = () => Object.values(PIPELINE_TARGETS)
  * lower part is NOT asked of the service (it can build one, peek_lower, but AIrDesign
  * builds its own from the shell, so this viewer does too: src/utils/function/peek/).
  *
+ * `noAbutment.stumpShape: 'library'` (a target flagged `libraryStump`) builds the crown over
+ * the abutment-library stump instead of the generic virtual one; `noAbutment.clearanceMm` and
+ * `noAbutment.insertionAxis` ([x, y, z] in the scans' frame) apply to that stump only.
+ *
+ * mode 'stump' (a target flagged `libraryStump`) builds no crown: the library stump is grown
+ * on `marginPts` and stitched into the scan, with `stump` ({ heightMm, shoulderMm,
+ * clearanceMm, insertionAxis }, each null for the service's own choice). The result carries
+ * `stumpMesh` (stump.ply) and `stumpScan` (scan_with_stump.ply).
+ *
  * `contralateral` (anterior teeth, a target flagged `contralateral`): the crown is refitted to
  * the mirrored same tooth on the other side; the service may decline, and says why
  * (contralateralOutcome reads it from the manifest).
@@ -307,6 +337,7 @@ const runPipelineJob = async ({
   marginPts = null,
   singleArch = false,
   noAbutment = null,
+  stump = null,
   contralateral = false,
   onStage = () => {},
   pollMs = 500,
@@ -331,8 +362,12 @@ const runPipelineJob = async ({
   } else if (!upperStl || !lowerStl) {
     throw new Error('需要 upper.stl 與 lower.stl（或改用單顎模式）');
   }
-  if (mode === PIPELINE_MODES.marginOverride && !marginPts) {
-    throw new Error('覆寫 margin 模式需要一條 margin');
+  const ringMode = mode === PIPELINE_MODES.marginOverride || mode === PIPELINE_MODES.stump;
+  if (ringMode && !marginPts) {
+    throw new Error(mode === PIPELINE_MODES.stump ? '長支台齒需要一條 margin' : '覆寫 margin 模式需要一條 margin');
+  }
+  if ((mode === PIPELINE_MODES.stump || noAbutment?.stumpShape === 'library') && !site.libraryStump) {
+    throw new Error(`${site.label} 沒有資料庫支台齒`);
   }
   if (noAbutment) {
     if (!site.noAbutment) throw new Error(`${site.label} 不支援無支台齒模式`);
@@ -379,11 +414,22 @@ const runPipelineJob = async ({
     form.append('no_abutment', 'true');
     if (noAbutment.stumpHeightMm != null) form.append('stump_height_mm', String(noAbutment.stumpHeightMm));
     if (noAbutment.stumpShoulderMm != null) form.append('stump_shoulder_mm', String(noAbutment.stumpShoulderMm));
+    if (noAbutment.stumpShape === 'library') {
+      form.append('stump_shape', 'library');
+      if (noAbutment.clearanceMm != null) form.append('stump_clearance_mm', String(noAbutment.clearanceMm));
+      if (noAbutment.insertionAxis) form.append('insertion_axis', noAbutment.insertionAxis.join(','));
+    }
   }
-  if (allToothFdi.trim() && mode !== PIPELINE_MODES.marginOverride) {
+  if (mode === PIPELINE_MODES.stump && stump) {
+    if (stump.heightMm != null) form.append('stump_height_mm', String(stump.heightMm));
+    if (stump.shoulderMm != null) form.append('stump_shoulder_mm', String(stump.shoulderMm));
+    if (stump.clearanceMm != null) form.append('stump_clearance_mm', String(stump.clearanceMm));
+    if (stump.insertionAxis) form.append('insertion_axis', stump.insertionAxis.join(','));
+  }
+  if (allToothFdi.trim() && !ringMode) {
     form.append('all_tooth_numbers', allToothFdi.trim());
   }
-  if (mode === PIPELINE_MODES.marginOverride) {
+  if (ringMode) {
     const blob = marginPts instanceof Blob ? marginPts : new Blob([marginPts], { type: 'text/plain' });
     form.append('margin_pts', blob, `margin_${fdi}.pts`);
   }
@@ -453,7 +499,7 @@ const runPipelineJob = async ({
     timeout: timeoutMs,
   });
   const decoder = new TextDecoder();
-  const hasCrown = mode !== PIPELINE_MODES.marginOnly;
+  const hasCrown = mode !== PIPELINE_MODES.marginOnly && mode !== PIPELINE_MODES.stump;
   const crown = hasCrown ? await extractFromZip(archive.data, 'crown.ply') : null;
   // The ring the job actually used, in the uploaded frame: the predicted one for full and
   // margin_only, the caller's own (after the service's rotation round trip) for override.
@@ -463,6 +509,10 @@ const runPipelineJob = async ({
   // Only a no_abutment job carries it; the manifest's contents list says whether it is there.
   const virtualPrep = manifest.contents?.['virtual_prep.ply']
     ? await extractFromZip(archive.data, 'virtual_prep.ply') : null;
+  // Only a mode=stump job: the library stump alone, and the scan with it stitched in.
+  const stumpMesh = manifest.contents?.['stump.ply'] ? await extractFromZip(archive.data, 'stump.ply') : null;
+  const stumpScan = manifest.contents?.['scan_with_stump.ply']
+    ? await extractFromZip(archive.data, 'scan_with_stump.ply') : null;
   // The rotation the service put the scans through (p_canonical = R p_original): what the
   // PEEK lower part needs to know which way is occlusal, mesial and buccal.
   const alignment = manifest.contents?.['alignment.json']
@@ -483,6 +533,11 @@ const runPipelineJob = async ({
     virtualPrep: virtualPrep ? new Blob([virtualPrep], { type: 'model/ply' }) : null,
     virtualPrepName: `virtual_prep_FDI${fdi}.ply`,
     noAbutment: manifest.no_abutment ?? null,
+    stumpMesh: stumpMesh ? new Blob([stumpMesh], { type: 'model/ply' }) : null,
+    stumpMeshName: `stump_FDI${fdi}.ply`,
+    stumpScan: stumpScan ? new Blob([stumpScan], { type: 'model/ply' }) : null,
+    stumpScanName: `scan_with_stump_FDI${fdi}.ply`,
+    stump: manifest.stump ?? null,
     rotation: alignment?.rotation_matrix ?? null,
     jobId,
     mode,

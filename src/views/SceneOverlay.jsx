@@ -25,7 +25,7 @@ const SceneOverlay = () => {
       {toggle('lower', '下顎', scene.hasLower)}
       {toggle('crown', '牙冠', scene.hasCrown)}
       {toggle('abutment', 'Abutment', scene.hasAbutment)}
-      {toggle('stump', '虛擬支台齒', scene.hasStump)}
+      {toggle('stump', '支台齒', scene.hasStump)}
       {toggle('peek', 'PEEK 牙冠', scene.hasPeek)}
       {toggle('tibase', '鈦基座', scene.hasTibase)}
       {toggle('reference', 'AI margin', scene.hasReference)}

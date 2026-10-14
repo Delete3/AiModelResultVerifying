@@ -20,10 +20,14 @@ import { DEFAULT_LIBRARY_PART, PEEK_DEFAULTS } from './peekParams';
 // /pipeline-noabut/, taken down the same day.
 const TARGET = 'rtx5090';
 const JAW_NAME = { upper: '上顎', lower: '下顎' };
-// The service's own bounds (ezai-pipeline app/virtual_prep.py); it answers 422 outside them.
-const HEIGHT_RANGE = [1.0, 6.0];
+// The library-stump test pipeline (/pipeline-stump/, 2026-10-14), when the stump is set to the
+// abutment library's.
+const LIBRARY_TARGET = 'rtx5090_stump';
+// The service's own bounds (ezai-pipeline app/virtual_prep.py, app/library_stump.py); it
+// answers 422 outside them.
+const HEIGHT_RANGE = { virtual: [1.0, 6.0], library: [1.5, 8.0] };
 const SHOULDER_RANGE = [0.3, 1.5];
-const DEFAULT_SHOULDER = 0.8;
+const DEFAULT_SHOULDER = { virtual: 0.8, library: 0.6 };
 // Parameter edits rebuild the PEEK lower part once they settle for this long.
 const REBUILD_DELAY_MS = 350;
 
@@ -68,12 +72,13 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
   const [result, setResult] = useState(null);
   const [scanError, setScanError] = useState(null);
   const [heightMode, setHeightMode] = useState('auto');
+  const [stumpShape, setStumpShape] = useState('virtual');
   const [height, setHeight] = useState(3.0);
-  const [shoulder, setShoulder] = useState(DEFAULT_SHOULDER);
+  const [shoulder, setShoulder] = useState(DEFAULT_SHOULDER.virtual);
   const [peekEnabled, setPeekEnabled] = useState(true);
   const [peekParams, setPeekParams] = useState({ ...PEEK_DEFAULTS });
   const [libraryIndex, setLibraryIndex] = useState(null);
-  const [library, setLibraryState] = useState(null);
+  const [implantPart, setLibraryState] = useState(null);
   const [peekState, setPeekState] = useState(null);
   const [peekBusy, setPeekBusy] = useState(false);
   const [peekError, setPeekError] = useState(null);
@@ -102,7 +107,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
     return () => builder.current.dispose();
   }, []);
 
-  const setLibrary = value => setLibraryState(value === 'default' ? pickLibraryPart(libraryIndex, library) : value);
+  const setLibrary = value => setLibraryState(value === 'default' ? pickLibraryPart(libraryIndex, implantPart) : value);
 
   const dropPeek = () => {
     buildSeq.current++;
@@ -123,7 +128,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
     await new Promise(resolve => setTimeout(resolve, 30));
     try {
       if (seq !== buildSeq.current) return;
-      const out = await builder.current.build(peekParams, library);
+      const out = await builder.current.build(peekParams, implantPart);
       if (seq !== buildSeq.current) {
         out.solid?.dispose();
         out.tibase?.dispose();
@@ -142,7 +147,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
     } finally {
       if (seq === buildSeq.current) setPeekBusy(false);
     }
-  }, [peekParams, library]);
+  }, [peekParams, implantPart]);
 
   // Parameters changed: rebuild once they settle.
   useEffect(() => {
@@ -153,7 +158,9 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
 
   const anterior = isAnteriorFdi(fdi);
   const useContralateral = contralateral && anterior;
-  const target = TARGET;
+  const library = stumpShape === 'library';
+  const target = library ? LIBRARY_TARGET : TARGET;
+  const heightRange = HEIGHT_RANGE[stumpShape];
   const site = PIPELINE_TARGETS[target];
   const opposingJaw = prepJaw === 'upper' ? 'lower' : prepJaw === 'lower' ? 'upper' : null;
   const has = { upper: scene.hasUpper, lower: scene.hasLower };
@@ -215,7 +222,8 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
         // null = the service's own choice; only what the user actually changed is sent.
         noAbutment: {
           stumpHeightMm: heightMode === 'manual' ? height : null,
-          stumpShoulderMm: shoulder !== DEFAULT_SHOULDER ? shoulder : null,
+          stumpShoulderMm: shoulder !== DEFAULT_SHOULDER[stumpShape] ? shoulder : null,
+          ...(library ? { stumpShape: 'library' } : {}),
         },
         contralateral: useContralateral,
         target,
@@ -324,6 +332,12 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
     <section className='panel-section'>
       <div className='section-title'><span className='step'>3</span>虛擬支台齒</div>
       <Radio.Group
+        value={stumpShape}
+        onChange={e => { setStumpShape(e.target.value); setShoulder(DEFAULT_SHOULDER[e.target.value]); setHealth(null); }}
+        disabled={Boolean(running)}
+        options={[{ label: '一般（正式）', value: 'virtual' }, { label: '資料庫支台齒（測試）', value: 'library' }]}
+      />
+      <Radio.Group
         value={heightMode}
         onChange={e => setHeightMode(e.target.value)}
         disabled={Boolean(running)}
@@ -332,15 +346,17 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
       <div className='field-row'>
         {heightMode === 'manual' && <label>
           高度（mm）
-          <InputNumber min={HEIGHT_RANGE[0]} max={HEIGHT_RANGE[1]} step={0.5} value={height} onChange={v => setHeight(v ?? 3.0)} disabled={Boolean(running)} />
+          <InputNumber min={heightRange[0]} max={heightRange[1]} step={0.5} value={height} onChange={v => setHeight(v ?? 3.0)} disabled={Boolean(running)} />
         </label>}
         <label>
           肩台寬（mm）
-          <InputNumber min={SHOULDER_RANGE[0]} max={SHOULDER_RANGE[1]} step={0.1} value={shoulder} onChange={v => setShoulder(v ?? DEFAULT_SHOULDER)} disabled={Boolean(running)} />
+          <InputNumber min={SHOULDER_RANGE[0]} max={SHOULDER_RANGE[1]} step={0.1} value={shoulder} onChange={v => setShoulder(v ?? DEFAULT_SHOULDER[stumpShape])} disabled={Boolean(running)} />
         </label>
       </div>
       <p className='panel-note'>
-        自動：牙齦到對咬的距離減 1.5 mm，限制在 1.5–4.0 mm；錐度 8°。牙齦到對咬不到 3 mm 時放不下牙冠，結果會標示出來。
+        {library
+          ? <>資料庫支台齒（和「AI支台齒」分頁同一個）：EZCAD 支台齒資料庫的形狀，高度、傾斜、寬度用真實支台齒的中位數，離對咬至少 1.5 mm，沿 margin 縫進口掃。送到嘉義 5090 的測試 pipeline（/pipeline-stump）。</>
+          : <>自動：牙齦到對咬的距離減 1.5 mm，限制在 1.5–4.0 mm；錐度 8°。牙齦到對咬不到 3 mm 時放不下牙冠，結果會標示出來。</>}
       </p>
     </section>
 
@@ -361,6 +377,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
       <div className='generate-summary'>
         <Tag>自訂 margin（mode=margin_override）</Tag>
         <Tag color='green'>no_abutment</Tag>
+        {library && <Tag color='gold'>資料庫支台齒（測試端點）</Tag>}
         {peekEnabled && <Tag color='gold'>PEEK 下半部：瀏覽器</Tag>}
         {useContralateral && <Tag color='purple'>參考對側牙</Tag>}
         {hasPrep && <Tag color={singleArch ? 'orange' : 'blue'}>{singleArch ? '單顎' : '上下顎'}</Tag>}
@@ -393,7 +410,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
       setEnabled={setPeekEnabled}
       params={peekParams}
       setParams={setPeekParams}
-      library={library}
+      library={implantPart}
       setLibrary={setLibrary}
       libraryIndex={libraryIndex}
       state={peekState}

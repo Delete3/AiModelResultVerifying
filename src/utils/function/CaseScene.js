@@ -16,6 +16,8 @@ const ABUTMENT_COLOR = 0x4dabf7;
 // stand-in the crown's intaglio fits, not a design anyone will use, and the crown's outer
 // surface is what should be looked at.
 const STUMP_COLOR = 0x8ce99a;
+// The library stump of the 「AI支台齒」 tab: the result itself, so solid.
+const LIBRARY_STUMP_COLOR = 0xf2c46d;
 // PEEK's own beige, and a titanium grey for the base it sits on.
 const PEEK_COLOR = 0xe6d3a8;
 const TIBASE_COLOR = 0x8d99a6;
@@ -218,11 +220,18 @@ class CaseScene {
    * frame of the uploaded scans like the crown.
    * @param {Blob} blob a PLY
    */
-  async setStump(blob, fileName = 'virtual_prep.ply') {
+  async setStump(blob, fileName = 'virtual_prep.ply', { solid = false } = {}) {
     const geometry = await loadGeometry(new File([blob], fileName, { type: 'model/ply' }));
     if (!geometry) throw new Error('無法解析回傳的虛擬支台齒');
     this.clearStump({ silent: true });
-    const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+    // `solid`: the library stump of the 「AI支台齒」 tab, which IS the result there (an
+    // abutment's upper part), so it is shown opaque like a crown rather than as a stand-in.
+    const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial(solid ? {
+      color: LIBRARY_STUMP_COLOR,
+      roughness: 0.45,
+      metalness: 0.05,
+      side: THREE.DoubleSide,
+    } : {
       color: STUMP_COLOR,
       roughness: 0.6,
       metalness: 0,
