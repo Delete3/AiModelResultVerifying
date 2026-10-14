@@ -111,7 +111,7 @@ function App() {
                   // the scan (an AI abutment's upper part), through the Chiayi box's
                   // library-stump test pipeline. Shares the case with the design tab.
                   key: 'stump',
-                  label: 'AI支台齒',
+                  label: '產生支台齒',
                   children: <StumpPanel fdi={fdi} setFdi={setFdi} prepJaw={prepJaw} scene={scene} />,
                 },
                 {

@@ -101,7 +101,7 @@ const PIPELINE_TARGETS = {
   // The library-stump test pipeline on the Chiayi box (/pipeline-stump/, 2026-10-14):
   // production main plus mode=stump (a stump from EZCAD's abutment library grown on the margin
   // and stitched into the scan, no crown) and stump_shape=library for no_abutment jobs. Used by
-  // the 「AI支台齒」 tab, and by the peek abut tab when its stump is set to the library one;
+  // the 「產生支台齒」 tab, and by the peek abut tab when its stump is set to the library one;
   // `panel` keeps it out of the design tab's list.
   rtx5090_stump: {
     base: '/api/pipeline-stump',

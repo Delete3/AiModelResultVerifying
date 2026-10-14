@@ -24,7 +24,7 @@ const DEFAULT_SHOULDER = 0.6;
 const DEFAULT_CLEARANCE = 1.0;
 
 /**
- * 「AI支台齒」: a stump for a site with no abutment yet -- the upper part of an AI abutment.
+ * 「產生支台齒」: a stump for a site with no abutment yet -- the upper part of an AI abutment.
  *
  * The scan is cut along the drawn margin and a stump from EZCAD's abutment library is grown in
  * its place: its shape is the library's, its height, lean and widths are the median of real
