@@ -100,9 +100,10 @@ const PIPELINE_TARGETS = {
   },
   // The library-stump test pipeline on the Chiayi box (/pipeline-stump/, 2026-10-14):
   // production main plus mode=stump (a stump from EZCAD's abutment library grown on the margin
-  // and stitched into the scan, no crown) and stump_shape=library for no_abutment jobs. Used by
-  // the 「產生支台齒」 tab, and by the peek abut tab when its stump is set to the library one;
-  // `panel` keeps it out of the design tab's list.
+  // and stitched into the scan, no crown) and stump_shape=library for no_abutment jobs; since
+  // the afternoon also stump_shape=cutback for both (the crown built over that stump, cut back).
+  // Used by the 「產生支台齒」 tab, and by the peek abut tab when its stump is set to the library
+  // one or the cutback; `panel` keeps it out of the design tab's list.
   rtx5090_stump: {
     base: '/api/pipeline-stump',
     label: '5090 資料庫支台齒（測試）',
@@ -242,6 +243,7 @@ const STAGE_LABELS = {
   virtual_prep: '放置虛擬支台齒',
   stump: '長出支台齒',
   crown: '牙冠',
+  cutback: '牙冠往內縮（cutback）',
   packaging: '打包',
 };
 
@@ -263,6 +265,7 @@ const TIMING_LABELS = [
   ['virtual_prep_ms', '虛擬支台齒'],
   ['stump_ms', '長出支台齒'],
   ['crown_ms', '牙冠推論'],
+  ['cutback_ms', '牙冠往內縮（cutback）'],
   ['packaging_ms', '打包與回原座標'],
 ];
 
@@ -324,6 +327,12 @@ const singleArchTargets = () => Object.values(PIPELINE_TARGETS)
  * clearanceMm, insertionAxis }, each null for the service's own choice). The result carries
  * `stumpMesh` (stump.ply) and `stumpScan` (scan_with_stump.ply).
  *
+ * `stump.shape: 'cutback'` (and `noAbutment.stumpShape: 'cutback'`): the service builds a crown
+ * over the library stump and returns that crown cut back by `cutbackMm` (walls) and
+ * `cutbackOcclusalMm` (occlusal, along the axis) as the stump -- ezai-pipeline
+ * app/cutback_stump.py. mode 'stump' then also carries `cutbackCrown` (cutback_crown.ply, the
+ * crown it was cut back from).
+ *
  * `contralateral` (anterior teeth, a target flagged `contralateral`): the crown is refitted to
  * the mirrored same tooth on the other side; the service may decline, and says why
  * (contralateralOutcome reads it from the manifest).
@@ -366,7 +375,8 @@ const runPipelineJob = async ({
   if (ringMode && !marginPts) {
     throw new Error(mode === PIPELINE_MODES.stump ? '長支台齒需要一條 margin' : '覆寫 margin 模式需要一條 margin');
   }
-  if ((mode === PIPELINE_MODES.stump || noAbutment?.stumpShape === 'library') && !site.libraryStump) {
+  const libraryShape = ['library', 'cutback'].includes(noAbutment?.stumpShape);
+  if ((mode === PIPELINE_MODES.stump || libraryShape) && !site.libraryStump) {
     throw new Error(`${site.label} 沒有資料庫支台齒`);
   }
   if (noAbutment) {
@@ -414,10 +424,14 @@ const runPipelineJob = async ({
     form.append('no_abutment', 'true');
     if (noAbutment.stumpHeightMm != null) form.append('stump_height_mm', String(noAbutment.stumpHeightMm));
     if (noAbutment.stumpShoulderMm != null) form.append('stump_shoulder_mm', String(noAbutment.stumpShoulderMm));
-    if (noAbutment.stumpShape === 'library') {
-      form.append('stump_shape', 'library');
+    if (libraryShape) {
+      form.append('stump_shape', noAbutment.stumpShape);
       if (noAbutment.clearanceMm != null) form.append('stump_clearance_mm', String(noAbutment.clearanceMm));
       if (noAbutment.insertionAxis) form.append('insertion_axis', noAbutment.insertionAxis.join(','));
+    }
+    if (noAbutment.stumpShape === 'cutback') {
+      if (noAbutment.cutbackMm != null) form.append('cutback_mm', String(noAbutment.cutbackMm));
+      if (noAbutment.cutbackOcclusalMm != null) form.append('cutback_occlusal_mm', String(noAbutment.cutbackOcclusalMm));
     }
   }
   if (mode === PIPELINE_MODES.stump && stump) {
@@ -425,6 +439,11 @@ const runPipelineJob = async ({
     if (stump.shoulderMm != null) form.append('stump_shoulder_mm', String(stump.shoulderMm));
     if (stump.clearanceMm != null) form.append('stump_clearance_mm', String(stump.clearanceMm));
     if (stump.insertionAxis) form.append('insertion_axis', stump.insertionAxis.join(','));
+    if (stump.shape === 'cutback') {
+      form.append('stump_shape', 'cutback');
+      if (stump.cutbackMm != null) form.append('cutback_mm', String(stump.cutbackMm));
+      if (stump.cutbackOcclusalMm != null) form.append('cutback_occlusal_mm', String(stump.cutbackOcclusalMm));
+    }
   }
   if (allToothFdi.trim() && !ringMode) {
     form.append('all_tooth_numbers', allToothFdi.trim());
@@ -513,6 +532,9 @@ const runPipelineJob = async ({
   const stumpMesh = manifest.contents?.['stump.ply'] ? await extractFromZip(archive.data, 'stump.ply') : null;
   const stumpScan = manifest.contents?.['scan_with_stump.ply']
     ? await extractFromZip(archive.data, 'scan_with_stump.ply') : null;
+  // mode=stump with the cutback: the crown the stump was cut back from.
+  const cutbackCrown = manifest.contents?.['cutback_crown.ply']
+    ? await extractFromZip(archive.data, 'cutback_crown.ply') : null;
   // The rotation the service put the scans through (p_canonical = R p_original): what the
   // PEEK lower part needs to know which way is occlusal, mesial and buccal.
   const alignment = manifest.contents?.['alignment.json']
@@ -537,6 +559,8 @@ const runPipelineJob = async ({
     stumpMeshName: `stump_FDI${fdi}.ply`,
     stumpScan: stumpScan ? new Blob([stumpScan], { type: 'model/ply' }) : null,
     stumpScanName: `scan_with_stump_FDI${fdi}.ply`,
+    cutbackCrown: cutbackCrown ? new Blob([cutbackCrown], { type: 'model/ply' }) : null,
+    cutbackCrownName: `cutback_crown_FDI${fdi}.ply`,
     stump: manifest.stump ?? null,
     rotation: alignment?.rotation_matrix ?? null,
     jobId,

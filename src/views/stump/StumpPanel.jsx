@@ -22,6 +22,12 @@ const SHOULDER_RANGE = [0.3, 1.5];
 const CLEARANCE_RANGE = [0.5, 3.0];
 const DEFAULT_SHOULDER = 0.6;
 const DEFAULT_CLEARANCE = 1.0;
+// stump_shape=cutback (ezai-pipeline app/cutback_stump.py): the crown built over the library
+// stump, cut back by these.
+const CUTBACK_RANGE = [0.5, 2.5];
+const OCCLUSAL_RANGE = [0.5, 3.0];
+const DEFAULT_CUTBACK = 1.0;
+const DEFAULT_OCCLUSAL = 1.8;
 
 /**
  * 「產生支台齒」: a stump for a site with no abutment yet -- the upper part of an AI abutment.
@@ -32,6 +38,10 @@ const DEFAULT_CLEARANCE = 1.0;
  * clearance to the bite, and it is stitched into the scan along the margin with no gap. No
  * crown. With a registered scan body the insertion axis can be given, and the stump stands
  * along it.
+ *
+ * Or, with the shape set to cutback: a crown is built over that library stump and cut back by
+ * a crown's thickness, and what is left is the stump (anatomical reduction, as EZCAD's cutback
+ * makes an abutment from an anatomic crown). The crown is shown see-through over it.
  *
  * Shares the case with the design tab -- the same scans, FDI and margin editor.
  *
@@ -54,6 +64,10 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
   const [clearance, setClearance] = useState(DEFAULT_CLEARANCE);
   const [axisMode, setAxisMode] = useState('natural');
   const [axis, setAxis] = useState([0, 0, 1]);
+  const [shape, setShape] = useState('library');
+  const [cutbackMm, setCutbackMm] = useState(DEFAULT_CUTBACK);
+  const [occlusalMm, setOcclusalMm] = useState(DEFAULT_OCCLUSAL);
+  const cutback = shape === 'cutback';
 
   useEffect(() => {
     fetch('/api/viewer-config')
@@ -119,17 +133,26 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
         mode: PIPELINE_MODES.stump,
         marginPts: formatMarginPts(ring, fdi),
         singleArch,
-        // null = the service's own choice; only what the user actually changed is sent.
+        // null = the service's own choice; only what the user actually changed is sent. With
+        // the cutback, height and clearance are the library stump's the crown is built over --
+        // the cut-back stump's own height follows from the crown -- so they are not sent.
         stump: {
-          heightMm: heightMode === 'manual' ? height : null,
+          heightMm: heightMode === 'manual' && !cutback ? height : null,
           shoulderMm: shoulder !== DEFAULT_SHOULDER ? shoulder : null,
-          clearanceMm: clearance !== DEFAULT_CLEARANCE ? clearance : null,
+          clearanceMm: clearance !== DEFAULT_CLEARANCE && !cutback ? clearance : null,
           insertionAxis: axisMode === 'manual' ? axis : null,
+          ...(cutback ? {
+            shape: 'cutback',
+            cutbackMm: cutbackMm !== DEFAULT_CUTBACK ? cutbackMm : null,
+            cutbackOcclusalMm: occlusalMm !== DEFAULT_OCCLUSAL ? occlusalMm : null,
+          } : {}),
         },
         target: TARGET,
         onStage: setProgress,
       });
       job.totalSeconds = (performance.now() - startedAt) / 1000;
+      // The crown first: setCrown clears whatever stump is on screen.
+      if (job.cutbackCrown) await CaseScene.setCrown(job.cutbackCrown, job.cutbackCrownName, { translucent: true });
       if (job.stumpMesh) await CaseScene.setStump(job.stumpMesh, job.stumpMeshName, { solid: true });
       setResult(job);
       setHealth({ ok: true, text: `${site.label} 正常 · Job ${job.jobId}` });
@@ -173,7 +196,8 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
       description={<>
         沿 margin 把口掃挖開，放進 <b>EZCAD 支台齒資料庫</b>的形狀；高度、傾斜、寬度用同一顆牙的
         <b>真實支台齒中位數</b>，不超出 margin、離對咬至少 {DEFAULT_CLEARANCE} mm，並沿 margin 縫進口掃（沒有縫隙）。
-        不生成牙冠。送到嘉義 5090 的測試 pipeline（/pipeline-stump，mode=stump）。
+        或選 <b>Cutback</b>：先在資料庫支台齒上生成牙冠，再把牙冠往內縮一層牙冠的厚度，剩下的就是支台齒。
+        送到嘉義 5090 的測試 pipeline（/pipeline-stump，mode=stump）。
       </>}
     />
 
@@ -219,25 +243,44 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
     <section className='panel-section'>
       <div className='section-title'><span className='step'>3</span>支台齒參數</div>
       <Radio.Group
+        value={shape}
+        onChange={e => { setShape(e.target.value); setResult(null); }}
+        disabled={Boolean(running)}
+        options={[{ label: '資料庫支台齒', value: 'library' }, { label: 'Cutback（牙冠往內縮）', value: 'cutback' }]}
+      />
+      {!cutback && <Radio.Group
         value={heightMode}
         onChange={e => setHeightMode(e.target.value)}
         disabled={Boolean(running)}
         options={[{ label: '自然高度', value: 'auto' }, { label: '指定高度', value: 'manual' }]}
-      />
+      />}
       <div className='field-row'>
-        {heightMode === 'manual' && <label>
+        {heightMode === 'manual' && !cutback && <label>
           高度（mm）
           <InputNumber min={HEIGHT_RANGE[0]} max={HEIGHT_RANGE[1]} step={0.5} value={height} onChange={v => setHeight(v ?? 4.0)} disabled={Boolean(running)} />
+        </label>}
+        {cutback && <label>
+          軸面內縮（mm）
+          <InputNumber min={CUTBACK_RANGE[0]} max={CUTBACK_RANGE[1]} step={0.1} value={cutbackMm} onChange={v => setCutbackMm(v ?? DEFAULT_CUTBACK)} disabled={Boolean(running)} />
+        </label>}
+        {cutback && <label>
+          咬合面內縮（mm）
+          <InputNumber min={OCCLUSAL_RANGE[0]} max={OCCLUSAL_RANGE[1]} step={0.1} value={occlusalMm} onChange={v => setOcclusalMm(v ?? DEFAULT_OCCLUSAL)} disabled={Boolean(running)} />
         </label>}
         <label>
           肩台寬（mm）
           <InputNumber min={SHOULDER_RANGE[0]} max={SHOULDER_RANGE[1]} step={0.1} value={shoulder} onChange={v => setShoulder(v ?? DEFAULT_SHOULDER)} disabled={Boolean(running)} />
         </label>
-        <label>
+        {!cutback && <label>
           離對咬（mm）
           <InputNumber min={CLEARANCE_RANGE[0]} max={CLEARANCE_RANGE[1]} step={0.1} value={clearance} onChange={v => setClearance(v ?? DEFAULT_CLEARANCE)} disabled={Boolean(running)} />
-        </label>
+        </label>}
       </div>
+      {cutback && <p className='panel-note'>
+        先用資料庫支台齒（自然高度、離對咬 1.0 mm）生成牙冠，再把牙冠往內縮：軸面 {DEFAULT_CUTBACK} mm（靠近 margin 的 2 mm 內逐漸收到肩台寬）、
+        咬合面沿插入方向 {DEFAULT_OCCLUSAL} mm，軸面每邊往內傾 6°，不超出 margin。預設值來自 99 筆技師牙冠量到的厚度。
+        支台齒高度由牙冠決定；牙冠半透明顯示在支台齒外面。空間不夠切不出來時會改回資料庫支台齒並說明。
+      </p>}
       <Radio.Group
         value={axisMode}
         onChange={e => setAxisMode(e.target.value)}
@@ -266,7 +309,9 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
       {health && <div className={`health-line ${health.ok === false ? 'bad' : health.ok ? 'good' : ''}`}>{health.text}</div>}
       <div className='generate-summary'>
         <Tag>自訂 margin（mode=stump）</Tag>
-        <Tag color='gold'>EZCAD 支台齒資料庫</Tag>
+        {cutback
+          ? <Tag color='gold'>Cutback：資料庫支台齒 → 牙冠 → 往內縮</Tag>
+          : <Tag color='gold'>EZCAD 支台齒資料庫</Tag>}
         {axisMode === 'manual' && <Tag color='purple'>指定插入方向</Tag>}
         {hasPrep && <Tag color={singleArch ? 'orange' : 'blue'}>{singleArch ? '單顎' : '上下顎'}</Tag>}
       </div>
@@ -291,7 +336,13 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
         result={result}
         onEditRing={() => {}}
       />
-      {record && <pre className='flow-message'>{[
+      {record?.kind === 'cutback' && <pre className='flow-message'>{[
+        `Cutback：軸面 ${record.cutback_mm} mm · 咬合面 ${record.occlusal_mm} mm · 肩台 ${record.shoulder_mm} mm · 軸面傾斜 ${record.taper_deg}°（體素 ${record.voxel_mm} mm）`,
+        `高度 ${record.height_mm} mm · 離對咬 ${record.antagonist_gap_mm ?? '—'} mm · 沒縫合的邊 ${record.open_margin_edges}`,
+        `插入方向 ${record.axis_source === 'occlusal' ? '咬合方向（沿原本的方向切不出來）' : record.base?.axis_source === 'caller' ? '指定' : '自然傾斜'}，離咬合方向 ${record.axis_from_occlusal_deg}° · 原座標 [${(record.insertion_axis_original ?? []).map(v => Number(v).toFixed(3)).join(', ')}]`,
+        record.base ? `牙冠先長在資料庫支台齒上：${record.base.group} · ${record.base.cap} · ${record.base.height_mm} mm` : '',
+      ].filter(Boolean).join('\n')}</pre>}
+      {record && record.kind !== 'cutback' && <pre className='flow-message'>{[
         `牙位群組 ${record.group}（${record.group_source}）· 資料庫 ${record.cap}`,
         `高度 ${record.height_mm} mm（自然 ${record.natural_height_mm} mm）· 肩台 ${record.shoulder_mm} mm · 離對咬 ${record.antagonist_gap_mm ?? '—'} mm（要求 ${record.clearance_mm}）`,
         `插入方向 ${record.axis_source === 'caller' ? '指定' : '自然傾斜'}，離咬合方向 ${record.axis_from_occlusal_deg}° · 原座標 [${(record.insertion_axis_original ?? []).map(v => Number(v).toFixed(3)).join(', ')}]`,

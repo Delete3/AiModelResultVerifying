@@ -179,8 +179,12 @@ class CaseScene {
 
   // --- crown ------------------------------------------------------------------------------
 
-  /** @param {Blob} blob a PLY */
-  async setCrown(blob, fileName = 'crown.ply') {
+  /**
+   * @param {Blob} blob a PLY
+   * `translucent`: the crown a cutback stump was cut back from (「產生支台齒」), drawn see-through
+   * over the stump it stands for.
+   */
+  async setCrown(blob, fileName = 'crown.ply', { translucent = false } = {}) {
     const geometry = await loadGeometry(new File([blob], fileName, { type: 'model/ply' }));
     if (!geometry) throw new Error('無法解析回傳的牙冠模型');
     this.clearCrown({ silent: true });
@@ -189,9 +193,10 @@ class CaseScene {
       roughness: 0.4,
       metalness: 0.05,
       side: THREE.DoubleSide,
+      ...(translucent ? { transparent: true, opacity: 0.3, depthWrite: false } : {}),
     }));
     mesh.name = 'crown';
-    mesh.renderOrder = 2;
+    mesh.renderOrder = translucent ? 3 : 2;
     mesh.visible = this.visible.crown;
     Editor.scene.add(mesh);
     this.meshes.crown = mesh;

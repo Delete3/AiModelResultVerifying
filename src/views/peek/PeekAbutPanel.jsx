@@ -21,13 +21,13 @@ import { DEFAULT_LIBRARY_PART, PEEK_DEFAULTS } from './peekParams';
 const TARGET = 'rtx5090';
 const JAW_NAME = { upper: '上顎', lower: '下顎' };
 // The library-stump test pipeline (/pipeline-stump/, 2026-10-14), when the stump is set to the
-// abutment library's.
+// abutment library's, or to the cutback (the crown built over that stump, cut back).
 const LIBRARY_TARGET = 'rtx5090_stump';
 // The service's own bounds (ezai-pipeline app/virtual_prep.py, app/library_stump.py); it
 // answers 422 outside them.
-const HEIGHT_RANGE = { virtual: [1.0, 6.0], library: [1.5, 8.0] };
+const HEIGHT_RANGE = { virtual: [1.0, 6.0], library: [1.5, 8.0], cutback: [1.5, 8.0] };
 const SHOULDER_RANGE = [0.3, 1.5];
-const DEFAULT_SHOULDER = { virtual: 0.8, library: 0.6 };
+const DEFAULT_SHOULDER = { virtual: 0.8, library: 0.6, cutback: 0.6 };
 // Parameter edits rebuild the PEEK lower part once they settle for this long.
 const REBUILD_DELAY_MS = 350;
 
@@ -158,7 +158,8 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
 
   const anterior = isAnteriorFdi(fdi);
   const useContralateral = contralateral && anterior;
-  const library = stumpShape === 'library';
+  // 'library' and 'cutback' both go to the library-stump test pipeline.
+  const library = stumpShape !== 'virtual';
   const target = library ? LIBRARY_TARGET : TARGET;
   const heightRange = HEIGHT_RANGE[stumpShape];
   const site = PIPELINE_TARGETS[target];
@@ -223,7 +224,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
         noAbutment: {
           stumpHeightMm: heightMode === 'manual' ? height : null,
           stumpShoulderMm: shoulder !== DEFAULT_SHOULDER[stumpShape] ? shoulder : null,
-          ...(library ? { stumpShape: 'library' } : {}),
+          ...(library ? { stumpShape } : {}),
         },
         contralateral: useContralateral,
         target,
@@ -335,7 +336,8 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
         value={stumpShape}
         onChange={e => { setStumpShape(e.target.value); setShoulder(DEFAULT_SHOULDER[e.target.value]); setHealth(null); }}
         disabled={Boolean(running)}
-        options={[{ label: '一般（正式）', value: 'virtual' }, { label: '資料庫支台齒（測試）', value: 'library' }]}
+        options={[{ label: '一般（正式）', value: 'virtual' }, { label: '資料庫支台齒（測試）', value: 'library' },
+          { label: 'Cutback（測試）', value: 'cutback' }]}
       />
       <Radio.Group
         value={heightMode}
@@ -354,9 +356,11 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
         </label>
       </div>
       <p className='panel-note'>
-        {library
-          ? <>資料庫支台齒（和「產生支台齒」分頁同一個）：EZCAD 支台齒資料庫的形狀，高度、傾斜、寬度用真實支台齒的中位數，離對咬至少 1.0 mm，沿 margin 縫進口掃。送到嘉義 5090 的測試 pipeline（/pipeline-stump）。</>
-          : <>自動：牙齦到對咬的距離減 1.5 mm，限制在 1.5–4.0 mm；錐度 8°。牙齦到對咬不到 3 mm 時放不下牙冠，結果會標示出來。</>}
+        {stumpShape === 'cutback'
+          ? <>Cutback：牙冠照樣長在資料庫支台齒上（外壁和選「資料庫支台齒」相同），顯示的支台齒則是這個牙冠往內縮（軸面 1.0、咬合面 1.8 mm）剩下的部分，牙冠在它上面是均勻厚度。高度、肩台設定給資料庫支台齒用。送到嘉義 5090 的測試 pipeline（/pipeline-stump）。</>
+          : library
+            ? <>資料庫支台齒（和「產生支台齒」分頁同一個）：EZCAD 支台齒資料庫的形狀，高度、傾斜、寬度用真實支台齒的中位數，離對咬至少 1.0 mm，沿 margin 縫進口掃。送到嘉義 5090 的測試 pipeline（/pipeline-stump）。</>
+            : <>自動：牙齦到對咬的距離減 1.5 mm，限制在 1.5–4.0 mm；錐度 8°。牙齦到對咬不到 3 mm 時放不下牙冠，結果會標示出來。</>}
       </p>
     </section>
 
@@ -377,7 +381,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
       <div className='generate-summary'>
         <Tag>自訂 margin（mode=margin_override）</Tag>
         <Tag color='green'>no_abutment</Tag>
-        {library && <Tag color='gold'>資料庫支台齒（測試端點）</Tag>}
+        {library && <Tag color='gold'>{stumpShape === 'cutback' ? 'Cutback 支台齒' : '資料庫支台齒'}（測試端點）</Tag>}
         {peekEnabled && <Tag color='gold'>PEEK 下半部：瀏覽器</Tag>}
         {useContralateral && <Tag color='purple'>參考對側牙</Tag>}
         {hasPrep && <Tag color={singleArch ? 'orange' : 'blue'}>{singleArch ? '單顎' : '上下顎'}</Tag>}
