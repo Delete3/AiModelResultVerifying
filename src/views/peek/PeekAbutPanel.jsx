@@ -355,7 +355,7 @@ const PeekAbutPanel = ({ fdi, setFdi, prepJaw, scene }) => {
       </div>
       <p className='panel-note'>
         {library
-          ? <>資料庫支台齒（和「AI支台齒」分頁同一個）：EZCAD 支台齒資料庫的形狀，高度、傾斜、寬度用真實支台齒的中位數，離對咬至少 1.5 mm，沿 margin 縫進口掃。送到嘉義 5090 的測試 pipeline（/pipeline-stump）。</>
+          ? <>資料庫支台齒（和「AI支台齒」分頁同一個）：EZCAD 支台齒資料庫的形狀，高度、傾斜、寬度用真實支台齒的中位數，離對咬至少 1.0 mm，沿 margin 縫進口掃。送到嘉義 5090 的測試 pipeline（/pipeline-stump）。</>
           : <>自動：牙齦到對咬的距離減 1.5 mm，限制在 1.5–4.0 mm；錐度 8°。牙齦到對咬不到 3 mm 時放不下牙冠，結果會標示出來。</>}
       </p>
     </section>

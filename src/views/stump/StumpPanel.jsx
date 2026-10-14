@@ -21,7 +21,7 @@ const HEIGHT_RANGE = [1.5, 8.0];
 const SHOULDER_RANGE = [0.3, 1.5];
 const CLEARANCE_RANGE = [0.5, 3.0];
 const DEFAULT_SHOULDER = 0.6;
-const DEFAULT_CLEARANCE = 1.5;
+const DEFAULT_CLEARANCE = 1.0;
 
 /**
  * 「AI支台齒」: a stump for a site with no abutment yet -- the upper part of an AI abutment.
@@ -251,8 +251,9 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
         </label>)}
       </div>}
       <p className='panel-note'>
-        高度是支台齒頂端到 margin 平均高度的距離。自然高度與傾斜是 101 trainingData 同一牙位真實支台齒的中位數；
-        離對咬不夠時會自動降低，但不低於 2 mm（會標示出來）。插入方向用口掃上傳時的座標（正負都可以）。
+        高度是支台齒頂端到 margin 平均高度的距離。自然高度與傾斜是 101 trainingData 同一牙位真實支台齒的中位數
+        （真實支台齒到對咬最近約 1.0–1.3 mm）。對咬在正上方、離不夠時自動降低，不低於 2 mm；
+        對咬在旁邊（前牙深覆咬）時降低沒有幫助，只降到有幫助為止，兩種都會標示出來。插入方向用口掃上傳時的座標（正負都可以）。
       </p>
     </section>
 
