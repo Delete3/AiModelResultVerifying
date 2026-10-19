@@ -14,7 +14,7 @@ import MarginSection from '../design/MarginSection';
 import ResultView from '../design/ResultView';
 import PeekBuilder from './peekBuilder';
 import PeekLowerSection from './PeekLowerSection';
-import { DEFAULT_LIBRARY_PART, PEEK_DEFAULTS } from './peekParams';
+import { PEEK_DEFAULTS, pickLibraryPart } from './peekParams';
 
 // Chiayi's production pipeline (/pipeline/), since 2026-10-07; before that the test endpoint
 // /pipeline-noabut/, taken down the same day.
@@ -30,17 +30,6 @@ const SHOULDER_RANGE = [0.3, 1.5];
 const DEFAULT_SHOULDER = { virtual: 0.8, library: 0.6, cutback: 0.6 };
 // Parameter edits rebuild the PEEK lower part once they settle for this long.
 const REBUILD_DELAY_MS = 350;
-
-/** A library part that exists in `index`: `wanted` if it does, else the first one. */
-const pickLibraryPart = (index, wanted) => {
-  const find = part => index.systems.find(s => s.name === part.system)
-    ?.types.find(t => t.name === part.type)?.subtypes.some(u => u.name === part.subtype);
-  if (wanted && find(wanted)) return wanted;
-  if (find(DEFAULT_LIBRARY_PART)) return DEFAULT_LIBRARY_PART;
-  const system = index.systems[0];
-  const type = system.types[0];
-  return { system: system.name, type: type.name, subtype: type.subtypes[0].name };
-};
 
 /**
  * "peek abut設計": a crown's outer surface for a scan that has NO abutment yet -- an implant

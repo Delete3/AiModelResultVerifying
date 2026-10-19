@@ -113,7 +113,7 @@ function App({ appSwitcher }) {
                   // library-stump test pipeline. Shares the case with the design tab.
                   key: 'stump',
                   label: '產生支台齒',
-                  children: <StumpPanel fdi={fdi} setFdi={setFdi} prepJaw={prepJaw} scene={scene} />,
+                  children: <StumpPanel fdi={fdi} setFdi={setFdi} prepJaw={prepJaw} scene={scene} active={tab === 'stump'} />,
                 },
                 {
                   key: 'preview',

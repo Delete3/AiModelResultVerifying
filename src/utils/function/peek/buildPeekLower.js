@@ -202,4 +202,4 @@ const buildPeekLower = ({ prepared, implant, interfaceGeometry, tibaseGeometry, 
   };
 };
 
-export { buildPeekLower, preparePeekCrown };
+export { buildPeekLower, preparePeekCrown, thinnestWall };

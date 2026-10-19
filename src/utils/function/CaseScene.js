@@ -22,6 +22,9 @@ const LIBRARY_STUMP_COLOR = 0xf2c46d;
 const PEEK_COLOR = 0xe6d3a8;
 const TIBASE_COLOR = 0x8d99a6;
 const TRANSLUCENT_OPACITY = 0.35;
+// The insertion direction arrow, as AIrDesign draws it: green, 10 mm.
+const INSERTION_COLOR = 0x2fb344;
+const INSERTION_LENGTH = 10;
 
 const UPPER_FDI = new Set([11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28]);
 
@@ -209,6 +212,7 @@ class CaseScene {
   clearCrown({ silent = false } = {}) {
     this.clearStump({ silent: true });
     this.clearPeek({ silent: true });
+    this.clearCustomAbutment({ silent: true });
     if (!this.meshes.crown) {
       if (!silent) this.emit();
       return;
@@ -352,7 +356,122 @@ class CaseScene {
     if (!this.meshes.abutment) return;
     disposeMesh(this.meshes.abutment);
     this.meshes.abutment = null;
+    this.customAbutment = false;
     if (!silent) this.emit();
+  }
+
+  // --- custom abutment (「產生支台齒」 step 5) -----------------------------------------------
+
+  /**
+   * A custom abutment built in this browser (src/views/stump/abutmentBuilder.js): the stump,
+   * the emergence lofted from the margin down to the implant interface, and the interface, as
+   * one mesh; and the titanium base, or null. Uploaded frame; the geometries are owned by the
+   * scene from here on. It goes in the abutment slot (FSAbutment's) and contains the stump
+   * almost vertex for vertex, so the stump is hidden while it is shown, as for the PEEK crown.
+   * @param {THREE.BufferGeometry} abutmentGeometry
+   * @param {THREE.BufferGeometry|null} tibaseGeometry
+   */
+  setCustomAbutment(abutmentGeometry, tibaseGeometry = null) {
+    this.setSolid('abutment', abutmentGeometry, new THREE.MeshStandardMaterial({
+      color: ABUTMENT_COLOR, roughness: 0.35, metalness: 0.15, side: THREE.DoubleSide,
+    }), 2);
+    this.setSolid('tibase', tibaseGeometry, new THREE.MeshStandardMaterial({
+      color: TIBASE_COLOR, roughness: 0.35, metalness: 0.5, side: THREE.DoubleSide,
+    }), 4);
+    this.customAbutment = true;
+    if (!this.abutmentHid) {
+      this.abutmentHid = true;
+      this.visible.stump = false;
+      if (this.meshes.stump) this.meshes.stump.visible = false;
+    }
+    this.emit();
+  }
+
+  /** Only a custom abutment: FSAbutment's result in the same slot is left alone. */
+  clearCustomAbutment({ silent = false } = {}) {
+    if (this.customAbutment) {
+      for (const slot of ['abutment', 'tibase']) {
+        if (this.meshes[slot]) {
+          disposeMesh(this.meshes[slot]);
+          this.meshes[slot] = null;
+        }
+      }
+      this.customAbutment = false;
+    }
+    if (this.abutmentHid) {
+      this.abutmentHid = false;
+      this.visible.stump = true;
+      if (this.meshes.stump) this.meshes.stump.visible = true;
+    }
+    if (!silent) this.emit();
+  }
+
+  // --- insertion direction (「產生支台齒」) -----------------------------------------------
+
+  /**
+   * An arrow from `center` along `axis`, both in the frame of the uploaded scans: the
+   * insertion direction the 「產生支台齒」 tab will send. Placed through the arch mesh's
+   * current matrix; it cannot be picked, so the margin editor's clicks go through it. null
+   * clears it. No emit: nothing on the panels reads it, and the panel redraws it on scene
+   * changes, which an emit here would turn into a loop.
+   * @param {'upper'|'lower'|null} jaw
+   * @param {THREE.Vector3|null} center
+   * @param {THREE.Vector3|null} axis
+   */
+  setInsertionArrow(jaw, center, axis) {
+    this.clearInsertionArrow();
+    const mesh = jaw && this.meshes[jaw];
+    if (!mesh || !center || !axis) return;
+    mesh.updateMatrixWorld();
+    const position = center.clone().applyMatrix4(mesh.matrixWorld);
+    const direction = axis.clone().transformDirection(mesh.matrixWorld);
+    const material = new THREE.MeshStandardMaterial({ color: INSERTION_COLOR, roughness: 0.4, metalness: 0 });
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, INSERTION_LENGTH, 16), material);
+    shaft.position.y = INSERTION_LENGTH / 2;
+    const head = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1.2, 24), material);
+    head.position.y = INSERTION_LENGTH + 0.6;
+    const arrow = new THREE.Group();
+    arrow.add(shaft, head);
+    arrow.traverse(child => { child.raycast = () => {}; });
+    arrow.name = 'insertion-arrow';
+    arrow.renderOrder = 5;
+    arrow.position.copy(position);
+    arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+    Editor.scene.add(arrow);
+    this.insertionArrow = arrow;
+  }
+
+  clearInsertionArrow() {
+    if (!this.insertionArrow) return;
+    Editor.scene.remove(this.insertionArrow);
+    const [shaft, head] = this.insertionArrow.children;
+    shaft.geometry.dispose();
+    head.geometry.dispose();
+    shaft.material.dispose();
+    this.insertionArrow = null;
+  }
+
+  /**
+   * Look down `axis` at `center` (uploaded frame, through the arch mesh's matrix): the view
+   * along an insertion direction, where every undercut is out of sight. Keeps the zoom.
+   */
+  viewAlong(jaw, center, axis) {
+    const mesh = this.meshes[jaw];
+    const control = Editor.control;
+    if (!mesh || !control || !center || !axis) return;
+    mesh.updateMatrixWorld();
+    const target = center.clone().applyMatrix4(mesh.matrixWorld);
+    const direction = axis.clone().transformDirection(mesh.matrixWorld);
+    const distance = Math.max(control.camera.position.distanceTo(control.target), 50);
+    // The screen's up: the current one where it is not along the axis, else the scan's +Y.
+    const up = control.camera.up.clone().projectOnPlane(direction);
+    if (up.lengthSq() < 1e-6) up.set(0, 1, 0).transformDirection(mesh.matrixWorld).projectOnPlane(direction);
+    control.target.copy(target);
+    control.camera.position.copy(target).addScaledVector(direction, distance);
+    control.camera.up.copy(up.normalize());
+    control.camera.lookAt(target);
+    control.camera.updateProjectionMatrix();
+    control.update();
   }
 
   // --- reference ring ---------------------------------------------------------------------

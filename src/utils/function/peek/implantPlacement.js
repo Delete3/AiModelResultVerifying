@@ -187,11 +187,15 @@ const measureSite = ({ prepPositions, ring, rotation, fdi }) => {
 /**
  * @param {ReturnType<typeof measureSite>} site
  * @param {object} params PLACEMENT_DEFAULTS with the user's overrides
+ * @param {THREE.Vector3|null} [axisOriginal] the axis to stand the implant on instead of the
+ *   occlusal direction -- the 「產生支台齒」 tab's insertion direction (uploaded frame, either
+ *   sign). The tilts then lean away from it, and the depth is measured along it.
  * @returns {{ center: THREE.Vector3, axis: THREE.Vector3, matrix: THREE.Matrix4, record: object }}
  *   center = the implant platform, axis = toward the occlusal side, matrix = library part
  *   frame (platform at the origin, occlusal +Z) to the uploaded frame.
  */
-const placeImplant = (site, params) => {
+const placeImplant = (site, params, axisOriginal = null) => {
+  if (axisOriginal) return placeImplantOnAxis(site, params, axisOriginal);
   const { back, up, centre, md, bl, tunnel } = site;
   const clamp = (value, [low, high]) => Math.min(high, Math.max(low, value));
   let depth, depthSource;
@@ -234,6 +238,71 @@ const placeImplant = (site, params) => {
       tilt_md_deg: params.tilt_md_deg,
       tilt_bl_deg: params.tilt_bl_deg,
       axis_tilt_deg: THREE.MathUtils.radToDeg(axisC.angleTo(up)),
+      axes_from: site.axesFrom,
+      tunnel,
+    },
+  };
+};
+
+/**
+ * placeImplant on a given axis (no scan body, as EZCAD's abutment design would get from its
+ * registration): the axis is the caller's, the platform `depth` below the ring centroid along
+ * it, the offsets across it, and the tilts lean the implant away from it -- an implant that
+ * is not coaxial with the abutment's insertion direction.
+ */
+const placeImplantOnAxis = (site, params, axisOriginal) => {
+  const { back, up, centre, md, bl, tunnel } = site;
+  const clamp = (value, [low, high]) => Math.min(high, Math.max(low, value));
+  let depth, depthSource;
+  if (params.depth_mm != null) [depth, depthSource] = [params.depth_mm, 'caller'];
+  else if (tunnel) [depth, depthSource] = [clamp(tunnel.depth_mm, AUTO_DEPTH_RANGE), 'tunnel'];
+  else [depth, depthSource] = [AUTO_DEPTH_FALLBACK, 'default'];
+  const offsets = {};
+  const sources = {};
+  for (const key of ['offset_md_mm', 'offset_bl_mm']) {
+    if (params[key] != null) [offsets[key], sources[key]] = [params[key], 'caller'];
+    else if (tunnel) [offsets[key], sources[key]] = [clamp(tunnel[key], [-AUTO_OFFSET_LIMIT, AUTO_OFFSET_LIMIT]), 'tunnel'];
+    else [offsets[key], sources[key]] = [0, 'default'];
+  }
+
+  const R = back.clone().transpose();
+  const base = axisOriginal.clone().applyMatrix3(R).normalize();
+  if (base.dot(up) < 0) base.negate();
+  // mesial and buccal across the axis, keeping their signs
+  const mdA = md.clone().projectOnPlane(base).normalize();
+  const blA = bl.clone().projectOnPlane(base).projectOnPlane(mdA).normalize();
+
+  const rad = THREE.MathUtils.degToRad;
+  const axisC = base.clone()
+    .addScaledVector(mdA, Math.tan(rad(params.tilt_md_deg)))
+    .addScaledVector(blA, Math.tan(rad(params.tilt_bl_deg)))
+    .normalize();
+  const centerC = centre.clone()
+    .addScaledVector(base, -depth)
+    .addScaledVector(mdA, offsets.offset_md_mm)
+    .addScaledVector(blA, offsets.offset_bl_mm);
+
+  const xC = mdA.clone().projectOnPlane(axisC).normalize();
+  const yC = new THREE.Vector3().crossVectors(axisC, xC);
+  const toCanonical = new THREE.Matrix4().makeBasis(xC, yC, axisC).setPosition(centerC);
+  const toOriginal = new THREE.Matrix4().setFromMatrix3(back);
+
+  return {
+    center: centerC.clone().applyMatrix3(back),
+    axis: axisC.clone().applyMatrix3(back).normalize(),
+    matrix: toOriginal.multiply(toCanonical),
+    record: {
+      depth_mm: depth,
+      depth_source: depthSource,
+      ...offsets,
+      offset_sources: sources,
+      tilt_md_deg: params.tilt_md_deg,
+      tilt_bl_deg: params.tilt_bl_deg,
+      axis_source: 'insertion',
+      // how far the implant leans from the occlusal direction, and from the insertion axis
+      axis_tilt_deg: THREE.MathUtils.radToDeg(axisC.angleTo(up)),
+      insertion_tilt_deg: THREE.MathUtils.radToDeg(base.angleTo(up)),
+      implant_to_insertion_deg: THREE.MathUtils.radToDeg(axisC.angleTo(base)),
       axes_from: site.axesFrom,
       tunnel,
     },

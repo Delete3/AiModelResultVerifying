@@ -26,4 +26,15 @@ const DEFAULT_LIBRARY_PART = {
   subtype: '2-Piece',
 };
 
-export { DEFAULT_LIBRARY_PART, PEEK_DEFAULTS, PEEK_RANGES };
+/** A library part that exists in `index`: `wanted` if it does, else the default, else the first one. */
+const pickLibraryPart = (index, wanted) => {
+  const find = part => index.systems.find(s => s.name === part.system)
+    ?.types.find(t => t.name === part.type)?.subtypes.some(u => u.name === part.subtype);
+  if (wanted && find(wanted)) return wanted;
+  if (find(DEFAULT_LIBRARY_PART)) return DEFAULT_LIBRARY_PART;
+  const system = index.systems[0];
+  const type = system.types[0];
+  return { system: system.name, type: type.name, subtype: type.subtypes[0].name };
+};
+
+export { DEFAULT_LIBRARY_PART, PEEK_DEFAULTS, PEEK_RANGES, pickLibraryPart };

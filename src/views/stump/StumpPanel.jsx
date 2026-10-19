@@ -1,16 +1,22 @@
 /* eslint-disable react/prop-types -- props are documented at each component; no prop-types dependency here */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import * as THREE from 'three';
 import { Alert, Button, Checkbox, InputNumber, Radio, Tag, Upload } from 'antd';
 
+import Editor from '../../utils/Editor';
 import CaseScene from '../../utils/function/CaseScene';
 import MarginEditor from '../../utils/function/margin-editor/MarginEditor';
 import { formatMarginPts } from '../../utils/function/margin-editor/marginPts';
 import { getPipelineHealth, PIPELINE_MODES, PIPELINE_TARGETS, runPipelineJob } from '../../utils/function/EzaiPipelineApi';
 import { SCAN_ACCEPT } from '../../utils/loader/loadGeometry';
+import { loadLibraryIndex } from '../../utils/function/peek/peekBase';
 import { useMarginEditor } from '../../utils/tool/useStores';
 import describeFailure from '../design/describeFailure';
 import MarginSection from '../design/MarginSection';
 import ResultView from '../design/ResultView';
+import { DEFAULT_LIBRARY_PART, PEEK_DEFAULTS, pickLibraryPart } from '../peek/peekParams';
+import AbutmentBuilder from './abutmentBuilder';
+import AbutmentSection from './AbutmentSection';
 
 // The library-stump test pipeline on the Chiayi box (/pipeline-stump/, 2026-10-14).
 const TARGET = 'rtx5090_stump';
@@ -28,6 +34,24 @@ const CUTBACK_RANGE = [0.5, 2.5];
 const OCCLUSAL_RANGE = [0.5, 3.0];
 const DEFAULT_CUTBACK = 1.0;
 const DEFAULT_OCCLUSAL = 1.8;
+// Parameters settling before the custom abutment is rebuilt (as the peek tab's lower part).
+const REBUILD_DELAY_MS = 350;
+// A custom abutment as one titanium piece on the implant: a 2-piece Ti-base's chimney seldom
+// fits inside a stump the way it does inside the peek tab's crown.
+const DEFAULT_PART = { ...DEFAULT_LIBRARY_PART, subtype: '1-Piece' };
+
+const AXIS_SOURCE = { natural: '自然傾斜', view: '目前視角', manual: '指定' };
+
+const formatAxis = values => values.map(v => Number(v).toFixed(3)).join(', ');
+
+/** The ring's centroid, uploaded frame, or null without a closed ring. */
+const ringCentre = () => {
+  const ring = MarginEditor.getRing();
+  if (!ring) return null;
+  const centre = new THREE.Vector3();
+  for (const point of ring) centre.add(point);
+  return centre.divideScalar(ring.length);
+};
 
 /**
  * 「產生支台齒」: a stump for a site with no abutment yet -- the upper part of an AI abutment.
@@ -43,11 +67,20 @@ const DEFAULT_OCCLUSAL = 1.8;
  * a crown's thickness, and what is left is the stump (anatomical reduction, as EZCAD's cutback
  * makes an abutment from an anatomic crown). The crown is shown see-through over it.
  *
+ * The insertion direction is the natural lean, a given axis (a scan body), or the view: as
+ * AIrDesign's insertion operation, the reverse of where the camera looks when the button is
+ * pressed. A green arrow shows it on the margin.
+ *
+ * Step 5 makes a custom abutment of the stump in this browser (abutmentBuilder.js): the
+ * emergence lofted from the margin down to an implant interface standing on the insertion
+ * axis, stitched on, as EZCAD's abutment design does.
+ *
  * Shares the case with the design tab -- the same scans, FDI and margin editor.
  *
- * Props: fdi, setFdi, prepJaw, scene (CaseScene snapshot).
+ * Props: fdi, setFdi, prepJaw, scene (CaseScene snapshot), active (this tab is shown: the
+ * arrow is this tab's alone).
  */
-const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
+const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
   const editor = useMarginEditor();
   const [marginNotice, setMarginNotice] = useState(null);
   const [ignoreOpposing, setIgnoreOpposing] = useState(false);
@@ -64,10 +97,21 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
   const [clearance, setClearance] = useState(DEFAULT_CLEARANCE);
   const [axisMode, setAxisMode] = useState('natural');
   const [axis, setAxis] = useState([0, 0, 1]);
+  const [viewAxis, setViewAxis] = useState(null);
   const [shape, setShape] = useState('library');
   const [cutbackMm, setCutbackMm] = useState(DEFAULT_CUTBACK);
   const [occlusalMm, setOcclusalMm] = useState(DEFAULT_OCCLUSAL);
   const cutback = shape === 'cutback';
+  const [abutEnabled, setAbutEnabled] = useState(true);
+  const [abutParams, setAbutParams] = useState({ ...PEEK_DEFAULTS });
+  const [libraryIndex, setLibraryIndex] = useState(null);
+  const [implantPart, setLibraryState] = useState(null);
+  const [abutState, setAbutState] = useState(null);
+  const [abutBusy, setAbutBusy] = useState(false);
+  const [abutError, setAbutError] = useState(null);
+  const [hasStump, setHasStump] = useState(false);
+  const builder = useRef(null);
+  const buildSeq = useRef(0);
 
   useEffect(() => {
     fetch('/api/viewer-config')
@@ -75,6 +119,68 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
       .then(setViewerConfig)
       .catch(() => setViewerConfig(null));
   }, []);
+
+  // The implant library, when this instance has one: picked by default, as on the peek tab.
+  useEffect(() => {
+    loadLibraryIndex().then(index => {
+      setLibraryIndex(index);
+      if (index) setLibraryState(pickLibraryPart(index, DEFAULT_PART));
+    });
+  }, []);
+
+  useEffect(() => {
+    builder.current = new AbutmentBuilder();
+    return () => builder.current.dispose();
+  }, []);
+
+  const setLibrary = value => setLibraryState(value === 'default' ? pickLibraryPart(libraryIndex, implantPart ?? DEFAULT_PART) : value);
+
+  const dropAbutment = () => {
+    buildSeq.current++;
+    builder.current?.dispose();
+    setHasStump(false);
+    setAbutState(null);
+    setAbutError(null);
+  };
+
+  // Build (or rebuild) the custom abutment from the stump held by the builder. A build that a
+  // newer one overtook is thrown away.
+  const rebuildAbutment = useCallback(async () => {
+    if (!builder.current?.hasJob) return;
+    const seq = ++buildSeq.current;
+    setAbutBusy(true);
+    setAbutError(null);
+    // Let the busy state paint: the build runs on this thread for up to a second or so.
+    await new Promise(resolve => setTimeout(resolve, 30));
+    try {
+      if (seq !== buildSeq.current) return;
+      const out = await builder.current.build(abutParams, implantPart);
+      if (seq !== buildSeq.current) {
+        out.solid?.dispose();
+        out.tibase?.dispose();
+        return;
+      }
+      if (out.error) {
+        CaseScene.clearCustomAbutment();
+        setAbutState(null);
+        setAbutError(out.error);
+        return;
+      }
+      CaseScene.setCustomAbutment(out.solid, out.tibase);
+      setAbutState(out);
+    } catch (buildError) {
+      if (seq === buildSeq.current) setAbutError(buildError.message);
+    } finally {
+      if (seq === buildSeq.current) setAbutBusy(false);
+    }
+  }, [abutParams, implantPart]);
+
+  // Parameters changed: rebuild once they settle.
+  useEffect(() => {
+    if (!hasStump || !abutEnabled) return undefined;
+    const timer = setTimeout(rebuildAbutment, REBUILD_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [hasStump, abutEnabled, rebuildAbutment]);
 
   const site = PIPELINE_TARGETS[TARGET];
   const opposingJaw = prepJaw === 'upper' ? 'lower' : prepJaw === 'lower' ? 'upper' : null;
@@ -84,6 +190,33 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
   const singleArch = hasPrep && (!hasOpposing || ignoreOpposing);
   const configured = viewerConfig?.targets?.[TARGET] ?? true;
   const axisOk = axis.every(Number.isFinite) && Math.hypot(...axis) > 1e-6;
+  // The axis that will be sent; after a job in the natural mode, the one the job used.
+  const sentAxis = axisMode === 'manual' ? (axisOk ? axis : null) : axisMode === 'view' ? viewAxis : null;
+  const shownAxis = sentAxis ?? (axisMode === 'natural' ? result?.stump?.insertion_axis_original ?? null : null);
+
+  // The insertion arrow on the margin ring, on this tab only.
+  useEffect(() => {
+    const centre = active && shownAxis && prepJaw ? ringCentre() : null;
+    CaseScene.setInsertionArrow(prepJaw, centre, centre && new THREE.Vector3(...shownAxis).normalize());
+  }, [active, shownAxis, prepJaw, editor, scene]);
+  useEffect(() => () => CaseScene.clearInsertionArrow(), []);
+
+  // AIrDesign's insertion operation: the reverse of where the camera looks, in the frame of
+  // the uploaded scan (the frame the service takes the axis in).
+  const captureView = () => {
+    const mesh = CaseScene.meshes[prepJaw];
+    if (!mesh || !Editor.control) return;
+    mesh.updateMatrixWorld();
+    const toScan = new THREE.Matrix3().setFromMatrix4(mesh.matrixWorld).invert();
+    const look = Editor.control.camera.getWorldDirection(new THREE.Vector3());
+    const insertion = look.negate().applyMatrix3(toScan).normalize();
+    setViewAxis(insertion.toArray().map(v => Number(v.toFixed(4))));
+  };
+
+  const lookAlong = () => {
+    const centre = ringCentre();
+    if (centre && shownAxis) CaseScene.viewAlong(prepJaw, centre, new THREE.Vector3(...shownAxis).normalize());
+  };
 
   const uploadScan = jaw => async file => {
     setScanError(null);
@@ -94,6 +227,8 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
         CaseScene.clearReferenceRing();
       }
       setResult(null);
+      dropAbutment();
+      if (jaw === prepJaw) setViewAxis(null);
     } catch (uploadError) {
       setScanError(uploadError.message);
     }
@@ -104,6 +239,8 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
     CaseScene.removeScan(jaw);
     CaseScene.clearCrown();
     setResult(null);
+    dropAbutment();
+    if (jaw === prepJaw) setViewAxis(null);
   };
 
   const blockers = [];
@@ -112,6 +249,7 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
   if (editor.mode === 'draw') blockers.push('完成 margin 繪製（閉合）');
   else if (!editor.hasRing) blockers.push('在牙齦上繪製或上傳 margin');
   if (axisMode === 'manual' && !axisOk) blockers.push('插入方向不能是 0,0,0');
+  if (axisMode === 'view' && !viewAxis) blockers.push('把畫面轉到要的插入方向，按「設為目前視角」');
   if (!configured) blockers.push(`這個實例沒有設定「${site.label}」的憑證`);
 
   const run = async () => {
@@ -119,6 +257,7 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
     setRunning('stump');
     setError(null);
     setResult(null);
+    dropAbutment();
     setProgress('準備中…');
     CaseScene.resetScanMatrices();
     CaseScene.clearCrown();
@@ -140,7 +279,7 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
           heightMm: heightMode === 'manual' && !cutback ? height : null,
           shoulderMm: shoulder !== DEFAULT_SHOULDER ? shoulder : null,
           clearanceMm: clearance !== DEFAULT_CLEARANCE && !cutback ? clearance : null,
-          insertionAxis: axisMode === 'manual' ? axis : null,
+          insertionAxis: sentAxis,
           ...(cutback ? {
             shape: 'cutback',
             cutbackMm: cutbackMm !== DEFAULT_CUTBACK ? cutbackMm : null,
@@ -155,6 +294,23 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
       if (job.cutbackCrown) await CaseScene.setCrown(job.cutbackCrown, job.cutbackCrownName, { translucent: true });
       if (job.stumpMesh) await CaseScene.setStump(job.stumpMesh, job.stumpMeshName, { solid: true });
       setResult(job);
+      // The stump, the margin and the site go to the builder now; the build itself follows
+      // from hasStump (and from every parameter change after it).
+      if (job.stumpMesh) {
+        try {
+          await builder.current.setJob({
+            stumpBlob: job.stumpMesh,
+            marginOriginal: job.marginOriginal,
+            rotation: job.rotation,
+            fdi: Number(fdi),
+            prepPositions: CaseScene.meshes[prepJaw].geometry.getAttribute('position').array,
+            axis: job.stump?.insertion_axis_original,
+          });
+          setHasStump(true);
+        } catch (setupError) {
+          setAbutError(setupError.message);
+        }
+      }
       setHealth({ ok: true, text: `${site.label} 正常 · Job ${job.jobId}` });
     } catch (runError) {
       setError(describeFailure(runError, site));
@@ -285,13 +441,31 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
         value={axisMode}
         onChange={e => setAxisMode(e.target.value)}
         disabled={Boolean(running)}
-        options={[{ label: '插入方向：自然傾斜', value: 'natural' }, { label: '指定插入方向（scan body）', value: 'manual' }]}
+        options={[
+          { label: '插入方向：自然傾斜', value: 'natural' },
+          { label: '目前視角', value: 'view' },
+          { label: '指定（scan body）', value: 'manual' },
+        ]}
       />
+      {axisMode === 'view' && <div className='button-row'>
+        <Button size='small' type={viewAxis ? 'default' : 'primary'} onClick={captureView} disabled={Boolean(running) || !hasPrep}>
+          設為目前視角
+        </Button>
+        <span className='target-hint'>{viewAxis ? `[${formatAxis(viewAxis)}]` : '還沒設定'}</span>
+      </div>}
       {axisMode === 'manual' && <div className='field-row'>
         {['x', 'y', 'z'].map((name, index) => <label key={name}>
           {name}
           <InputNumber step={0.1} value={axis[index]} onChange={v => setAxis(prev => prev.map((p, i) => (i === index ? (v ?? 0) : p)))} disabled={Boolean(running)} />
         </label>)}
+      </div>}
+      {axisMode === 'view' && <p className='panel-note'>
+        和 AIrDesign 的 insertion operation 一樣：把畫面轉到從插入方向看過去的角度（看不到倒凹），按「設為目前視角」，
+        插入方向就是相機視線的反方向，綠色箭頭畫在 margin 上。轉畫面不會自動更新，要再按一次。
+      </p>}
+      {shownAxis && <div className='button-row'>
+        <Button size='small' onClick={lookAlong} disabled={!hasPrep || !editor.hasRing}>從插入方向看</Button>
+        {!sentAxis && <span className='target-hint'>上次結果用的自然傾斜</span>}
       </div>}
       <p className='panel-note'>
         高度是支台齒頂端到 margin 平均高度的距離。自然高度與傾斜是 101 trainingData 同一牙位真實支台齒的中位數
@@ -312,7 +486,7 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
         {cutback
           ? <Tag color='gold'>Cutback：資料庫支台齒 → 牙冠 → 往內縮</Tag>
           : <Tag color='gold'>EZCAD 支台齒資料庫</Tag>}
-        {axisMode === 'manual' && <Tag color='purple'>指定插入方向</Tag>}
+        {axisMode !== 'natural' && <Tag color='purple'>插入方向：{AXIS_SOURCE[axisMode]}</Tag>}
         {hasPrep && <Tag color={singleArch ? 'orange' : 'blue'}>{singleArch ? '單顎' : '上下顎'}</Tag>}
       </div>
       <Button
@@ -339,17 +513,34 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene }) => {
       {record?.kind === 'cutback' && <pre className='flow-message'>{[
         `Cutback：軸面 ${record.cutback_mm} mm · 咬合面 ${record.occlusal_mm} mm · 肩台 ${record.shoulder_mm} mm · 軸面傾斜 ${record.taper_deg}°（體素 ${record.voxel_mm} mm）`,
         `高度 ${record.height_mm} mm · 離對咬 ${record.antagonist_gap_mm ?? '—'} mm · 沒縫合的邊 ${record.open_margin_edges}`,
-        `插入方向 ${record.axis_source === 'occlusal' ? '咬合方向（沿原本的方向切不出來）' : record.base?.axis_source === 'caller' ? '指定' : '自然傾斜'}，離咬合方向 ${record.axis_from_occlusal_deg}° · 原座標 [${(record.insertion_axis_original ?? []).map(v => Number(v).toFixed(3)).join(', ')}]`,
+        `插入方向 ${record.axis_source === 'occlusal' ? '咬合方向（沿原本的方向切不出來）' : record.base?.axis_source === 'caller' ? '指定' : '自然傾斜'}，離咬合方向 ${record.axis_from_occlusal_deg}° · 原座標 [${formatAxis(record.insertion_axis_original ?? [])}]`,
         record.base ? `牙冠先長在資料庫支台齒上：${record.base.group} · ${record.base.cap} · ${record.base.height_mm} mm` : '',
       ].filter(Boolean).join('\n')}</pre>}
       {record && record.kind !== 'cutback' && <pre className='flow-message'>{[
         `牙位群組 ${record.group}（${record.group_source}）· 資料庫 ${record.cap}`,
         `高度 ${record.height_mm} mm（自然 ${record.natural_height_mm} mm）· 肩台 ${record.shoulder_mm} mm · 離對咬 ${record.antagonist_gap_mm ?? '—'} mm（要求 ${record.clearance_mm}）`,
-        `插入方向 ${record.axis_source === 'caller' ? '指定' : '自然傾斜'}，離咬合方向 ${record.axis_from_occlusal_deg}° · 原座標 [${(record.insertion_axis_original ?? []).map(v => Number(v).toFixed(3)).join(', ')}]`,
+        `插入方向 ${record.axis_source === 'caller' ? '指定' : '自然傾斜'}，離咬合方向 ${record.axis_from_occlusal_deg}° · 原座標 [${formatAxis(record.insertion_axis_original ?? [])}]`,
         `cap 縮放 ${record.cap_scale.join(' / ')} · margin 環 ${record.ring_md_bl_mm.join(' × ')} mm（近遠心 × 頰舌）`,
         `洞口 ${record.hole_edge_vertices} 點，吸附到 margin ${record.hole_snapped.moved} 點（最多 ${record.hole_snapped.max_move_mm} mm）· 沒縫合的邊 ${record.open_margin_edges}`,
       ].join('\n')}</pre>}
     </section>
+
+    <AbutmentSection
+      enabled={abutEnabled}
+      setEnabled={setAbutEnabled}
+      params={abutParams}
+      setParams={setAbutParams}
+      library={implantPart}
+      setLibrary={setLibrary}
+      libraryIndex={libraryIndex}
+      state={abutState}
+      busy={abutBusy}
+      error={abutError}
+      hasStump={hasStump}
+      onRebuild={rebuildAbutment}
+      result={result}
+      running={running}
+    />
   </div>;
 };
 
