@@ -16,3 +16,8 @@ table{min-width:930px}.badge{white-space:nowrap}
 .parameter-note{grid-column:1/-1}
 /* eztest: which site an order would go to, said again where the order is made. */
 .site-tag{margin:6px 0 0;font:12px Consolas,monospace;color:var(--muted)}.site-tag.prod{color:#a74334;font-weight:700}
+/* eztest: the 齒位 row under an order. teeth-chart.css is airdental's chart stylesheet; these
+   undo the workbench's own button/label rules inside it, and keep it read-only. */
+.teeth-row>td{max-width:none;padding:6px 25px 24px;background:#fbfcfb}.teeth-detail{display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px 40px}
+.prostheses-select{pointer-events:none;font-size:14px;color:#203334}.prostheses-select button{padding:0;border-radius:0;white-space:normal}.prostheses-select label{display:inline;font-size:14px;line-height:inherit}
+.teeth-list{list-style:none;margin:30px 0 0;padding:0;font-size:13px;line-height:2}.teeth-list .legend-swatch{display:inline-block;width:12px;height:12px;margin-right:8px;border-radius:2px;vertical-align:-1px}.teeth-list .connector{color:#937022}

@@ -87,6 +87,9 @@ async function loadList() {
             const tone = /failure/i.test(status) ? 'failure' : /checking|completed/i.test(status) ? 'success' : /pending|generating|processing/i.test(status) ? 'processing' : '';
             const state = node('td'); state.append(node('span', status, `badge ${tone}`));
             const actions = node('td'); const group = node('div', undefined, 'actions');
+            const teethButton = node('button', '齒位');
+            teethButton.addEventListener('click', () => toggleTeeth(row, teethButton, project));
+            group.append(teethButton);
             for (const [label, operation] of [['狀態', 'status'], ['Viewer', 'viewerLink'], ['編輯', 'editLink'], ['下載', 'download']]) {
                 const button = node('button', label);
                 button.addEventListener('click', () => run(button, () => operate(project.externalSerialnum, operation)));
@@ -109,6 +112,141 @@ async function loadList() {
         message(error.message, true);
     } finally { if (version === listVersion) $('refresh').disabled = false; }
 }
+// --- The order's teeth, drawn like airdental's product picker -----------------------------
+// common/prosthese-select-v2 (index.js, TeethChild.js, items.js), read-only: the same markup
+// and classes, so teeth-chart.css -- its stylesheet, compiled -- places and tints each tooth.
+
+// The list returns teeth as stored, in airdental's tooth-chart ids (common/teethchart.js):
+// 0-15 are 18..11 21..28, 16-31 are 38..31 41..48 -- the same order as `fdi` above. Creating
+// an order sends FDI instead, which the server converts; only reading needs this.
+const fdiOfChartId = id => (Number.isInteger(id) && id >= 0 && id < fdi.length ? fdi[id] : null);
+// items.js PRODUCTS colours; anything else is grey there too.
+const productColors = { anatomicCrown: '#52c41a', anatomicPontic: '#fa8c16', inlay_Onlay: '#722ed1', veneer: '#eb2f96', screwRetainedAbutmentAnatomicCrown: '#1677ff' };
+const productColor = type => productColors[type] || '#8c8c8c';
+// TeethChild.js: the small product icon above each tooth that has one.
+const productIcons = {
+    offsetCoping: 'co', anatomicCoping: 'co', anatomicCrown: 'cr', anatomicCrownShell: 'cr',
+    corePontic: 'poco', reducedPontic: 'poco', anatomicPontic: 'pocr', provisionalPontic: 'pocr',
+    veneer: 've', inlay_Onlay: 'in', provisionalCrown: 'ts', abutment: 'ia',
+    abut_OffsetCoping: 'ia_co', abut_AnatomicCoping: 'ia_co', abut_AnatomicCrown: 'ia_cr',
+    screwRetainedAbutment: 'sria', screwRetainedAbutmentAnatomicCrown: 'sria_cr',
+    diagnosticWaxupCrown: 'ia_cr', diagnosticWaxupPontic: 'pocr',
+};
+const productName = type => products[type] || type || '未指定產品';
+
+// items.js getDefaultTeeth(): each arch left to right, a connector slot between neighbours.
+// Upper slots are named "<this>-<next>", lower ones "<next>-<this>", as there.
+function chartItems() {
+    const items = [];
+    const upper = fdi.slice(0, 16).map(String);
+    // Lower, left to right on screen: 48..41 then 31..38.
+    const lowerRow = [...fdi.slice(24, 32).reverse(), ...fdi.slice(16, 24).reverse()].map(String);
+    upper.forEach((tooth, i) => {
+        items.push({ fdi: tooth });
+        if (i < upper.length - 1) items.push({ link: `${tooth}-${upper[i + 1]}` });
+    });
+    lowerRow.forEach((tooth, i) => {
+        items.push({ fdi: tooth });
+        if (i < lowerRow.length - 1) items.push({ link: `${lowerRow[i + 1]}-${tooth}` });
+    });
+    return items.map((item, key) => ({ ...item, key }));
+}
+function renderTeethChart(teeth) {
+    const byFdi = new Map();
+    for (const tooth of teeth) {
+        const toothFdi = fdiOfChartId(Number(tooth.id));
+        if (toothFdi) byFdi.set(String(toothFdi), tooth);
+    }
+    const items = chartItems().map(item => {
+        if (item.fdi) return { ...item, tooth: byFdi.get(item.fdi) };
+        // index.js updateTeeth(): a tooth's connector lights the slot that starts with it.
+        const first = byFdi.get(item.link.split('-')[0]);
+        return { ...item, selected: first?.connector === true || first?.connector === 'true' };
+    });
+    // index.js teethChild(): a slot draws the bridge line back to the previous slot when both
+    // are lit, carried across the four quarters in drawing order.
+    let previousLink = null;
+    const draw = (from, to, className) => {
+        const list = node('ul', undefined, className);
+        for (const item of items.filter(t => t.key >= from && t.key <= to)) {
+            if (item.fdi) {
+                const li = node('li', undefined, `t${item.fdi}`);
+                const button = node('button');
+                button.type = 'button'; button.tabIndex = -1;
+                if (item.tooth) {
+                    li.style.setProperty('--product-color', productColor(item.tooth.productType));
+                    const icon = productIcons[item.tooth.productType];
+                    if (icon) { const img = node('img', undefined, 'selected'); img.src = `./teeth/product/ttype_${icon}.png`; img.alt = ''; li.append(img); }
+                    button.className = `selected product-set${String(item.tooth.productType).includes('Pontic') ? ' pontic' : ''}`;
+                    li.title = `T${item.fdi} ${productName(item.tooth.productType)}`;
+                }
+                li.append(node('label', item.fdi), button);
+                list.append(li);
+            } else {
+                const isLine = Boolean(previousLink && item.selected && previousLink.selected);
+                const li = node('li', undefined, `link l${item.link} ${item.selected}${isLine ? ' line' : ''}`);
+                const button = node('button', undefined, item.selected ? 'selected' : '');
+                button.type = 'button'; button.tabIndex = -1;
+                li.append(button);
+                list.append(li);
+                previousLink = item;
+            }
+        }
+        return list;
+    };
+    const content = node('div', undefined, 'prostheses-content');
+    for (const [text, className] of [['Upper', 'upper-label'], ['Lower', 'lower-label'], ['Right', 'right-label'], ['Left', 'left-label']]) content.append(node('span', text, className));
+    const top = node('div', undefined, 'tmap-line'); top.append(draw(0, 15, 'tmap-top-left'), draw(16, 30, 'tmap-top-right'));
+    const bottom = node('div', undefined, 'tmap-line'); bottom.style.marginTop = '15px';
+    bottom.append(draw(31, 46, 'tmap-bottom-left'), draw(47, 61, 'tmap-bottom-right'));
+    content.append(top, bottom);
+
+    const legend = node('div', undefined, 'batch-legend');
+    const swatch = (text, color) => {
+        const item = node('span', undefined, 'legend-item'); const box = node('i', undefined, 'legend-swatch');
+        if (color) box.style.backgroundColor = color; else box.classList.add('unset');
+        item.append(box, text); return item;
+    };
+    legend.append(swatch('未設定'));
+    const shown = new Set([...Object.keys(products), ...teeth.map(t => t.productType).filter(Boolean)]);
+    for (const type of shown) legend.append(swatch(productName(type), productColor(type)));
+
+    const map = node('div', undefined, 'prostheses-map'); map.append(content, legend);
+    const layout = node('div', undefined, 'prostheses-layout'); layout.append(map);
+    const chart = node('div', undefined, 'prostheses-select prostheses-select-v2'); chart.append(layout);
+    return chart;
+}
+// The same teeth as text, for reading off or copying: one line per tooth in arch order.
+function renderTeethList(teeth) {
+    const list = node('ul', undefined, 'teeth-list');
+    const rows = teeth.map(tooth => ({ tooth, fdi: fdiOfChartId(Number(tooth.id)) }))
+        .sort((a, b) => (a.fdi ? fdi.indexOf(a.fdi) : 99) - (b.fdi ? fdi.indexOf(b.fdi) : 99));
+    for (const { tooth, fdi: toothFdi } of rows) {
+        const item = node('li');
+        const swatch = node('i', undefined, 'legend-swatch'); swatch.style.backgroundColor = productColor(tooth.productType);
+        const position = fdi.indexOf(toothFdi);
+        const next = position >= 0 && position < fdi.length - 1 && Math.floor(toothFdi / 30) === Math.floor(fdi[position + 1] / 30) ? fdi[position + 1] : null;
+        const connected = tooth.connector === true || tooth.connector === 'true';
+        item.append(swatch, node('strong', toothFdi ? `T${toothFdi}` : `id ${tooth.id}（非恆齒）`), ` ${productName(tooth.productType)}`,
+            connected ? node('span', next ? ` · 連接 T${next}` : ' · 連接下一齒', 'connector') : '');
+        list.append(item);
+    }
+    if (!rows.length) list.append(node('li', '這張訂單沒有齒位資料。', 'muted'));
+    return list;
+}
+function toggleTeeth(row, button, project) {
+    const open = row.nextElementSibling?.classList.contains('teeth-row') ? row.nextElementSibling : null;
+    if (open) { open.remove(); button.textContent = '齒位'; return; }
+    const teeth = Array.isArray(project.teeth) ? project.teeth : [];
+    const cell = node('td'); cell.colSpan = 5;
+    const detail = node('div', undefined, 'teeth-detail');
+    detail.append(renderTeethChart(teeth), renderTeethList(teeth));
+    cell.append(detail);
+    const detailRow = node('tr', undefined, 'teeth-row'); detailRow.append(cell);
+    row.after(detailRow);
+    button.textContent = '收合齒位';
+}
+
 async function operate(serial, operation) {
     serial = serial.trim();
     if (!serial) throw new Error('請先輸入完整外部序號。');

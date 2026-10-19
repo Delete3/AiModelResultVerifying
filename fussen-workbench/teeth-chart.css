@@ -1,0 +1,1527 @@
+.prostheses-select {
+  margin: 0 auto;
+}
+.prostheses-select .label {
+  text-align: center;
+  font-size: 16px;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+.prostheses-select .upper-label {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 85px;
+  font-weight: 500;
+}
+.prostheses-select .lower-label {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 105px;
+  font-weight: 500;
+}
+.prostheses-select .right-label {
+  position: absolute;
+  left: 30px;
+  top: 236px;
+  font-weight: 500;
+}
+.prostheses-select .left-label {
+  position: absolute;
+  right: 36px;
+  top: 236px;
+  font-weight: 500;
+}
+.prostheses-select .prostheses-content {
+  position: relative;
+  padding: 30px;
+  width: max-content;
+  margin: 0 auto;
+}
+.prostheses-select .tmap-line {
+  display: flex;
+}
+.prostheses-select .tmap-line ul {
+  position: relative;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.prostheses-select .tmap-line ul li {
+  position: absolute;
+  line-height: 0px;
+}
+.prostheses-select .tmap-line ul li .ant-btn {
+  visibility: visible;
+}
+.prostheses-select .tmap-line ul li.line::before {
+  content: "";
+  position: absolute;
+  background-color: #f6ab00;
+  width: 4px;
+  z-index: -1;
+}
+.prostheses-select .tmap-line ul li.link button {
+  width: 1px;
+  height: 1px;
+  padding: 4.3px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 47%, #ffffff 7%, #b6b6b6 50%, rgba(255, 255, 255, 0) 100%);
+}
+.prostheses-select .tmap-line ul li.link button.selected {
+  background: radial-gradient(circle at 47%, #f6ab00 7%, #b6b6b6 50%, rgba(255, 255, 255, 0) 100%);
+}
+.prostheses-select .tmap-line ul li.link button:disabled {
+  cursor: default;
+  opacity: 0.3;
+}
+.prostheses-select .tmap-line ul li.link button:disabled:hover {
+  filter: none;
+}
+.prostheses-select .tmap-line ul li button {
+  background-position: center;
+  background-size: auto;
+  border: 0;
+  background-color: transparent;
+  cursor: pointer;
+  outline: none !important;
+}
+.prostheses-select .tmap-line ul li button:hover {
+  filter: contrast(80%);
+}
+.prostheses-select .tmap-line ul li label,
+.prostheses-select .tmap-line ul li img {
+  position: absolute;
+}
+.prostheses-select .tmap-line ul.tmap-top-left {
+  width: 115px;
+  height: 210px;
+  z-index: 1;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.l11-21 {
+  top: 22px;
+  left: 109px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.l11-21.line::before {
+  height: 13px;
+  top: 0px;
+  left: -5.8px;
+  transform: rotate(82deg);
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t11 {
+  top: 0px;
+  left: 87px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t11 img {
+  top: -35px;
+  left: 5px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t11 label {
+  top: -10px;
+  left: 5px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t11 button {
+  width: 28px;
+  height: 24px;
+  background: url("./teeth/none/T11.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t11 button.selected {
+  background: url("./teeth/none/T11.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t11 button.selected.pontic {
+  background: url("./teeth/none/T11.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.l12-11 {
+  top: 25px;
+  left: 92px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.l12-11.line::before {
+  height: 13px;
+  top: 4px;
+  left: -5.8px;
+  transform: rotate(54deg);
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t12 {
+  top: 9px;
+  left: 65px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t12 img {
+  top: -30px;
+  left: -25px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t12 label {
+  top: -5px;
+  left: -9px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t12 button {
+  width: 23px;
+  height: 22px;
+  background: url("./teeth/none/T12.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t12 button.selected {
+  background: url("./teeth/none/T12.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t12 button.selected.pontic {
+  background: url("./teeth/none/T12.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.l13-12 {
+  top: 34px;
+  left: 78px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.l13-12.line::before {
+  height: 17px;
+  top: 7px;
+  left: -5.8px;
+  transform: rotate(36deg);
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t13 {
+  top: 25px;
+  left: 45px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t13 img {
+  top: -15px;
+  left: -37px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t13 label {
+  top: 4px;
+  left: -17px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t13 button {
+  width: 29px;
+  height: 26px;
+  background: url("./teeth/none/T13.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t13 button.selected {
+  background: url("./teeth/none/T13.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t13 button.selected.pontic {
+  background: url("./teeth/none/T13.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.l14-13 {
+  top: 51px;
+  left: 65px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.l14-13.line::before {
+  height: 17px;
+  top: 8px;
+  left: -3.8px;
+  transform: rotate(23deg);
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t14 {
+  top: 49px;
+  left: 29px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t14 img {
+  top: -10px;
+  left: -40px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t14 label {
+  top: 5px;
+  left: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t14 button {
+  width: 28px;
+  height: 24px;
+  background: url("./teeth/none/T14.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t14 button.selected {
+  background: url("./teeth/none/T14.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t14 button.selected.pontic {
+  background: url("./teeth/none/T14.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.l15-14 {
+  top: 71px;
+  left: 56px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.l15-14.line::before {
+  height: 25px;
+  top: 9px;
+  left: -2.8px;
+  transform: rotate(14deg);
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t15 {
+  top: 73px;
+  left: 19px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t15 img {
+  top: -3px;
+  left: -40px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t15 label {
+  top: 9px;
+  left: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t15 button {
+  width: 30px;
+  height: 26px;
+  background: url("./teeth/none/T15.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t15 button.selected {
+  background: url("./teeth/none/T15.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t15 button.selected.pontic {
+  background: url("./teeth/none/T15.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.l16-15 {
+  top: 98px;
+  left: 49px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.l16-15.line::before {
+  height: 30px;
+  top: 9px;
+  left: -1.8px;
+  transform: rotate(8deg);
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t16 {
+  top: 99px;
+  left: 9px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t16 img {
+  top: 1px;
+  left: -40px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t16 label {
+  top: 14px;
+  left: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t16 button {
+  width: 30px;
+  height: 33px;
+  background: url("./teeth/none/T16.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t16 button.selected {
+  background: url("./teeth/none/T16.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t16 button.selected.pontic {
+  background: url("./teeth/none/T16.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.l17-16 {
+  top: 131px;
+  left: 43px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.l17-16.line::before {
+  height: 30px;
+  top: 9px;
+  left: 0.2px;
+  transform: rotate(4deg);
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t17 {
+  top: 135px;
+  left: 5px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t17 img {
+  top: 4px;
+  left: -42px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t17 label {
+  top: 14px;
+  left: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t17 button {
+  width: 32px;
+  height: 33px;
+  background: url("./teeth/none/T17.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t17 button.selected {
+  background: url("./teeth/none/T17.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t17 button.selected.pontic {
+  background: url("./teeth/none/T17.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.l18-17 {
+  top: 168px;
+  left: 40px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t18 {
+  top: 171px;
+  left: 2px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t18 img {
+  top: 6px;
+  left: -40px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t18 label {
+  top: 14px;
+  left: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t18 button {
+  width: 30px;
+  height: 30px;
+  background: url("./teeth/none/T18.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t18 button.selected {
+  background: url("./teeth/none/T18.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-left li.t18 button.selected.pontic {
+  background: url("./teeth/none/T18.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right {
+  width: 115px;
+  height: 210px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t21 {
+  top: 0px;
+  right: 87px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t21 img {
+  top: -36px;
+  right: 5px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t21 label {
+  top: -10px;
+  right: 5px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t21 button {
+  width: 28px;
+  height: 24px;
+  background: url("./teeth/none/T21.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t21 button.selected {
+  background: url("./teeth/none/T21.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t21 button.selected.pontic {
+  background: url("./teeth/none/T21.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.l21-22 {
+  top: 25px;
+  right: 92px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.l21-22.line::before {
+  height: 14px;
+  top: -3px;
+  left: -8px;
+  transform: rotate(97deg);
+  z-index: 0;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t22 {
+  top: 9px;
+  right: 65px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t22 img {
+  top: -29px;
+  right: -25px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t22 label {
+  top: -5px;
+  right: -9px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t22 button {
+  width: 23px;
+  height: 22px;
+  background: url("./teeth/none/T22.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t22 button.selected {
+  background: url("./teeth/none/T22.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t22 button.selected.pontic {
+  background: url("./teeth/none/T22.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.l22-23 {
+  top: 34px;
+  right: 78px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.l22-23.line::before {
+  height: 11px;
+  top: -5px;
+  left: -5px;
+  transform: rotate(120deg);
+  z-index: 0;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t23 {
+  top: 25px;
+  right: 45px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t23 img {
+  top: -18px;
+  right: -36px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t23 label {
+  top: 4px;
+  right: -17px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t23 button {
+  width: 29px;
+  height: 26px;
+  background: url("./teeth/none/T23.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t23 button.selected {
+  background: url("./teeth/none/T23.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t23 button.selected.pontic {
+  background: url("./teeth/none/T23.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.l23-24 {
+  top: 51px;
+  right: 65px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.l23-24.line::before {
+  height: 14px;
+  top: -10px;
+  left: -5px;
+  transform: rotate(142deg);
+  z-index: 0;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t24 {
+  top: 49px;
+  right: 29px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t24 img {
+  top: -10px;
+  right: -42px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t24 label {
+  top: 5px;
+  right: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t24 button {
+  width: 28px;
+  height: 24px;
+  background: url("./teeth/none/T24.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t24 button.selected {
+  background: url("./teeth/none/T24.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t24 button.selected.pontic {
+  background: url("./teeth/none/T24.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.l24-25 {
+  top: 71px;
+  right: 56px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.l24-25.line::before {
+  height: 15px;
+  top: -12px;
+  left: -3px;
+  transform: rotate(155deg);
+  z-index: 0;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t25 {
+  top: 73px;
+  right: 19px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t25 img {
+  top: -3px;
+  right: -43px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t25 label {
+  top: 9px;
+  right: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t25 button {
+  width: 30px;
+  height: 26px;
+  background: url("./teeth/none/T25.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t25 button.selected {
+  background: url("./teeth/none/T25.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t25 button.selected.pontic {
+  background: url("./teeth/none/T25.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.l25-26 {
+  top: 98px;
+  right: 49px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.l25-26.line::before {
+  height: 21px;
+  top: -18px;
+  left: -2px;
+  transform: rotate(165deg);
+  z-index: 0;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t26 {
+  top: 99px;
+  right: 9px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t26 img {
+  top: 3px;
+  right: -43px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t26 label {
+  top: 14px;
+  right: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t26 button {
+  width: 30px;
+  height: 33px;
+  background: url("./teeth/none/T26.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t26 button.selected {
+  background: url("./teeth/none/T26.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t26 button.selected.pontic {
+  background: url("./teeth/none/T26.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.l26-27 {
+  top: 131px;
+  right: 43px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.l26-27.line::before {
+  height: 26px;
+  top: -24px;
+  left: -1px;
+  transform: rotate(170deg);
+  z-index: 0;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t27 {
+  top: 135px;
+  right: 5px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t27 img {
+  top: 5px;
+  right: -43px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t27 label {
+  top: 14px;
+  right: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t27 button {
+  width: 32px;
+  height: 33px;
+  background: url("./teeth/none/T27.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t27 button.selected {
+  background: url("./teeth/none/T27.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t27 button.selected.pontic {
+  background: url("./teeth/none/T27.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.l27-28 {
+  top: 168px;
+  right: 40px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.l27-28.line::before {
+  height: 30px;
+  top: -28px;
+  left: 0px;
+  transform: rotate(176deg);
+  z-index: 0;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t28 {
+  top: 171px;
+  right: 2px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t28 img {
+  top: 6px;
+  right: -43px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t28 label {
+  top: 14px;
+  right: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t28 button {
+  width: 30px;
+  height: 30px;
+  background: url("./teeth/none/T28.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t28 button.selected {
+  background: url("./teeth/none/T28.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-top-right li.t28 button.selected.pontic {
+  background: url("./teeth/none/T28.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left {
+  width: 115px;
+  height: 215px;
+  z-index: 1;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t48 {
+  top: 12px;
+  left: 8px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t48 img {
+  top: 5px;
+  left: -43px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t48 label {
+  top: 14px;
+  left: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t48 button {
+  width: 25px;
+  height: 28px;
+  background: url("./teeth/none/T48.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t48 button.selected {
+  background: url("./teeth/none/T48.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t48 button.selected.pontic {
+  background: url("./teeth/none/T48.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.l47-48 {
+  top: 33px;
+  left: 40px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t47 {
+  top: 46px;
+  left: 11px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t47 img {
+  top: 16px;
+  left: -42px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t47 label {
+  top: 20px;
+  left: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t47 button {
+  width: 28px;
+  height: 29px;
+  background: url("./teeth/none/T47.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t47 button.selected {
+  background: url("./teeth/none/T47.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t47 button.selected.pontic {
+  background: url("./teeth/none/T47.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.l46-47 {
+  top: 67px;
+  left: 43px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.l46-47.line::before {
+  height: 30px;
+  top: -28px;
+  left: 0px;
+  transform: rotate(175deg);
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t46 {
+  top: 80px;
+  left: 19px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t46 img {
+  top: 16px;
+  left: -42px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t46 label {
+  top: 20px;
+  left: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t46 button {
+  width: 28px;
+  height: 31px;
+  background: url("./teeth/none/T46.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t46 button.selected {
+  background: url("./teeth/none/T46.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t46 button.selected.pontic {
+  background: url("./teeth/none/T46.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.l45-46 {
+  top: 100px;
+  left: 51px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.l45-46.line::before {
+  height: 30px;
+  top: -27px;
+  left: -2px;
+  transform: rotate(167deg);
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t45 {
+  top: 114px;
+  left: 33px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t45 img {
+  top: 18px;
+  left: -41px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t45 label {
+  top: 20px;
+  left: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t45 button {
+  width: 25px;
+  height: 23px;
+  background: url("./teeth/none/T45.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t45 button.selected {
+  background: url("./teeth/none/T45.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t45 button.selected.pontic {
+  background: url("./teeth/none/T45.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.l44-45 {
+  top: 126px;
+  left: 61px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.l44-45.line::before {
+  height: 26px;
+  top: -21px;
+  left: -3px;
+  transform: rotate(160deg);
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t44 {
+  top: 140px;
+  left: 46px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t44 img {
+  top: 20px;
+  left: -39px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t44 label {
+  top: 20px;
+  left: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t44 button {
+  width: 25px;
+  height: 25px;
+  background: url("./teeth/none/T44.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t44 button.selected {
+  background: url("./teeth/none/T44.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t44 button.selected.pontic {
+  background: url("./teeth/none/T44.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.l43-44 {
+  top: 145px;
+  left: 74px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.l43-44.line::before {
+  height: 22px;
+  top: -16px;
+  left: -5px;
+  transform: rotate(149deg);
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t43 {
+  top: 159px;
+  left: 60px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t43 img {
+  top: 31px;
+  left: -30px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t43 label {
+  top: 27px;
+  left: -12px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t43 button {
+  width: 22px;
+  height: 23px;
+  background: url("./teeth/none/T43.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t43 button.selected {
+  background: url("./teeth/none/T43.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t43 button.selected.pontic {
+  background: url("./teeth/none/T43.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.l42-43 {
+  top: 159px;
+  left: 84px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.l42-43.line::before {
+  height: 18px;
+  top: -13px;
+  left: -5px;
+  transform: rotate(145deg);
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t42 {
+  top: 174px;
+  left: 78px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t42 img {
+  top: 38px;
+  left: -18px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t42 label {
+  top: 31px;
+  left: -8px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t42 button {
+  width: 18px;
+  height: 23px;
+  background: url("./teeth/none/T42.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t42 button.selected {
+  background: url("./teeth/none/T42.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t42 button.selected.pontic {
+  background: url("./teeth/none/T42.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.l41-42 {
+  top: 167px;
+  left: 97px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.l41-42.line::before {
+  height: 13px;
+  top: -4px;
+  left: -5px;
+  transform: rotate(124deg);
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t41 {
+  top: 180px;
+  left: 97px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t41 img {
+  top: 42px;
+  left: -1px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t41 label {
+  top: 34px;
+  left: 0px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t41 button {
+  width: 18px;
+  height: 23px;
+  background: url("./teeth/none/T41.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t41 button.selected {
+  background: url("./teeth/none/T41.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.t41 button.selected.pontic {
+  background: url("./teeth/none/T41.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.l31-41 {
+  top: 170px;
+  left: 111px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-left li.l31-41.line::before {
+  height: 13px;
+  top: -2px;
+  left: -5px;
+  transform: rotate(105deg);
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right {
+  width: 115px;
+  height: 215px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t31 {
+  top: 180px;
+  right: 97px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t31 img {
+  top: 42px;
+  right: -1px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t31 label {
+  top: 34px;
+  right: 0px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t31 button {
+  width: 18px;
+  height: 24px;
+  background: url("./teeth/none/T31.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t31 button.selected {
+  background: url("./teeth/none/T31.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t31 button.selected.pontic {
+  background: url("./teeth/none/T31.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.l32-31 {
+  top: 167px;
+  right: 97px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.l32-31.line::before {
+  height: 7px;
+  top: 4px;
+  left: -5px;
+  transform: rotate(75deg);
+  z-index: 0;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t32 {
+  top: 174px;
+  right: 78px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t32 img {
+  top: 38px;
+  right: -18px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t32 label {
+  top: 31px;
+  right: -8px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t32 button {
+  width: 18px;
+  height: 24px;
+  background: url("./teeth/none/T32.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t32 button.selected {
+  background: url("./teeth/none/T32.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t32 button.selected.pontic {
+  background: url("./teeth/none/T32.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.l33-32 {
+  top: 159px;
+  right: 84px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.l33-32.line::before {
+  height: 10px;
+  top: 6px;
+  left: -5px;
+  transform: rotate(52deg);
+  z-index: 0;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t33 {
+  top: 159px;
+  right: 60px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t33 img {
+  top: 31px;
+  right: -30px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t33 label {
+  top: 27px;
+  right: -12px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t33 button {
+  width: 21px;
+  height: 23px;
+  background: url("./teeth/none/T33.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t33 button.selected {
+  background: url("./teeth/none/T33.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t33 button.selected.pontic {
+  background: url("./teeth/none/T33.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.l34-33 {
+  top: 145px;
+  right: 74px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.l34-33.line::before {
+  height: 11px;
+  top: 7px;
+  left: -3px;
+  transform: rotate(36deg);
+  z-index: 0;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t34 {
+  top: 140px;
+  right: 46px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t34 img {
+  top: 20px;
+  right: -39px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t34 label {
+  top: 20px;
+  right: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t34 button {
+  width: 25px;
+  height: 25px;
+  background: url("./teeth/none/T34.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t34 button.selected {
+  background: url("./teeth/none/T34.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t34 button.selected.pontic {
+  background: url("./teeth/none/T34.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.l35-34 {
+  top: 126px;
+  right: 61px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.l35-34.line::before {
+  height: 17px;
+  top: 7px;
+  left: -5px;
+  transform: rotate(32deg);
+  z-index: 0;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t35 {
+  top: 114px;
+  right: 33px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t35 img {
+  top: 18px;
+  right: -41px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t35 label {
+  top: 20px;
+  right: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t35 button {
+  width: 26px;
+  height: 24px;
+  background: url("./teeth/none/T35.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t35 button.selected {
+  background: url("./teeth/none/T35.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t35 button.selected.pontic {
+  background: url("./teeth/none/T35.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.l36-35 {
+  top: 100px;
+  right: 51px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.l36-35.line::before {
+  height: 22px;
+  top: 7px;
+  left: -3px;
+  transform: rotate(21deg);
+  z-index: 0;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t36 {
+  top: 80px;
+  right: 19px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t36 img {
+  top: 16px;
+  right: -42px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t36 label {
+  top: 20px;
+  right: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t36 button {
+  width: 29px;
+  height: 31px;
+  background: url("./teeth/none/T36.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t36 button.selected {
+  background: url("./teeth/none/T36.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t36 button.selected.pontic {
+  background: url("./teeth/none/T36.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.l37-36 {
+  top: 67px;
+  right: 43px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.l37-36.line::before {
+  height: 28px;
+  top: 7px;
+  left: -2px;
+  transform: rotate(14deg);
+  z-index: 0;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t37 {
+  top: 46px;
+  right: 11px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t37 img {
+  top: 16px;
+  right: -42px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t37 label {
+  top: 20px;
+  right: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t37 button {
+  width: 27px;
+  height: 29px;
+  background: url("./teeth/none/T37.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t37 button.selected {
+  background: url("./teeth/none/T37.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t37 button.selected.pontic {
+  background: url("./teeth/none/T37.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.l38-37 {
+  top: 33px;
+  right: 40px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.l38-37.line::before {
+  height: 28px;
+  top: 8px;
+  left: 0px;
+  transform: rotate(5deg);
+  z-index: 0;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t38 {
+  top: 12px;
+  right: 8px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t38 img {
+  top: 5px;
+  right: -43px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t38 label {
+  top: 14px;
+  right: -20px;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t38 button {
+  width: 25px;
+  height: 28px;
+  background: url("./teeth/none/T38.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t38 button.selected {
+  background: url("./teeth/none/T38.png") no-repeat;
+}
+.prostheses-select .tmap-line ul.tmap-bottom-right li.t38 button.selected.pontic {
+  background: url("./teeth/none/T38.png") no-repeat;
+}
+
+.prostheses-select-v2 .prostheses-layout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 16px;
+}
+.prostheses-select-v2 .prostheses-map {
+  flex: 0 0 auto;
+  width: min-content;
+}
+.prostheses-select-v2 .prostheses-side {
+  flex: 0 1 280px;
+  width: 280px;
+  min-width: 240px;
+}
+.prostheses-select-v2 .prostheses-content {
+  user-select: none;
+}
+.prostheses-select-v2 .tmap-line ul li.batch-selected label {
+  color: #1890ff;
+  font-weight: 600;
+}
+.prostheses-select-v2 .tmap-line ul li button.batch-selected {
+  filter: drop-shadow(0 0 1px #1890ff) drop-shadow(0 0 2px #1890ff);
+}
+.prostheses-select-v2 .tmap-line ul li button.batch-selected:hover {
+  filter: drop-shadow(0 0 1px #1890ff) drop-shadow(0 0 2px #1890ff) contrast(80%);
+}
+.prostheses-select-v2 .tmap-line ul li button.product-set {
+  position: relative;
+}
+.prostheses-select-v2 .tmap-line ul li button.product-set::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background-color: var(--product-color);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t11 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t11 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T11.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t11 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T11.png") no-repeat 0 0;
+  mask: url("./teeth/none/T11.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t12 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t12 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T12.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t12 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T12.png") no-repeat 0 0;
+  mask: url("./teeth/none/T12.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t13 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t13 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T13.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t13 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T13.png") no-repeat 0 0;
+  mask: url("./teeth/none/T13.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t14 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t14 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T14.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t14 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T14.png") no-repeat 0 0;
+  mask: url("./teeth/none/T14.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t15 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t15 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T15.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t15 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T15.png") no-repeat 0 0;
+  mask: url("./teeth/none/T15.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t16 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t16 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T16.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t16 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T16.png") no-repeat 0 0;
+  mask: url("./teeth/none/T16.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t17 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t17 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T17.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t17 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T17.png") no-repeat 0 0;
+  mask: url("./teeth/none/T17.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t18 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t18 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T18.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t18 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T18.png") no-repeat 0 0;
+  mask: url("./teeth/none/T18.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t21 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t21 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T21.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t21 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T21.png") no-repeat 0 0;
+  mask: url("./teeth/none/T21.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t22 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t22 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T22.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t22 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T22.png") no-repeat 0 0;
+  mask: url("./teeth/none/T22.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t23 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t23 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T23.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t23 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T23.png") no-repeat 0 0;
+  mask: url("./teeth/none/T23.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t24 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t24 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T24.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t24 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T24.png") no-repeat 0 0;
+  mask: url("./teeth/none/T24.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t25 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t25 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T25.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t25 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T25.png") no-repeat 0 0;
+  mask: url("./teeth/none/T25.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t26 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t26 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T26.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t26 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T26.png") no-repeat 0 0;
+  mask: url("./teeth/none/T26.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t27 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t27 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T27.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t27 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T27.png") no-repeat 0 0;
+  mask: url("./teeth/none/T27.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t28 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t28 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T28.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t28 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T28.png") no-repeat 0 0;
+  mask: url("./teeth/none/T28.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t31 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t31 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T31.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t31 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T31.png") no-repeat 0 0;
+  mask: url("./teeth/none/T31.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t32 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t32 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T32.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t32 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T32.png") no-repeat 0 0;
+  mask: url("./teeth/none/T32.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t33 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t33 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T33.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t33 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T33.png") no-repeat 0 0;
+  mask: url("./teeth/none/T33.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t34 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t34 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T34.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t34 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T34.png") no-repeat 0 0;
+  mask: url("./teeth/none/T34.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t35 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t35 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T35.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t35 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T35.png") no-repeat 0 0;
+  mask: url("./teeth/none/T35.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t36 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t36 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T36.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t36 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T36.png") no-repeat 0 0;
+  mask: url("./teeth/none/T36.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t37 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t37 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T37.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t37 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T37.png") no-repeat 0 0;
+  mask: url("./teeth/none/T37.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t38 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t38 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T38.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t38 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T38.png") no-repeat 0 0;
+  mask: url("./teeth/none/T38.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t41 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t41 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T41.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t41 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T41.png") no-repeat 0 0;
+  mask: url("./teeth/none/T41.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t42 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t42 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T42.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t42 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T42.png") no-repeat 0 0;
+  mask: url("./teeth/none/T42.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t43 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t43 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T43.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t43 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T43.png") no-repeat 0 0;
+  mask: url("./teeth/none/T43.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t44 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t44 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T44.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t44 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T44.png") no-repeat 0 0;
+  mask: url("./teeth/none/T44.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t45 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t45 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T45.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t45 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T45.png") no-repeat 0 0;
+  mask: url("./teeth/none/T45.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t46 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t46 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T46.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t46 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T46.png") no-repeat 0 0;
+  mask: url("./teeth/none/T46.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t47 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t47 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T47.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t47 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T47.png") no-repeat 0 0;
+  mask: url("./teeth/none/T47.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t48 button.selected.product-set, .prostheses-select-v2 .tmap-line ul[class] li.t48 button.selected.product-set.pontic {
+  background-image: url("./teeth/none/T48.png");
+}
+.prostheses-select-v2 .tmap-line ul[class] li.t48 button.selected.product-set::after {
+  -webkit-mask: url("./teeth/none/T48.png") no-repeat 0 0;
+  mask: url("./teeth/none/T48.png") no-repeat 0 0;
+}
+.prostheses-select-v2 .legend-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+.prostheses-select-v2 .legend-swatch.unset {
+  background-color: #fff;
+  border: 1px solid #b6b6b6;
+}
+.prostheses-select-v2 .legend-swatch.selecting {
+  background-color: #fff;
+  border: 2px solid #1890ff;
+}
+.prostheses-select-v2 .batch-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+  margin: 0 auto 16px;
+  font-size: 12px;
+  color: #666;
+}
+.prostheses-select-v2 .batch-legend .legend-item {
+  white-space: nowrap;
+}
+.prostheses-select-v2 .batch-panel {
+  padding: 16px;
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+  background-color: #fafafa;
+}
+.prostheses-select-v2 .batch-panel.batch-panel-empty {
+  text-align: center;
+}
+.prostheses-select-v2 .batch-panel .batch-empty-title {
+  font-weight: 500;
+  color: #666;
+}
+.prostheses-select-v2 .batch-panel .batch-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #999;
+}
+.prostheses-select-v2 .batch-panel .batch-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.prostheses-select-v2 .batch-panel .batch-count {
+  font-weight: 600;
+}
+.prostheses-select-v2 .batch-panel .batch-selected-teeth {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 0;
+  margin-bottom: 16px;
+}
+.prostheses-select-v2 .batch-panel .batch-product-label {
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+.prostheses-select-v2 .batch-panel .batch-product-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.prostheses-select-v2 .batch-panel .batch-product-group .ant-radio-button-wrapper {
+  height: auto;
+  min-height: 32px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  line-height: 20px;
+  white-space: normal;
+  border-left-width: 1px;
+  border-radius: 4px;
+}
+.prostheses-select-v2 .batch-panel .batch-product-group .ant-radio-button-wrapper > span:not(.ant-radio-button) {
+  display: flex;
+  align-items: flex-start;
+}
+.prostheses-select-v2 .batch-panel .batch-product-group .ant-radio-button-wrapper .legend-swatch {
+  flex: none;
+  margin-top: 4px;
+}
+.prostheses-select-v2 .batch-panel .batch-product-group .ant-radio-button-wrapper::before {
+  display: none;
+}
+.prostheses-select-v2 .batch-panel .batch-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+.prostheses-select-v2 .batch-panel .batch-actions .ant-btn {
+  width: 100%;
+  height: auto;
+  min-height: 32px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  line-height: 20px;
+  white-space: normal;
+  text-wrap: pretty;
+}

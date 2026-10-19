@@ -1,0 +1,1676 @@
+// Copied from airdental client/default/common/prosthese-select-v2/style.scss (64ac70a41)
+// for the Fussen workbench's read-only tooth chart (app.js renderTeethChart). Only the image
+// paths changed: the workbench shows every product with the uncoloured "none" tooth tinted in
+// the product colour (the v2 look), so the coping/pontic images point at "none" too and are
+// not shipped. teeth-chart.css is this file compiled:
+//   npx sass --no-source-map fussen-workbench/teeth-chart.scss fussen-workbench/teeth-chart.css
+// with the workbench resets appended (see the end of teeth-chart.css).
+$teeth-path: "./teeth/none/";
+$teeth-coping-path: "./teeth/none/";
+$teeth-pontic-path: "./teeth/none/";
+
+.prostheses-select {
+    margin: 0 auto;
+
+    .label {
+        text-align: center;
+        font-size: 16px;
+        margin-bottom: 10px;
+        font-weight: 600;
+    }
+
+    .upper-label {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        top: 85px;
+        font-weight: 500;
+    }
+
+    .lower-label {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 105px;
+        font-weight: 500;
+    }
+
+    .right-label {
+        position: absolute;
+        left: 30px;
+        top: 236px;
+        font-weight: 500;
+    }
+
+    .left-label {
+        position: absolute;
+        right: 36px;
+        top: 236px;
+        font-weight: 500;
+    }
+
+    .prostheses-content {
+        position: relative;
+        padding: 30px;
+        width: max-content;
+        margin: 0 auto;
+    }
+
+    .tmap-line {
+        // 左右兩排必須並排。這條規則原本只存在於 common/TeethMap.scss（那是 TeethMap 元件的樣式），
+        // 而齒位圖之所以在訂單頁看起來正常，是因為同一個 bundle 裡的 AddSingleCaseModal 順手
+        // import 了那支 scss。換到別的 entry（例如 dashboard 底下的申訴詳情頁）就沒人載入，
+        // 兩個 ul 退回 block 而上下堆疊，再和絕對定位的 Upper/Lower/Right/Left 標籤重疊。
+        // 這段 markup 是本元件自己畫的，樣式就該由自己帶著，不要靠別人剛好有 import。
+        display: flex;
+
+        ul {
+            position: relative;
+            padding: 0;
+            margin: 0;
+            list-style: none;
+
+            li {
+                position: absolute;
+                line-height: 0px;
+
+                .ant-btn {
+                    visibility: visible;
+                }
+
+                &.line::before {
+                    content: "";
+                    position: absolute;
+                    background-color: #f6ab00;
+                    width: 4px;
+                    z-index: -1;
+                }
+
+                &.link button {
+                    width: 1px;
+                    height: 1px;
+                    padding: 4.3px;
+                    border-radius: 50%;
+                    background: radial-gradient(circle at 47%, #ffffff 7%, #b6b6b6 50%, rgba(255, 255, 255, 0) 100%);
+
+                    &.selected {
+                        background: radial-gradient(
+                            circle at 47%,
+                            #f6ab00 7%,
+                            #b6b6b6 50%,
+                            rgba(255, 255, 255, 0) 100%
+                        );
+                    }
+
+                    // 只剩一個牙冠方案可用時（例如只開快速），連接器不能點。
+                    // 選擇器要比下面共用的 button:hover 更具體，才蓋得掉那個 filter。
+                    // 游標回一般箭頭：淡化已經足夠表達不能點了。
+                    // 禁用符號太刑、手指又暗示點得下去，不如什麼都不表示。
+                    &:disabled {
+                        cursor: default;
+                        opacity: 0.3;
+
+                        &:hover {
+                            filter: none;
+                        }
+                    }
+                }
+
+                button {
+                    background-position: center;
+                    background-size: auto;
+                    border: 0;
+                    background-color: transparent;
+                    cursor: pointer;
+                    outline: none !important;
+
+                    &:hover {
+                        filter: contrast(80%);
+                    }
+                }
+
+                label,
+                img {
+                    position: absolute;
+                }
+            }
+
+            &.tmap-top-left {
+                width: 115px;
+                height: 210px;
+                z-index: 1;
+
+                li {
+                    &.l11-21 {
+                        top: 22px;
+                        left: 109px;
+
+                        &.line::before {
+                            height: 13px;
+                            top: 0px;
+                            left: -5.8px;
+                            transform: rotate(82deg);
+                        }
+                    }
+
+                    &.t11 {
+                        top: 0px;
+                        left: 87px;
+
+                        img {
+                            top: -35px;
+                            left: 5px;
+                        }
+
+                        label {
+                            top: -10px;
+                            left: 5px;
+                        }
+
+                        button {
+                            width: 28px;
+                            height: 24px;
+                            background: url($teeth-path + "T11.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T11.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T11.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l12-11 {
+                        top: 25px;
+                        left: 92px;
+
+                        &.line::before {
+                            height: 13px;
+                            top: 4px;
+                            left: -5.8px;
+                            transform: rotate(54deg);
+                        }
+                    }
+
+                    &.t12 {
+                        top: 9px;
+                        left: 65px;
+
+                        img {
+                            top: -30px;
+                            left: -25px;
+                        }
+
+                        label {
+                            top: -5px;
+                            left: -9px;
+                        }
+
+                        button {
+                            width: 23px;
+                            height: 22px;
+                            background: url($teeth-path + "T12.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T12.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T12.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l13-12 {
+                        top: 34px;
+                        left: 78px;
+
+                        &.line::before {
+                            height: 17px;
+                            top: 7px;
+                            left: -5.8px;
+                            transform: rotate(36deg);
+                        }
+                    }
+
+                    &.t13 {
+                        top: 25px;
+                        left: 45px;
+
+                        img {
+                            top: -15px;
+                            left: -37px;
+                        }
+
+                        label {
+                            top: 4px;
+                            left: -17px;
+                        }
+
+                        button {
+                            width: 29px;
+                            height: 26px;
+                            background: url($teeth-path + "T13.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T13.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T13.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l14-13 {
+                        top: 51px;
+                        left: 65px;
+
+                        &.line::before {
+                            height: 17px;
+                            top: 8px;
+                            left: -3.8px;
+                            transform: rotate(23deg);
+                        }
+                    }
+
+                    &.t14 {
+                        top: 49px;
+                        left: 29px;
+
+                        img {
+                            top: -10px;
+                            left: -40px;
+                        }
+
+                        label {
+                            top: 5px;
+                            left: -20px;
+                        }
+
+                        button {
+                            width: 28px;
+                            height: 24px;
+                            background: url($teeth-path + "T14.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T14.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T14.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l15-14 {
+                        top: 71px;
+                        left: 56px;
+
+                        &.line::before {
+                            height: 25px;
+                            top: 9px;
+                            left: -2.8px;
+                            transform: rotate(14deg);
+                        }
+                    }
+
+                    &.t15 {
+                        top: 73px;
+                        left: 19px;
+
+                        img {
+                            top: -3px;
+                            left: -40px;
+                        }
+
+                        label {
+                            top: 9px;
+                            left: -20px;
+                        }
+
+                        button {
+                            width: 30px;
+                            height: 26px;
+                            background: url($teeth-path + "T15.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T15.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T15.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l16-15 {
+                        top: 98px;
+                        left: 49px;
+
+                        &.line::before {
+                            height: 30px;
+                            top: 9px;
+                            left: -1.8px;
+                            transform: rotate(8deg);
+                        }
+                    }
+
+                    &.t16 {
+                        top: 99px;
+                        left: 9px;
+
+                        img {
+                            top: 1px;
+                            left: -40px;
+                        }
+
+                        label {
+                            top: 14px;
+                            left: -20px;
+                        }
+
+                        button {
+                            width: 30px;
+                            height: 33px;
+                            background: url($teeth-path + "T16.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T16.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T16.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l17-16 {
+                        top: 131px;
+                        left: 43px;
+
+                        &.line::before {
+                            height: 30px;
+                            top: 9px;
+                            left: 0.2px;
+                            transform: rotate(4deg);
+                        }
+                    }
+
+                    &.t17 {
+                        top: 135px;
+                        left: 5px;
+
+                        img {
+                            top: 4px;
+                            left: -42px;
+                        }
+
+                        label {
+                            top: 14px;
+                            left: -20px;
+                        }
+
+                        button {
+                            width: 32px;
+                            height: 33px;
+                            background: url($teeth-path + "T17.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T17.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T17.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l18-17 {
+                        top: 168px;
+                        left: 40px;
+                    }
+
+                    &.t18 {
+                        top: 171px;
+                        left: 2px;
+
+                        img {
+                            top: 6px;
+                            left: -40px;
+                        }
+
+                        label {
+                            top: 14px;
+                            left: -20px;
+                        }
+
+                        button {
+                            width: 30px;
+                            height: 30px;
+                            background: url($teeth-path + "T18.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T18.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T18.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            &.tmap-top-right {
+                width: 115px;
+                height: 210px;
+
+                li {
+                    &.t21 {
+                        top: 0px;
+                        right: 87px;
+
+                        img {
+                            top: -36px;
+                            right: 5px;
+                        }
+
+                        label {
+                            top: -10px;
+                            right: 5px;
+                        }
+
+                        button {
+                            width: 28px;
+                            height: 24px;
+                            background: url($teeth-path + "T21.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T21.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T21.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l21-22 {
+                        top: 25px;
+                        right: 92px;
+
+                        &.line::before {
+                            height: 14px;
+                            top: -3px;
+                            left: -8px;
+                            transform: rotate(97deg);
+                            z-index: 0;
+                        }
+                    }
+
+                    &.t22 {
+                        top: 9px;
+                        right: 65px;
+
+                        img {
+                            top: -29px;
+                            right: -25px;
+                        }
+
+                        label {
+                            top: -5px;
+                            right: -9px;
+                        }
+
+                        button {
+                            width: 23px;
+                            height: 22px;
+                            background: url($teeth-path + "T22.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T22.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T22.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l22-23 {
+                        top: 34px;
+                        right: 78px;
+
+                        &.line::before {
+                            height: 11px;
+                            top: -5px;
+                            left: -5px;
+                            transform: rotate(120deg);
+                            z-index: 0;
+                        }
+                    }
+
+                    &.t23 {
+                        top: 25px;
+                        right: 45px;
+
+                        img {
+                            top: -18px;
+                            right: -36px;
+                        }
+
+                        label {
+                            top: 4px;
+                            right: -17px;
+                        }
+
+                        button {
+                            width: 29px;
+                            height: 26px;
+                            background: url($teeth-path + "T23.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T23.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T23.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l23-24 {
+                        top: 51px;
+                        right: 65px;
+
+                        &.line::before {
+                            height: 14px;
+                            top: -10px;
+                            left: -5px;
+                            transform: rotate(142deg);
+                            z-index: 0;
+                        }
+                    }
+
+                    &.t24 {
+                        top: 49px;
+                        right: 29px;
+
+                        img {
+                            top: -10px;
+                            right: -42px;
+                        }
+
+                        label {
+                            top: 5px;
+                            right: -20px;
+                        }
+
+                        button {
+                            width: 28px;
+                            height: 24px;
+                            background: url($teeth-path + "T24.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T24.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T24.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l24-25 {
+                        top: 71px;
+                        right: 56px;
+
+                        &.line::before {
+                            height: 15px;
+                            top: -12px;
+                            left: -3px;
+                            transform: rotate(155deg);
+                            z-index: 0;
+                        }
+                    }
+
+                    &.t25 {
+                        top: 73px;
+                        right: 19px;
+
+                        img {
+                            top: -3px;
+                            right: -43px;
+                        }
+
+                        label {
+                            top: 9px;
+                            right: -20px;
+                        }
+
+                        button {
+                            width: 30px;
+                            height: 26px;
+                            background: url($teeth-path + "T25.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T25.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T25.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l25-26 {
+                        top: 98px;
+                        right: 49px;
+
+                        &.line::before {
+                            height: 21px;
+                            top: -18px;
+                            left: -2px;
+                            transform: rotate(165deg);
+                            z-index: 0;
+                        }
+                    }
+
+                    &.t26 {
+                        top: 99px;
+                        right: 9px;
+
+                        img {
+                            top: 3px;
+                            right: -43px;
+                        }
+
+                        label {
+                            top: 14px;
+                            right: -20px;
+                        }
+
+                        button {
+                            width: 30px;
+                            height: 33px;
+                            background: url($teeth-path + "T26.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T26.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T26.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l26-27 {
+                        top: 131px;
+                        right: 43px;
+
+                        &.line::before {
+                            height: 26px;
+                            top: -24px;
+                            left: -1px;
+                            transform: rotate(170deg);
+                            z-index: 0;
+                        }
+                    }
+
+                    &.t27 {
+                        top: 135px;
+                        right: 5px;
+
+                        img {
+                            top: 5px;
+                            right: -43px;
+                        }
+
+                        label {
+                            top: 14px;
+                            right: -20px;
+                        }
+
+                        button {
+                            width: 32px;
+                            height: 33px;
+                            background: url($teeth-path + "T27.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T27.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T27.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l27-28 {
+                        top: 168px;
+                        right: 40px;
+
+                        &.line::before {
+                            height: 30px;
+                            top: -28px;
+                            left: 0px;
+                            transform: rotate(176deg);
+                            z-index: 0;
+                        }
+                    }
+
+                    &.t28 {
+                        top: 171px;
+                        right: 2px;
+
+                        img {
+                            top: 6px;
+                            right: -43px;
+                        }
+
+                        label {
+                            top: 14px;
+                            right: -20px;
+                        }
+
+                        button {
+                            width: 30px;
+                            height: 30px;
+                            background: url($teeth-path + "T28.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T28.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T28.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            &.tmap-bottom-left {
+                width: 115px;
+                height: 215px;
+                z-index: 1;
+
+                li {
+                    &.t48 {
+                        top: 12px;
+                        left: 8px;
+
+                        img {
+                            top: 5px;
+                            left: -43px;
+                        }
+
+                        label {
+                            top: 14px;
+                            left: -20px;
+                        }
+
+                        button {
+                            width: 25px;
+                            height: 28px;
+                            background: url($teeth-path + "T48.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T48.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T48.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l47-48 {
+                        top: 33px;
+                        left: 40px;
+                    }
+
+                    &.t47 {
+                        top: 46px;
+                        left: 11px;
+
+                        img {
+                            top: 16px;
+                            left: -42px;
+                        }
+
+                        label {
+                            top: 20px;
+                            left: -20px;
+                        }
+
+                        button {
+                            width: 28px;
+                            height: 29px;
+                            background: url($teeth-path + "T47.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T47.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T47.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l46-47 {
+                        top: 67px;
+                        left: 43px;
+
+                        &.line::before {
+                            height: 30px;
+                            top: -28px;
+                            left: 0px;
+                            transform: rotate(175deg);
+                        }
+                    }
+
+                    &.t46 {
+                        top: 80px;
+                        left: 19px;
+
+                        img {
+                            top: 16px;
+                            left: -42px;
+                        }
+
+                        label {
+                            top: 20px;
+                            left: -20px;
+                        }
+
+                        button {
+                            width: 28px;
+                            height: 31px;
+                            background: url($teeth-path + "T46.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T46.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T46.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l45-46 {
+                        top: 100px;
+                        left: 51px;
+
+                        &.line::before {
+                            height: 30px;
+                            top: -27px;
+                            left: -2px;
+                            transform: rotate(167deg);
+                        }
+                    }
+
+                    &.t45 {
+                        top: 114px;
+                        left: 33px;
+
+                        img {
+                            top: 18px;
+                            left: -41px;
+                        }
+
+                        label {
+                            top: 20px;
+                            left: -20px;
+                        }
+
+                        button {
+                            width: 25px;
+                            height: 23px;
+                            background: url($teeth-path + "T45.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T45.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T45.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l44-45 {
+                        top: 126px;
+                        left: 61px;
+
+                        &.line::before {
+                            height: 26px;
+                            top: -21px;
+                            left: -3px;
+                            transform: rotate(160deg);
+                        }
+                    }
+
+                    &.t44 {
+                        top: 140px;
+                        left: 46px;
+
+                        img {
+                            top: 20px;
+                            left: -39px;
+                        }
+
+                        label {
+                            top: 20px;
+                            left: -20px;
+                        }
+
+                        button {
+                            width: 25px;
+                            height: 25px;
+                            background: url($teeth-path + "T44.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T44.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T44.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l43-44 {
+                        top: 145px;
+                        left: 74px;
+
+                        &.line::before {
+                            height: 22px;
+                            top: -16px;
+                            left: -5px;
+                            transform: rotate(149deg);
+                        }
+                    }
+
+                    &.t43 {
+                        top: 159px;
+                        left: 60px;
+
+                        img {
+                            top: 31px;
+                            left: -30px;
+                        }
+
+                        label {
+                            top: 27px;
+                            left: -12px;
+                        }
+
+                        button {
+                            width: 22px;
+                            height: 23px;
+                            background: url($teeth-path + "T43.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T43.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T43.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l42-43 {
+                        top: 159px;
+                        left: 84px;
+
+                        &.line::before {
+                            height: 18px;
+                            top: -13px;
+                            left: -5px;
+                            transform: rotate(145deg);
+                        }
+                    }
+
+                    &.t42 {
+                        top: 174px;
+                        left: 78px;
+
+                        img {
+                            top: 38px;
+                            left: -18px;
+                        }
+
+                        label {
+                            top: 31px;
+                            left: -8px;
+                        }
+
+                        button {
+                            width: 18px;
+                            height: 23px;
+                            background: url($teeth-path + "T42.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T42.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T42.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l41-42 {
+                        top: 167px;
+                        left: 97px;
+
+                        &.line::before {
+                            height: 13px;
+                            top: -4px;
+                            left: -5px;
+                            transform: rotate(124deg);
+                        }
+                    }
+
+                    &.t41 {
+                        top: 180px;
+                        left: 97px;
+
+                        img {
+                            top: 42px;
+                            left: -1px;
+                        }
+
+                        label {
+                            top: 34px;
+                            left: 0px;
+                        }
+
+                        button {
+                            width: 18px;
+                            height: 23px;
+                            background: url($teeth-path + "T41.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T41.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T41.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l31-41 {
+                        top: 170px;
+                        left: 111px;
+
+                        &.line::before {
+                            height: 13px;
+                            top: -2px;
+                            left: -5px;
+                            transform: rotate(105deg);
+                        }
+                    }
+                }
+            }
+
+            &.tmap-bottom-right {
+                width: 115px;
+                height: 215px;
+
+                li {
+                    &.t31 {
+                        top: 180px;
+                        right: 97px;
+
+                        img {
+                            top: 42px;
+                            right: -1px;
+                        }
+
+                        label {
+                            top: 34px;
+                            right: 0px;
+                        }
+
+                        button {
+                            width: 18px;
+                            height: 24px;
+                            background: url($teeth-path + "T31.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T31.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T31.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l32-31 {
+                        top: 167px;
+                        right: 97px;
+
+                        &.line::before {
+                            height: 7px;
+                            top: 4px;
+                            left: -5px;
+                            transform: rotate(75deg);
+                            z-index: 0;
+                        }
+                    }
+
+                    &.t32 {
+                        top: 174px;
+                        right: 78px;
+
+                        img {
+                            top: 38px;
+                            right: -18px;
+                        }
+
+                        label {
+                            top: 31px;
+                            right: -8px;
+                        }
+
+                        button {
+                            width: 18px;
+                            height: 24px;
+                            background: url($teeth-path + "T32.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T32.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T32.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l33-32 {
+                        top: 159px;
+                        right: 84px;
+
+                        &.line::before {
+                            height: 10px;
+                            top: 6px;
+                            left: -5px;
+                            transform: rotate(52deg);
+                            z-index: 0;
+                        }
+                    }
+
+                    &.t33 {
+                        top: 159px;
+                        right: 60px;
+
+                        img {
+                            top: 31px;
+                            right: -30px;
+                        }
+
+                        label {
+                            top: 27px;
+                            right: -12px;
+                        }
+
+                        button {
+                            width: 21px;
+                            height: 23px;
+                            background: url($teeth-path + "T33.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T33.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T33.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l34-33 {
+                        top: 145px;
+                        right: 74px;
+
+                        &.line::before {
+                            height: 11px;
+                            top: 7px;
+                            left: -3px;
+                            transform: rotate(36deg);
+                            z-index: 0;
+                        }
+                    }
+
+                    &.t34 {
+                        top: 140px;
+                        right: 46px;
+
+                        img {
+                            top: 20px;
+                            right: -39px;
+                        }
+
+                        label {
+                            top: 20px;
+                            right: -20px;
+                        }
+
+                        button {
+                            width: 25px;
+                            height: 25px;
+                            background: url($teeth-path + "T34.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T34.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T34.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l35-34 {
+                        top: 126px;
+                        right: 61px;
+
+                        &.line::before {
+                            height: 17px;
+                            top: 7px;
+                            left: -5px;
+                            transform: rotate(32deg);
+                            z-index: 0;
+                        }
+                    }
+
+                    &.t35 {
+                        top: 114px;
+                        right: 33px;
+
+                        img {
+                            top: 18px;
+                            right: -41px;
+                        }
+
+                        label {
+                            top: 20px;
+                            right: -20px;
+                        }
+
+                        button {
+                            width: 26px;
+                            height: 24px;
+                            background: url($teeth-path + "T35.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T35.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T35.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l36-35 {
+                        top: 100px;
+                        right: 51px;
+
+                        &.line::before {
+                            height: 22px;
+                            top: 7px;
+                            left: -3px;
+                            transform: rotate(21deg);
+                            z-index: 0;
+                        }
+                    }
+
+                    &.t36 {
+                        top: 80px;
+                        right: 19px;
+
+                        img {
+                            top: 16px;
+                            right: -42px;
+                        }
+
+                        label {
+                            top: 20px;
+                            right: -20px;
+                        }
+
+                        button {
+                            width: 29px;
+                            height: 31px;
+                            background: url($teeth-path + "T36.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T36.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T36.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l37-36 {
+                        top: 67px;
+                        right: 43px;
+
+                        &.line::before {
+                            height: 28px;
+                            top: 7px;
+                            left: -2px;
+                            transform: rotate(14deg);
+                            z-index: 0;
+                        }
+                    }
+
+                    &.t37 {
+                        top: 46px;
+                        right: 11px;
+
+                        img {
+                            top: 16px;
+                            right: -42px;
+                        }
+
+                        label {
+                            top: 20px;
+                            right: -20px;
+                        }
+
+                        button {
+                            width: 27px;
+                            height: 29px;
+                            background: url($teeth-path + "T37.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T37.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T37.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+
+                    &.l38-37 {
+                        top: 33px;
+                        right: 40px;
+
+                        &.line::before {
+                            height: 28px;
+                            top: 8px;
+                            left: 0px;
+                            transform: rotate(5deg);
+                            z-index: 0;
+                        }
+                    }
+
+                    &.t38 {
+                        top: 12px;
+                        right: 8px;
+
+                        img {
+                            top: 5px;
+                            right: -43px;
+                        }
+
+                        label {
+                            top: 14px;
+                            right: -20px;
+                        }
+
+                        button {
+                            width: 25px;
+                            height: 28px;
+                            background: url($teeth-path + "T38.png") no-repeat;
+
+                            &.selected {
+                                background: url($teeth-coping-path + "T38.png") no-repeat;
+
+                                &.pontic {
+                                    background: url($teeth-pontic-path + "T38.png") no-repeat;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ===== V2：多齒位批次選擇 =====
+$batch-select-color: #1890ff;
+$v2-fdis: 11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 26, 27, 28,
+    31, 32, 33, 34, 35, 36, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48;
+
+.prostheses-select-v2 {
+    // 牙位圖在左、操作區在右；容器寬度不夠並排時，操作區換行到下方
+    .prostheses-layout {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 16px;
+    }
+
+    // min-content 讓寬度跟著牙位圖走，圖例在這個寬度內自行換行
+    .prostheses-map {
+        flex: 0 0 auto;
+        width: min-content;
+    }
+
+    // 固定寬度：外層可能依本元件的內容寬度排版（例如 Modal 右欄 flex: none），
+    // 操作區內容（提示文字 / 已選齒位清單）變化時寬度不能跟著變，否則整個 Modal 版面會跳動。
+    // 容器太窄時可以縮到 240px
+    .prostheses-side {
+        flex: 0 1 280px;
+        width: 280px;
+        min-width: 240px;
+    }
+
+    .prostheses-content {
+        // Shift 連選時避免瀏覽器反白齒位號碼
+        user-select: none;
+    }
+
+    .tmap-line ul li {
+        // 選取中：齒形外框 + 齒位號碼改成選取色
+        &.batch-selected label {
+            color: $batch-select-color;
+            font-weight: 600;
+        }
+
+        button.batch-selected {
+            filter: drop-shadow(0 0 1px $batch-select-color) drop-shadow(0 0 2px $batch-select-color);
+
+            &:hover {
+                filter: drop-shadow(0 0 1px $batch-select-color) drop-shadow(0 0 2px $batch-select-color) contrast(80%);
+            }
+        }
+    }
+
+    // 已設定產品：用產品代表色（--product-color，由 TeethChild 帶入）染齒形。
+    // 顏色疊在 ::after 上以 multiply 混合保留齒面明暗，再用同一張齒形圖當遮罩，只染齒形內。
+    // 遮罩不直接下在 button 上：mask 會連選取中的 drop-shadow 外框一起裁掉。
+    .tmap-line ul li button.product-set {
+        position: relative;
+
+        &::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            background-color: var(--product-color);
+            mix-blend-mode: multiply;
+            pointer-events: none;
+        }
+    }
+
+    // 每顆牙的圖不同，只能逐顆指定。
+    // 底圖一律換回無色的 none 圖：原本的 coping（黃）/ pontic（綠）圖自帶顏色，
+    // multiply 後會和產品色混成別的顏色（例如橘 × 綠 = 橄欖褐）。
+    // 選擇器要比上面逐顆的 .selected / .selected.pontic 更具體才蓋得過。
+    @each $fdi in $v2-fdis {
+        .tmap-line ul[class] li.t#{$fdi} button.selected.product-set {
+            &,
+            &.pontic {
+                background-image: url($teeth-path + "T#{$fdi}.png");
+            }
+
+            &::after {
+                -webkit-mask: url($teeth-path + "T#{$fdi}.png") no-repeat 0 0;
+                mask: url($teeth-path + "T#{$fdi}.png") no-repeat 0 0;
+            }
+        }
+    }
+
+    .legend-swatch {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        margin-right: 6px;
+        border-radius: 2px;
+        vertical-align: -1px;
+
+        &.unset {
+            background-color: #fff;
+            border: 1px solid #b6b6b6;
+        }
+
+        &.selecting {
+            background-color: #fff;
+            border: 2px solid $batch-select-color;
+        }
+    }
+
+    .batch-legend {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 6px 16px;
+        margin: 0 auto 16px;
+        font-size: 12px;
+        color: #666;
+
+        .legend-item {
+            white-space: nowrap;
+        }
+    }
+
+    .batch-panel {
+        padding: 16px;
+        border: 1px solid #e8e8e8;
+        border-radius: 4px;
+        background-color: #fafafa;
+
+        &.batch-panel-empty {
+            text-align: center;
+        }
+
+        .batch-empty-title {
+            font-weight: 500;
+            color: #666;
+        }
+
+        .batch-hint {
+            margin-top: 4px;
+            font-size: 12px;
+            color: #999;
+        }
+
+        .batch-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .batch-count {
+            font-weight: 600;
+        }
+
+        .batch-selected-teeth {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 0;
+            margin-bottom: 16px;
+        }
+
+        .batch-product-label {
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        // 側欄較窄，產品選項改成直排、各自獨立的圓角外框，不用 antd 相連的樣式
+        .batch-product-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+
+            // antd 預設固定一行高，產品名較長時要能換行
+            .ant-radio-button-wrapper {
+                height: auto;
+                min-height: 32px;
+                padding-top: 5px;
+                padding-bottom: 5px;
+                line-height: 20px;
+                white-space: normal;
+                border-left-width: 1px;
+                border-radius: 4px;
+
+                // 色塊固定在第一行，換行的文字對齊在色塊右邊
+                > span:not(.ant-radio-button) {
+                    display: flex;
+                    align-items: flex-start;
+                }
+
+                .legend-swatch {
+                    flex: none;
+                    margin-top: 4px;
+                }
+
+                &::before {
+                    display: none;
+                }
+            }
+        }
+
+        .batch-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 16px;
+
+            .ant-btn {
+                width: 100%;
+                height: auto;
+                min-height: 32px;
+                padding-top: 6px;
+                padding-bottom: 6px;
+                line-height: 20px;
+                white-space: normal;
+                text-wrap: pretty;
+            }
+        }
+    }
+}
