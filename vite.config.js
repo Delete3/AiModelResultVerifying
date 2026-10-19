@@ -1,7 +1,8 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import crypto from 'crypto'
 import fs from 'fs'
+import http from 'http'
 import https from 'https'
 import path from 'path'
 
@@ -171,10 +172,144 @@ const HMR = process.env.VITE_HMR_PUBLIC_HOST
   ? { protocol: 'wss', host: process.env.VITE_HMR_PUBLIC_HOST, clientPort: 443 }
   : { host: 'localhost' }
 
+// The Fussen workbench page (fussen-workbench/, opened from the app switcher at the top
+// left). Fussen -- airdental's customised edition -- has no login or order pages, so its
+// orders are reached with an API key instead; this is airdental's tools/fussenWorkbench,
+// whose own local server did the same job on one engineer's machine.
+//
+// The keys stay on this server, exactly like the Cloudflare token above: the browser asks
+// /api/fussen/<site>/..., and the middleware below adds X-API-Key on the way out. They are
+// read from .env (gitignored) rather than through docker-compose.yml, so adding or changing
+// one needs no container rebuild -- Vite restarts by itself when .env changes. Only VITE_*
+// variables ever reach client code, so FUSSEN_* do not.
+//
+// Who can use them is whoever can log in to eztest through Cloudflare Access. Clear a key
+// to switch that site off; the page then says the key is missing.
+const FUSSEN_DOTENV = loadEnv('development', process.cwd(), 'FUSSEN_')
+const fussenSetting = (name, fallback = '') => process.env[name] || FUSSEN_DOTENV[name] || fallback
+const FUSSEN_SITES = {
+  prod: {
+    label: '正式站',
+    baseUrl: fussenSetting('FUSSEN_PROD_BASE_URL', 'https://crown.dentalx.com'),
+    keyName: 'FUSSEN_PROD_API_KEY',
+  },
+  test: {
+    label: '測試站',
+    baseUrl: fussenSetting('FUSSEN_TEST_BASE_URL', 'https://test-fussen.inteware.com.tw'),
+    keyName: 'FUSSEN_TEST_API_KEY',
+  },
+}
+for (const site of Object.values(FUSSEN_SITES)) site.apiKey = fussenSetting(site.keyName).trim()
+// Cloudflare refuses a request body over 100 MB before it reaches this server, so the
+// original tool's 512 MB is not reachable through eztest. A little under, for the multipart
+// framing.
+const FUSSEN_MAX_UPLOAD = 99 * 1000 * 1000
+// Cloudflare also gives up on a response after ~100 s, so a slower answer is a 524 in the
+// browser whatever this says; it only bounds how long the upstream socket is held.
+const FUSSEN_TIMEOUT_MS = 180 * 1000
+const FUSSEN_PREFIX = '/api/v2/airdesign/externalProject/'
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react(),
+    {
+      // The Fussen workbench's backend, ported from airdental's tools/fussenWorkbench/
+      // server.js: the same route allowlist, no cookies or client headers forwarded, no
+      // redirects followed, and the key only ever sent to its own site's origin.
+      name: 'fussen-workbench-api',
+      configureServer(server) {
+        const json = (res, status, body) => {
+          if (res.headersSent) { res.destroy(); return }
+          res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify(body))
+        }
+        const configured = Object.entries(FUSSEN_SITES).filter(([, s]) => s.apiKey).map(([id]) => id)
+        server.config.logger.info(`[fussen] sites with a key: ${configured.join(', ') || 'none'}`)
+
+        server.middlewares.use('/api/fussen', (req, res) => {
+          res.setHeader('Cache-Control', 'no-store')
+          // eztest's Access cookie rides along on any request to this host, including one a
+          // different site's page makes. A same-origin fetch from the workbench is the only
+          // caller: refuse cross-site requests, and require a header a plain cross-site
+          // form post cannot set.
+          const origin = req.headers.origin
+          let crossOrigin = false
+          if (origin) {
+            try { crossOrigin = new URL(origin).host !== req.headers.host } catch { crossOrigin = true }
+          }
+          if (crossOrigin || ['cross-site', 'same-site'].includes(req.headers['sec-fetch-site'])
+            || req.headers['x-fussen-workbench'] !== '1') {
+            return json(res, 403, { error: { message: 'Fussen workbench requests only.' } })
+          }
+          const url = new URL(req.url, 'http://eztest')
+          if (req.method === 'GET' && url.pathname === '/config') {
+            return json(res, 200, {
+              sites: Object.entries(FUSSEN_SITES).map(([id, s]) => ({
+                id, label: s.label, baseUrl: s.baseUrl, keyName: s.keyName,
+                configured: Boolean(s.apiKey), maxUploadBytes: FUSSEN_MAX_UPLOAD,
+              })),
+            })
+          }
+          const [, siteId, ...rest] = url.pathname.split('/')
+          if (!Object.hasOwn(FUSSEN_SITES, siteId)) return json(res, 404, { error: { message: 'Unknown Fussen site.' } })
+          const site = FUSSEN_SITES[siteId]
+          if (!site.apiKey) {
+            return json(res, 503, { error: { message: `eztest 沒有設定${site.label}的 API key（.env 的 ${site.keyName}）。` } })
+          }
+          const operation = rest.join('/')
+          const allowed = req.method === 'GET' && (operation === 'list' || /^(status|viewerLink|download|marginLine)\/[^/]+$/.test(operation))
+            || req.method === 'POST' && operation === 'project'
+          if (!allowed || /%2f|%5c|%2e/i.test(operation)) return json(res, 403, { error: { message: 'API route is not allowed.' } })
+          if (req.method === 'POST' && !/^multipart\/form-data;\s*boundary=/i.test(req.headers['content-type'] || '')) {
+            return json(res, 415, { error: { message: 'Expected multipart/form-data.' } })
+          }
+          if (Number(req.headers['content-length'] || 0) > FUSSEN_MAX_UPLOAD) {
+            return json(res, 413, { error: { message: '上傳上限約 95 MB（Cloudflare 的單次上限是 100 MB）。' } })
+          }
+
+          const target = new URL(FUSSEN_PREFIX + operation + url.search, site.baseUrl)
+          const headers = {
+            'X-API-Key': site.apiKey,
+            Accept: 'application/json, application/zip',
+            'User-Agent': 'eztest-fussen-workbench',
+          }
+          if (req.headers['content-type']) headers['Content-Type'] = req.headers['content-type']
+          if (req.headers['content-length']) headers['Content-Length'] = req.headers['content-length']
+          const upstream = (target.protocol === 'https:' ? https : http).request(target, { method: req.method, headers }, (response) => {
+            if (response.statusCode >= 300 && response.statusCode < 400) {
+              response.resume()
+              return json(res, 502, { error: { message: `${site.label}回應轉址（HTTP ${response.statusCode}），請確認站點網址。` } })
+            }
+            res.statusCode = response.statusCode
+            for (const name of ['content-type', 'content-disposition']) {
+              if (response.headers[name]) res.setHeader(name, response.headers[name])
+            }
+            response.on('error', () => json(res, 502, { error: { message: 'Backend response interrupted. Check the original serial before retrying creation.' } }))
+            response.pipe(res)
+          })
+          const deadline = setTimeout(() => {
+            json(res, 504, { error: { message: 'Backend request timed out. Creation may have succeeded. Query the original external serial before retrying.' } })
+            upstream.destroy()
+          }, FUSSEN_TIMEOUT_MS)
+          res.on('close', () => { clearTimeout(deadline); upstream.destroy() })
+          upstream.on('error', () => {
+            clearTimeout(deadline)
+            if (!res.writableEnded) json(res, 502, { error: { message: `連不到${site.label}（${site.baseUrl}）。若正在建單，請先查詢原序號再重試。` } })
+          })
+          let bytes = 0
+          req.on('data', (chunk) => {
+            bytes += chunk.length
+            if (bytes > FUSSEN_MAX_UPLOAD) {
+              json(res, 413, { error: { message: 'Upload limit exceeded. Query the original serial before retrying.' } })
+              upstream.destroy()
+            }
+          })
+          req.on('aborted', () => upstream.destroy())
+          req.pipe(upstream)
+        })
+      },
+    },
     {
       // Without this, an instance started with no Service Token still routes /api/
       // pipeline-rtx5090 through the proxy, Cloudflare Access answers 403 with an HTML

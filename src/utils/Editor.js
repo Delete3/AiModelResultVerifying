@@ -47,6 +47,9 @@ class Editor {
 
   handleWindowResize = () => {
     const { clientWidth, clientHeight } = this.container;
+    // Hidden (another eztest page is open): keep the last size, rather than a 0x0 canvas
+    // and a camera with no aspect ratio.
+    if (!clientWidth || !clientHeight) return;
     if (this.width == clientWidth && this.height == clientHeight) return;
 
     this.width = clientWidth;

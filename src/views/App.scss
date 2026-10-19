@@ -781,3 +781,85 @@ $muted: #6b7280;
     font-size: 12px;
   }
 }
+
+// --- eztest's pages: the viewer and the Fussen workbench (Root.jsx) --------------------------
+
+.app-page {
+  height: 100%;
+}
+
+.app-page[hidden],
+.fussen-page[hidden] {
+  display: none;
+}
+
+// The page title at the top left, which opens the menu of pages.
+.app-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px -6px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+
+  strong {
+    font-size: 16px;
+    color: #111827;
+  }
+
+  .app-switcher-caret {
+    font-size: 11px;
+    color: $muted;
+  }
+
+  &:hover {
+    background: rgba(17, 24, 39, 0.06);
+  }
+}
+
+.fussen-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f3f6f5;
+}
+
+.fussen-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 20px;
+  background: #fff;
+  border-bottom: 1px solid $border;
+  border-top: 3px solid #167365;
+
+  .is-prod & {
+    border-top-color: #cf1322;
+  }
+}
+
+.fussen-bar-site {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  min-width: 0;
+
+  code {
+    font-size: 12px;
+    color: $muted;
+    overflow-wrap: anywhere;
+  }
+}
+
+.fussen-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+}

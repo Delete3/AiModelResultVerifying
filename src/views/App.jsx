@@ -26,7 +26,7 @@ import ToothAlignPanel from './toothalign/ToothAlignPanel';
 import ToothSegOverlay from './toothseg/ToothSegOverlay';
 import ToothSegPanel from './toothseg/ToothSegPanel';
 
-function App() {
+function App({ appSwitcher }) {
   const containerRef = useRef();
   const [isLoading, setIsLoading] = useState(false);
   const [fdi, setFdi] = useState(null);
@@ -77,7 +77,8 @@ function App() {
         <div className='app-shell'>
           <aside className='side-panel'>
             <header className='side-header'>
-              <strong>AI Checking Viewer</strong>
+              {/* The page title, and the menu of eztest's other pages (Root.jsx). */}
+              {appSwitcher}
               <span>口掃 → margin → 牙冠</span>
             </header>
             <Tabs

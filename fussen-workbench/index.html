@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fussen Workbench</title><link rel="stylesheet" href="./style.css"><script src="./app.js" defer></script></head>
+<body>
+<main>
+<div class="intro"><div><p class="eyebrow">CASE MANAGEMENT</p><h1>從建單到設計，一處完成。</h1><p class="muted">使用 API key 存取 Fussen 訂單，無須帳號密碼。目前站點：<strong id="host">正在讀取設定…</strong></p></div><button id="new-case" class="primary">＋ 建立訂單</button></div>
+<div id="notice" role="status" aria-live="polite" hidden></div>
+<section class="card" aria-labelledby="orders-heading"><div class="section-title"><h2 id="orders-heading">訂單總覽</h2><span id="total" class="muted">—</span></div>
+<form id="search-form" class="toolbar"><label class="search"><span class="sr-only">搜尋訂單</span><input id="search" maxlength="100" placeholder="搜尋外部序號、內部單號或病患姓名"></label><button class="primary" type="submit">搜尋</button><button id="refresh" type="button">重新整理</button></form>
+<div class="table-wrap"><table><thead><tr><th>外部序號 / 內部單號</th><th>病患</th><th>牙冠狀態</th><th>更新時間</th><th>操作</th></tr></thead><tbody id="orders"><tr><td colspan="5" class="empty">正在載入訂單…</td></tr></tbody></table></div>
+<div class="pager"><span id="page-info" class="muted"></span><button id="previous">上一頁</button><button id="next">下一頁</button></div></section>
+<section class="card quick"><div><h2>依外部序號操作</h2><p class="muted">即使後端尚未更新清單 API，仍可查狀態與開啟 Viewer。</p></div><form id="lookup-form"><label class="sr-only" for="serial">外部序號</label><input id="serial" placeholder="完整 externalSerialnum" required><button type="submit">查詢狀態</button></form><div class="actions"><button data-quick="viewerLink">開啟 Viewer</button><button data-quick="editLink">開啟編輯器</button><button data-quick="download">下載牙冠</button><button data-quick="marginLine">下載邊緣線</button></div></section>
+<section class="card" id="detail" hidden><div class="section-title"><h2>查詢結果</h2><button id="close-detail" class="quiet">收合</button></div><pre id="result"></pre></section>
+<footer>eztest · API key 只存在 eztest 伺服器端，不會送到瀏覽器 · 清單僅顯示此 key 所屬客戶的訂單</footer>
+</main>
+<dialog id="create-dialog"><form id="create-form"><div class="section-title"><div><p class="eyebrow">NEW CASE</p><h2>建立 AirDesign 訂單</h2><p id="create-site" class="site-tag"></p></div><button type="button" id="close-create" class="quiet">關閉</button></div>
+<div class="fields"><label>外部序號 <span class="required">*</span><div class="inline"><input name="externalSerialnum" id="create-serial" required maxlength="200"><button id="generate-serial" type="button">產生</button></div></label><label>病患姓名<input name="patient" maxlength="50" placeholder="可留空"></label></div>
+<div class="section-title compact"><h3>齒位與產品</h3><button type="button" id="add-tooth">＋ 新增齒位</button></div><p class="hint">FDI 恆齒編號。連接勾選表示依牙弓順序連接至相鄰下一齒；橋體需與牙冠連接。</p><div id="teeth"></div>
+<div class="fields uploads"><label>上顎模型 <span class="required">*</span><input type="file" name="maxilla" accept=".stl,.ply,.obj" required><small>STL / PLY / OBJ</small></label><label>下顎模型 <span class="required">*</span><input type="file" name="mandible" accept=".stl,.ply,.obj" required><small>STL / PLY / OBJ</small></label></div>
+<details><summary>進階選項：邊緣線與設計參數</summary><label>邊緣線檔案（選填，可多選）<input type="file" id="margins" multiple accept=".pts"><small>檔名 margin_line-11.pts，每檔最多 1 MB。</small></label><div id="design-options"></div></details>
+<p class="hint">送出會建立真實訂單並觸發 AI 流程。HTTP 201 僅代表建單成功，AI 結果請另查狀態。總上傳上限約 95 MB（經過 Cloudflare 的單次上傳上限是 100 MB）。</p><div id="create-message" role="status" aria-live="polite" hidden></div><div class="dialog-footer"><button type="button" id="check-create">查詢此序號</button><button id="submit-create" class="primary" type="submit">上傳並建立訂單</button></div>
+</form></dialog>
+</body></html>
