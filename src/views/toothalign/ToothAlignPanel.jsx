@@ -18,6 +18,7 @@ import {
   waitForToothSsmJob,
 } from '../../utils/function/ToothSsmApi';
 import { downloadBlob, useCaseScene, useToothAlignScene } from '../../utils/tool/useStores';
+import ToothSsmDocs from './ToothSsmDocs';
 
 const JAW_NAME = { upper: '上顎', lower: '下顎' };
 // The marching-cubes grid the roots are decoded on, ToothRoot's or tooth_ssm's (72_zhu_rawcase.py).
@@ -42,6 +43,7 @@ const DETAIL_LABEL = {
   'seg+articulate': '分牙＋咬合檢查',
   roots: '生成牙根（DeepSDF）',
   'publish+merge+export': '整理輸出',
+  'publish+exact+merge+export': '牙冠換回口掃＋推開鄰牙＋整理輸出',
   colour: '牙冠／牙根上色',
   align: '排牙模型',
   abo: 'ABO 評分',
@@ -324,7 +326,10 @@ const ToothAlignPanel = () => {
       矯正 AI 排牙（tooth_ssm）：上下顎口掃 → AI 分牙 → 依牙冠生成整顆牙（含牙根）→ 排牙模型移動每顆牙（牙根跟著動）→ ABO 評分。
       預設是 tooth_ssm 原作者流程；矯正專案檔的口掃是減過面的（約 1.2 萬面），原流程在這種檔上常會漏牙，可改選「ToothRoot 分牙＋牙根」。排牙一律用 tooth_ssm 的模型。
       上下顎都要。上下顎朝同一方向時，服務會把上顎轉成估計的咬合位置再分一次。結果在服務端保留 2 小時。
+      主機「嘉義 5090 測試（牙冠用口掃）」是還沒上正式版的新流程：牙冠直接用口掃原樣、生成的牙根接在牙齦線以下、和鄰牙不干涉。
     </p>
+
+    <ToothSsmDocs />
 
     <section className='panel-section'>
       <div className='section-title'><span className='step'>1</span>上下顎口掃</div>
@@ -402,7 +407,7 @@ const ToothAlignPanel = () => {
         {['segment', 'generate', 'align'].map(step => t[`${step}_s`] != null && <Tooltip key={step} title={
           Object.entries(t.detail ?? {}).filter(([name]) => ({
             segment: ['seg+articulate', 'toothroot_segment', 'articulate'],
-            generate: ['roots', 'publish+merge+export', 'colour', 'toothroot_roots'],
+            generate: ['roots', 'publish+merge+export', 'publish+exact+merge+export', 'colour', 'toothroot_roots'],
             align: ['align', 'abo', 'colour_aligned'],
           })[step].includes(name)).map(([name, s]) => `${DETAIL_LABEL[name] ?? name} ${s.toFixed(1)} 秒`).join('、')
         }>
@@ -456,8 +461,27 @@ const ToothAlignPanel = () => {
         })}
       </div>}
 
+      {r?.exact_crown && <div className='health-line'>
+        牙冠用口掃：{['upper', 'lower'].filter(jaw => r.exact_crown[jaw]).map(jaw => {
+          const x = r.exact_crown[jaw];
+          const total = x.scan_crown + Object.keys(x.fallback ?? {}).length;
+          return `${JAW_NAME[jaw]} ${x.scan_crown} / ${total} 顆`;
+        }).join('、')}
+        ；鄰牙重疊 {['upper', 'lower'].filter(jaw => r.exact_crown[jaw]).map(jaw => {
+          const x = r.exact_crown[jaw];
+          return `${JAW_NAME[jaw]} ${(x.shared_mm3_generated ?? 0).toFixed(2)} → ${(x.shared_mm3_after_parting ?? 0).toFixed(2)} mm³`;
+        }).join('、')}（推開後再切掉接觸點薄膜）
+        {['upper', 'lower'].some(jaw => Object.keys(r.exact_crown[jaw]?.fallback ?? {}).length) && <span className='bad'>
+          ，沒換成口掃牙冠：{['upper', 'lower'].flatMap(jaw => Object.entries(r.exact_crown[jaw]?.fallback ?? {})
+            .map(([fdi, why]) => `${fdi}（${why}）`)).join('、')}
+        </span>}
+      </div>}
+      {r?.exact_crown && ['upper', 'lower'].some(jaw => r.exact_crown[jaw]?.engulfed?.length) && <Alert className='section-alert' type='warning' showIcon
+        message={`請檢查分牙：${['upper', 'lower'].flatMap(jaw => (r.exact_crown[jaw]?.engulfed ?? [])
+          .map(e => `${e.cut}（生成的牙長到 ${e.neighbour} 的位置，${e.mm3} mm³，已用 ${e.neighbour} 切開）`)).join('、')}`} />}
+
       {r?.crown_stats && <div className='health-line'>
-        生成牙冠離掃描：平均 {r.crown_stats.mean_mm.toFixed(3)} mm（p95 平均 {r.crown_stats.p95_mm.toFixed(3)} mm）
+        {r?.exact_crown ? '換回口掃前，AI 生成的牙冠離掃描：平均' : '生成牙冠離掃描：平均'} {r.crown_stats.mean_mm.toFixed(3)} mm（p95 平均 {r.crown_stats.p95_mm.toFixed(3)} mm）
         {r.crown_stats.worst && `，最大 ${r.crown_stats.worst.fdi} 的 ${r.crown_stats.worst.mm.toFixed(3)} mm`}
         ，封閉 {r.crown_stats.watertight} / {r.crown_stats.n}
         {r.crown_stats.failed?.length > 0 && <span className='bad'>，失敗：{r.crown_stats.failed.map(f => `${f.fdi}（${f.why}）`).join('、')}</span>}

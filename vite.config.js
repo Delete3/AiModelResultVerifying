@@ -63,6 +63,11 @@ const TOOTHROOT_Z790_API_URL = process.env.TOOTHROOT_Z790_API_URL || 'http://hos
 const TOOTHSSM_Z790_API_URL = process.env.TOOTHSSM_Z790_API_URL || 'http://host.docker.internal:8036'
 const TOOTHSSM_RTX5090_API_URL = process.env.TOOTHSSM_RTX5090_API_URL
   || 'https://ezai2.inteware.com.tw/toothssm'
+// The Chiayi box's TEST tooth_ssm (added 2026-10-29): crown=exact by default (the scan's own crown
+// on every tooth, neighbours parted), for the "AI排牙" tab's third target. Same Access application
+// and token as the line above; it comes down when crown=exact reaches production.
+const TOOTHSSM_FIT_API_URL = process.env.TOOTHSSM_FIT_API_URL
+  || 'https://ezai2.inteware.com.tw/toothssm-fit'
 // The library-stump test pipeline on the Chiayi box (added 2026-10-14): ezai-pipeline with
 // mode=stump and stump_shape=library, for the 「AI支台齒」 tab and the peek tab's library-stump
 // option. Same Access application and token as /pipeline.
@@ -339,6 +344,7 @@ export default defineConfig({
         server.middlewares.use('/api/fsabutment-rtx5090', unconfigured)
         server.middlewares.use('/api/toothroot-rtx5090', unconfigured)
         server.middlewares.use('/api/toothssm-rtx5090', unconfigured)
+        server.middlewares.use('/api/toothssm-fit', unconfigured)
         server.middlewares.use('/api/pipeline-stump', unconfigured)
       },
     },
@@ -736,6 +742,26 @@ export default defineConfig({
         target: TOOTHSSM_RTX5090_API_URL,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/toothssm-rtx5090/, ''),
+        headers: {
+          'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
+          'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,
+        },
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.removeHeader('cookie')
+          })
+          proxy.on('proxyRes', (proxyRes) => {
+            delete proxyRes.headers['set-cookie']
+          })
+        },
+      },
+      // The Chiayi TEST tooth_ssm (2026-10-29, crown=exact). Named so that no other key is a prefix
+      // of it ('/api/toothssm-rtx5090-fit' would be caught by the route above); the same three
+      // Access fixes, for the same reasons.
+      '/api/toothssm-fit': {
+        target: TOOTHSSM_FIT_API_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/toothssm-fit/, ''),
         headers: {
           'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
           'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,

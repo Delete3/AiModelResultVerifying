@@ -1,4 +1,6 @@
 node_modules
-public/
+public/*
+# the API documents the AI排牙 tab serves (src/views/toothalign/ToothSsmDocs.jsx) are kept
+!public/docs/
 docker-compose.yml
 .env

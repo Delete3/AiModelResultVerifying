@@ -12,9 +12,14 @@ import { getFileExtension } from '../tool/StringProcessing.js';
 // credential. The Chiayi 5090 box is reached the way ToothRoot is, through ezai2 and
 // Cloudflare Access, with the Service Token attached by the proxy in vite.config.js --
 // server-side, never in this bundle.
+//
+// The third target (2026-10-29) is the Chiayi box's TEST service, ezai2 /toothssm-fit/: the same
+// API with crown=exact as its default -- the scan's own crown on every tooth, the generated part
+// below it, neighbours parted (ssm_project branch fit/crown-exact). Same Access token as Chiayi.
 const TOOTHSSM_TARGETS = {
   z790: { label: '台中 5080', base: '/api/toothssm-z790', box: '台中 5080' },
   rtx5090: { label: '嘉義 5090', base: '/api/toothssm-rtx5090', box: '嘉義 5090' },
+  rtx5090_fit: { label: '嘉義 5090 測試（牙冠用口掃）', base: '/api/toothssm-fit', box: '嘉義 5090 測試' },
 };
 
 // Who segments the scans and grows the roots; either way tooth_ssm's alignment model arranges the

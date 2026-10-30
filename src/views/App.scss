@@ -863,3 +863,90 @@ $muted: #6b7280;
   width: 100%;
   border: 0;
 }
+
+// The AI排牙 tab's API documents (ToothSsmDocs.jsx, MarkdownView.jsx).
+.ssm-docs-bar {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid #d6e4ff;
+  border-radius: 6px;
+  background: #f0f5ff;
+
+  .ssm-docs-latest {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+}
+
+.ssm-docs-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+.ssm-docs-body {
+  max-height: 68vh;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.md-view {
+  font-size: 13px;
+  line-height: 1.65;
+  color: #222;
+
+  h2 { font-size: 20px; margin: 0 0 8px; }
+  h3 { font-size: 16px; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #eee; }
+  h4 { font-size: 14px; margin: 16px 0 6px; }
+  p, ul, ol { margin: 0 0 8px; }
+  ul, ol { padding-left: 22px; }
+
+  code {
+    padding: 0 4px;
+    border-radius: 3px;
+    background: #f3f3f3;
+    font-family: Consolas, Menlo, monospace;
+    font-size: 12px;
+  }
+
+  .md-table-wrap { overflow-x: auto; margin: 6px 0 12px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+
+    th, td {
+      padding: 4px 8px;
+      border: 1px solid #e5e5e5;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th { background: #fafafa; white-space: nowrap; }
+  }
+
+  .md-code {
+    position: relative;
+    margin: 6px 0 12px;
+
+    pre {
+      margin: 0;
+      padding: 10px 12px;
+      border-radius: 4px;
+      background: #f6f8fa;
+      overflow: auto;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    pre code { padding: 0; background: none; }
+    .md-copy { position: absolute; top: 6px; right: 6px; }
+  }
+}
