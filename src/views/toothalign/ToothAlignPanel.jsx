@@ -6,6 +6,7 @@ import CaseScene from '../../utils/function/CaseScene';
 import ToothAlignScene, { CROWN_HEX, ROOT_HEX } from '../../utils/function/ToothAlignScene';
 import {
   TOOTHSSM_ACCEPT,
+  TOOTHSSM_CROWN_OPTIONS,
   TOOTHSSM_ROOT_OPTIONS,
   TOOTHSSM_ROOT_TARGETS,
   TOOTHSSM_SEG_OPTIONS,
@@ -89,6 +90,7 @@ const ToothAlignPanel = () => {
   const [res, setRes] = useState(128);
   const [seg, setSeg] = useState('ssm');
   const [root, setRoot] = useState('virtual');
+  const [crown, setCrown] = useState('fit');
   const [running, setRunning] = useState(null);
   const [stage, setStage] = useState('');
   const [progress, setProgress] = useState(null);
@@ -214,7 +216,7 @@ const ToothAlignPanel = () => {
     ToothAlignScene.clearResults();
     const startedAt = performance.now();
     try {
-      const submitted = await submitToothSsmJob({ target, upper: files.upper, lower: files.lower, res, until, seg, root, onStage: setStage });
+      const submitted = await submitToothSsmJob({ target, upper: files.upper, lower: files.lower, res, until, seg, root, crown, onStage: setStage });
       jobRef.current = { id: submitted.jobId, target };
       const doc = await follow();
       const download = await loadResults(doc, 'segment');
@@ -253,8 +255,9 @@ const ToothAlignPanel = () => {
     setError(null);
     const startedAt = performance.now();
     try {
-      // `root` only for generate: an align rerun keeps the job's own (root=none has no align at all)
-      await rerunToothSsmStep(jobRef.current.target, jobRef.current.id, { step, res, root: step === 'generate' ? root : null });
+      // `root` and `crown` only for generate: an align rerun keeps the job's own (root=none has no align at all)
+      await rerunToothSsmStep(jobRef.current.target, jobRef.current.id,
+        { step, res, root: step === 'generate' ? root : null, crown: step === 'generate' ? crown : null });
       const doc = await follow();
       const download = await loadResults(doc, step);
       setJob(doc);
@@ -341,7 +344,7 @@ const ToothAlignPanel = () => {
       矯正 AI 排牙（tooth_ssm）：上下顎口掃 → AI 分牙 → 依牙冠生成整顆牙（含牙根）→ 排牙模型移動每顆牙（牙根跟著動）→ ABO 評分。
       預設是 tooth_ssm 原作者流程；矯正專案檔的口掃是減過面的（約 1.2 萬面），原流程在這種檔上常會漏牙，可改選「ToothRoot 分牙＋牙根」。排牙一律用 tooth_ssm 的模型。
       上下顎都要。上下顎朝同一方向時，服務會把上顎轉成估計的咬合位置再分一次。結果在服務端保留 2 小時。
-      主機「嘉義 5090 測試（牙冠用口掃）」是還沒上正式版的新流程：牙冠直接用口掃原樣、生成的牙根接在牙齦線以下、和鄰牙不干涉。
+      主機「嘉義 5090 測試（牙冠貼合口掃）」是還沒上正式版的新流程：AI 生成的牙齒擬合到口掃上（網格均勻、沒有縫線）、和鄰牙不干涉，可選牙根接法。
     </p>
 
     <ToothSsmDocs />
@@ -383,7 +386,12 @@ const ToothAlignPanel = () => {
           <Select size='small' value={seg} onChange={setSeg} options={TOOTHSSM_SEG_OPTIONS} disabled={busy} />
         </label>
         {TOOTHSSM_ROOT_TARGETS.includes(target) && seg === 'ssm' && <label
-          title='牙冠一律用口掃原樣。虛擬牙根＝矯正軟體式的 3 mm 短牙根（方向取自 AI 生成的牙）；不接牙根＝只回牙冠與每顆牙的牙軸，給矯正軟體自己接牙根，不排牙'>
+          title='AI 牙齒擬合口掃＝AI 生成的牙重新網格化、牙冠拉到口掃上、推開鄰牙，網格均勻沒有縫線；口掃牙冠原樣＝分牙切下來的口掃網格（鄰接面凹口用三角形帶補起，會有細長三角形）'>
+          牙冠
+          <Select size='small' value={crown} onChange={setCrown} options={TOOTHSSM_CROWN_OPTIONS} disabled={busy} />
+        </label>}
+        {TOOTHSSM_ROOT_TARGETS.includes(target) && seg === 'ssm' && <label
+          title='虛擬牙根＝矯正軟體式的 3 mm 短牙根（方向取自 AI 生成的牙）；AI 生成牙根＝整顆 AI 牙；不接牙根＝只回牙冠（在牙齦線處開口）與每顆牙的牙軸，給矯正軟體自己接牙根，不排牙'>
           牙根
           <Select size='small' value={root} onChange={setRoot} options={TOOTHSSM_ROOT_OPTIONS} disabled={busy} />
         </label>}
@@ -483,7 +491,7 @@ const ToothAlignPanel = () => {
       </div>}
 
       {r?.exact_crown && <div className='health-line'>
-        牙冠用口掃：{['upper', 'lower'].filter(jaw => r.exact_crown[jaw]).map(jaw => {
+        {['upper', 'lower'].some(jaw => r.exact_crown[jaw]?.crown === 'fit') ? 'AI 牙齒擬合口掃' : '牙冠用口掃'}：{['upper', 'lower'].filter(jaw => r.exact_crown[jaw]).map(jaw => {
           const x = r.exact_crown[jaw];
           const total = x.scan_crown + Object.keys(x.fallback ?? {}).length;
           return `${JAW_NAME[jaw]} ${x.scan_crown} / ${total} 顆`;
@@ -493,10 +501,16 @@ const ToothAlignPanel = () => {
         {['upper', 'lower'].some(jaw => r.exact_crown[jaw]?.generated_root?.length) && <span className='bad'>
           ，改接 AI 生成牙根：{['upper', 'lower'].flatMap(jaw => r.exact_crown[jaw]?.generated_root ?? []).join('、')}
         </span>}
-        {r.root !== 'none' && <>；鄰牙重疊 {['upper', 'lower'].filter(jaw => r.exact_crown[jaw]).map(jaw => {
+        {r.root !== 'none' && !['upper', 'lower'].some(jaw => r.exact_crown[jaw]?.crown === 'fit') && <>；鄰牙重疊 {['upper', 'lower'].filter(jaw => r.exact_crown[jaw]).map(jaw => {
           const x = r.exact_crown[jaw];
           return `${JAW_NAME[jaw]} ${(x.shared_mm3_generated ?? 0).toFixed(2)} → ${(x.shared_mm3_after_parting ?? 0).toFixed(2)} mm³`;
         }).join('、')}（推開後再切掉接觸點薄膜）</>}
+        {['upper', 'lower'].some(jaw => r.exact_crown[jaw]?.crown === 'fit') && <>；推開鄰牙後重疊 {['upper', 'lower'].filter(jaw => r.exact_crown[jaw]).map(jaw =>
+          `${JAW_NAME[jaw]} ${(r.exact_crown[jaw].shared_mm3_after_parting ?? 0).toFixed(2)} mm³`).join('、')}</>}
+        {['upper', 'lower'].some(jaw => r.exact_crown[jaw]?.triangles) && <>；細長三角形（最小角 &lt; 10°）{['upper', 'lower'].filter(jaw => r.exact_crown[jaw]?.triangles).map(jaw => {
+          const q = r.exact_crown[jaw].triangles;
+          return `${JAW_NAME[jaw]} ${q.min_angle_lt10} / ${q.faces.toLocaleString()} 面`;
+        }).join('、')}</>}
         {['upper', 'lower'].some(jaw => Object.keys(r.exact_crown[jaw]?.fallback ?? {}).length) && <span className='bad'>
           ，沒換成口掃牙冠：{['upper', 'lower'].flatMap(jaw => Object.entries(r.exact_crown[jaw]?.fallback ?? {})
             .map(([fdi, why]) => `${fdi}（${why}）`)).join('、')}

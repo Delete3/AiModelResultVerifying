@@ -14,12 +14,13 @@ import { getFileExtension } from '../tool/StringProcessing.js';
 // server-side, never in this bundle.
 //
 // The third target (2026-10-29) is the Chiayi box's TEST service, ezai2 /toothssm-fit/: the same
-// API with crown=exact as its default -- the scan's own crown on every tooth, the generated part
-// below it, neighbours parted (ssm_project branch fit/crown-exact). Same Access token as Chiayi.
+// API with the crown on the scan by default -- since 2026-10-30 pm crown=fit, the generated tooth
+// remeshed and fitted onto the scan crown, neighbours parted (ssm_project branch fit/crown-exact).
+// Same Access token as Chiayi.
 const TOOTHSSM_TARGETS = {
   z790: { label: '台中 5080', base: '/api/toothssm-z790', box: '台中 5080' },
   rtx5090: { label: '嘉義 5090', base: '/api/toothssm-rtx5090', box: '嘉義 5090' },
-  rtx5090_fit: { label: '嘉義 5090 測試（牙冠用口掃）', base: '/api/toothssm-fit', box: '嘉義 5090 測試' },
+  rtx5090_fit: { label: '嘉義 5090 測試（牙冠貼合口掃）', base: '/api/toothssm-fit', box: '嘉義 5090 測試' },
 };
 
 // Who segments the scans and grows the roots; either way tooth_ssm's alignment model arranges the
@@ -40,6 +41,12 @@ const TOOTHSSM_ROOT_OPTIONS = [
   { value: 'none', label: '不接牙根：只回牙冠＋牙軸（不排牙）' },
 ];
 const TOOTHSSM_ROOT_TARGETS = ['rtx5090_fit'];
+// How the crown is made (`crown`), on the same target: `fit` (its default since 2026-10-30 pm) the
+// generated tooth fitted onto the scan, an even mesh with no seam; `exact` the scan crown as segmented.
+const TOOTHSSM_CROWN_OPTIONS = [
+  { value: 'fit', label: 'AI 牙齒擬合口掃（測試預設）' },
+  { value: 'exact', label: '口掃牙冠原樣' },
+];
 
 // What the service reads (it picks the reader from the name). Every scan is sent gzipped as
 // <name>.gz: an arch STL is 10-30 MB.
@@ -95,7 +102,7 @@ const getToothSsmInfo = async target => (await axios.get(`${baseOf(target)}/`, {
  * the alignment model is dual-arch.
  * @returns {{ jobId: string, uploadSeconds: number, sentBytes: number, rawBytes: number }}
  */
-const submitToothSsmJob = async ({ target, upper, lower, res = 128, until = 'align', seg = 'ssm', root = null, onStage = () => {} }) => {
+const submitToothSsmJob = async ({ target, upper, lower, res = 128, until = 'align', seg = 'ssm', root = null, crown = null, onStage = () => {} }) => {
   if (!upper || !lower) throw new Error('上下顎口掃都要：分牙與咬合是成對處理的，排牙模型也是上下顎一起看');
   const scans = [['upper', upper], ['lower', lower]];
   for (const [, file] of scans) {
@@ -117,6 +124,7 @@ const submitToothSsmJob = async ({ target, upper, lower, res = 128, until = 'ali
   form.append('until', until);
   form.append('seg', seg);
   if (root && TOOTHSSM_ROOT_TARGETS.includes(target)) form.append('root', root);
+  if (crown && TOOTHSSM_ROOT_TARGETS.includes(target)) form.append('crown', crown);
 
   onStage(`正在上傳 ${(sentBytes / 1048576).toFixed(1)} MB 到${TOOTHSSM_TARGETS[target]?.box ?? ''}（原檔 ${(rawBytes / 1048576).toFixed(1)} MB）…`);
   const startedAt = performance.now();
@@ -129,11 +137,12 @@ const submitToothSsmJob = async ({ target, upper, lower, res = 128, until = 'ali
 };
 
 /** `step` (generate or align) and the steps after it, on a finished job's earlier results. */
-const rerunToothSsmStep = async (target, jobId, { step, res, root = null }) => {
+const rerunToothSsmStep = async (target, jobId, { step, res, root = null, crown = null }) => {
   const form = new FormData();
   form.append('step', step);
   if (res) form.append('res', String(res));
   if (root && TOOTHSSM_ROOT_TARGETS.includes(target)) form.append('root', root);
+  if (crown && TOOTHSSM_ROOT_TARGETS.includes(target)) form.append('crown', crown);
   try {
     await axios.post(`${baseOf(target)}/v1/jobs/${jobId}/run`, form, { timeout: 60000 });
   } catch (error) {
@@ -200,6 +209,7 @@ const deleteToothSsmJob = (target, jobId) =>
 
 export {
   TOOTHSSM_ACCEPT,
+  TOOTHSSM_CROWN_OPTIONS,
   TOOTHSSM_FORMATS,
   TOOTHSSM_ROOT_OPTIONS,
   TOOTHSSM_ROOT_TARGETS,

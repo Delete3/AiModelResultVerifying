@@ -1,6 +1,6 @@
 # AI排牙 API 串接說明
 
-文件版本：2026-10-30（下午：測試版加入 `root` 與牙軸）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
+文件版本：2026-10-30（晚上：測試版加入 `crown=fit` 並改為預設）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
 
 上傳一組上下顎口掃，服務會自動分牙、替每顆牙生成牙根、用 AI 排牙，並回傳排牙前後的 ABO 評分。這是非同步 API。嘉義、台中兩台主機提供同一個 API、互為備援，一筆全口在嘉義約 2 分鐘、台中約 3 分鐘。另有一個嘉義的測試版端點，用來試用還沒上正式版的功能。
 
@@ -12,7 +12,7 @@
 |---|---|---|
 | 嘉義（RTX 5090） | `https://ezai2.inteware.com.tw/toothssm` | 正式版，平時送這台 |
 | 台中（RTX 5080） | `https://ezai.inteware.com.tw/toothssm` | 正式版，嘉義不能用時改送這台 |
-| 嘉義測試版 | `https://ezai2.inteware.com.tw/toothssm-fit` | 試用新功能（目前：牙冠用口掃原樣、接矯正式虛擬牙根，`crown=exact`、`root=virtual` 為預設；`root=none` 只回牙冠＋牙軸），沒有備援 |
+| 嘉義測試版 | `https://ezai2.inteware.com.tw/toothssm-fit` | 試用新功能（目前：AI 牙齒擬合口掃、接矯正式虛擬牙根，`crown=fit`、`root=virtual` 為預設；`root=none` 只回牙冠＋牙軸），沒有備援 |
 
 每個請求都要帶下面三個 header，缺一個就會被 Cloudflare 擋下。
 
@@ -48,7 +48,7 @@
 - 一台在 job 進行中掛掉（輪詢一直失敗、拿到 404，或 `state` 是 `failed` 且 `error` 說 GPU 有問題），那個 job 不會轉到另一台，要把口掃重新上傳到另一台。
 - 兩台各自一次跑一個 job、各自最多 4 個在跑或排隊。一台回 429 時可以送另一台。
 - 兩台的程式、參數預設值、模型權重都一樣；結果不會逐位元組相同（顯示卡不同，分牙本身每次跑也有極小的差異）。
-- 測試版只在嘉義，沒有備援；它的參數預設值和正式版不同（`crown=exact`、`root=virtual`），`root` 也只有它收；其他都一樣。
+- 測試版只在嘉義，沒有備援；它的參數預設值和正式版不同（`crown=fit`、`root=virtual`），`crown=fit` 與 `root` 也只有它收；其他都一樣。
 
 ## 端點一覽
 
@@ -74,8 +74,8 @@
 | `upper` | 檔案（必填） | — | 上顎口掃。格式看檔名的副檔名：`.stl`、`.ply`、`.obj`、`.tri`（公司格式 V1/V2），都可以再加 `.gz`，例如 `upper.tri.gz` |
 | `lower` | 檔案（必填） | — | 下顎口掃，格式同上 |
 | `seg` | `ssm` 或 `toothroot` | `ssm` | 誰來分牙、生成牙根。`ssm`：tooth_ssm 原作者的流程。`toothroot`：改用 ToothRoot 分牙與生成牙根，排牙仍是 tooth_ssm；口掃被減面過（例如矯正專案檔裡約 1.2 萬面的口掃）時要用這個 |
-| `crown` | `exact` 或 `zhu` | 正式版 `zhu`，測試版 `exact` | 整顆牙的牙冠怎麼來，只對 `seg=ssm` 有效，見下一節 |
-| `root` | `virtual`、`generated`、`none` | 測試版 `virtual`；正式版沒有這個參數（等於 `generated`） | 牙冠下面接什麼，只對 `seg=ssm` 有效，見「牙根」一節。`virtual` 和 `none` 一律用口掃牙冠，`crown` 送什麼都當成 `exact` |
+| `crown` | `fit`、`exact` 或 `zhu`（`fit` 只有測試版） | 正式版 `zhu`，測試版 `fit` | 整顆牙的牙冠怎麼來，只對 `seg=ssm` 有效，見下一節 |
+| `root` | `virtual`、`generated`、`none` | 測試版 `virtual`；正式版沒有這個參數（等於 `generated`） | 牙冠下面接什麼，只對 `seg=ssm` 有效，見「牙根」一節。`virtual` 和 `none` 的牙冠：`crown=fit` 是擬合後的 AI 牙齒，`exact` 是口掃原樣；送 `zhu` 當成 `exact` |
 | `root_fix` | `1` 或 `0` | `1` | 牙根歪斜修正（只對 `seg=ssm` 有效）。`0` 是修正前的做法，留著給比對用 |
 | `res` | `128`、`160`、`192` | `128` | 牙齒網格的解析度。192 細一點，每筆多約 10 秒 |
 | `until` | `segment`、`generate`、`align` | `align` | 做到哪一步為止 |
@@ -84,14 +84,17 @@
 - 口掃上很小的漂浮碎片（每塊小於表面積 0.5%）若會讓分牙誤判，服務會先移掉並在 `warnings` 說明。兩顎沒有對合（咬合方向不平行，或兩顎朝同一邊而被重新擺位）時，也會在 `warnings` 提醒。
 - `seg=toothroot` 另外會自動偵測上下顎檔案送反並對調，同樣寫在 `warnings`；`seg=ssm` 不會，請確認欄位沒放反。
 
-## 牙冠：`crown=exact` 與 `crown=zhu`
+## 牙冠：`crown=fit`、`exact`、`zhu`
 
-| | `zhu`（原作者流程，正式版預設） | `exact`（測試版預設） |
-|---|---|---|
-| 牙冠 | 整顆牙（含牙冠）由 AI 重新生成，牙冠離口掃平均 0.05–0.14 mm、最遠 0.7–3.1 mm（多在牙齦線附近） | 口掃原本的網格，一個點都不動；只修掉分割邊界上的鋸齒三角形（約 2–5% 的點，最遠 0.3–0.6 mm） |
-| 牙根 | AI 生成 | AI 生成，接在牙冠邊緣下方（`root=generated` 時；測試版預設 `root=virtual`，見下一節） |
-| 鄰牙干涉 | 幾乎每對相鄰牙都互相穿插（8 個測試病例：每筆 10–26 對，最深 0.7–3.1 mm） | 生成的部分被推開、緊接觸點的薄膜切掉；8 個測試病例重疊體積都是 0（兩筆各有一個點量到 0.02–0.04 mm 的數值誤差） |
-| 多花的時間 | — | 每筆多 11–38 秒 |
+| | `zhu`（原作者流程，正式版預設） | `exact` | `fit`（測試版預設，2026-10-30 晚） |
+|---|---|---|---|
+| 牙冠 | 整顆牙（含牙冠）由 AI 重新生成，牙冠離口掃平均 0.05–0.14 mm、最遠 0.7–3.1 mm（多在牙齦線附近） | 口掃原本的網格，一個點都不動；只修掉分割邊界上的鋸齒三角形（約 2–5% 的點，最遠 0.3–0.6 mm） | AI 生成的牙重新網格化後，牙冠拉到口掃上：修整後的口掃牙冠 96.5–98.7% 在 0.05 mm 內（0.01 mm 內 70–87%；`exact` 都是 100%）；偏最多的是分牙邊緣最外一圈翻到牙齦上的口掃 |
+| 網格 | marching cubes，13% 的三角形最小角小於 10°（都很小） | 口掃原本的網格，加上接合處的三角形帶：細長三角形每筆數百到九千多個（一邊超過 1 mm） | 均勻，邊長約 0.2 mm：最小角小於 10° 的不到 0.05%，沒有一邊超過 1 mm 的（例外見下） |
+| 鄰接面接觸點下方 | AI 生成 | 分牙切出的凹口；`root=none`、`virtual` 用三角形帶縫起來 | AI 生成的牙面，平順 |
+| 牙根 | AI 生成 | AI 生成，接在牙冠邊緣下方（`root=generated`） | 擬合後的整顆牙，沒有縫線（`root=generated`） |
+| 鄰牙干涉 | 幾乎每對相鄰牙都互相穿插（8 個測試病例：每筆 10–26 對，最深 0.7–3.1 mm） | 生成的部分被推開、緊接觸點的薄膜切掉；8 個測試病例重疊體積都是 0 | 擬合之後推開（只動不在口掃上的部分）；8 個測試病例重疊 0（兩筆各一對 0.001–0.002 mm³，屬數值誤差） |
+| 自我交叉三角形（每筆） | 50–130 對 | `root=generated` 8,700–24,000 對 | 0–89 對 |
+| 多花的時間 | — | 每筆多 11–38 秒 | Case 1：比 `exact` 多約 6–7 秒 |
 
 `crown=exact` 的已知限制：
 
@@ -99,33 +102,43 @@
 - 分牙若把一顆牙切錯（例如切成一大片），生成的牙會長到鄰牙的位置；服務會用鄰牙把它切開，並列在 `results.exact_crown.{jaw}.engulfed`，請檢查那顆牙的分牙。
 - 排牙之後兩顆牙會不會再碰到，還沒有量過（排牙模型是把整顆牙剛體移動）。
 
+`crown=fit` 怎麼做、要注意什麼：
+
+- 從 AI 生成的整顆牙出發：重新網格化成邊長約 0.2 mm 的均勻三角形，再把對得到口掃牙冠的部分拉到口掃上（非剛性擬合），其他部分只求平順地跟著動；最後再整理一次網格，把擬合到的頂點放到口掃面上。
+- 擬合之後才推開鄰牙；口掃面上的頂點不動，只有兩顆牙在緊接觸點互搶的那一小塊口掃面會一起放開推（最多移動約 0.4 mm）。
+- 牙冠不是口掃原本的頂點，而是貼在口掃上的新網格。不是口掃的部分：鄰接面接觸點下方、牙齦線到切口之間（`root=none`、`virtual`），以及被推開的接觸面。
+- 分牙邊緣最外一圈常翻到牙齦上（法向和牙面差 60° 以上），擬合刻意不跟過去；0.05 mm 以外的點約九成在那裡。
+- 分牙若把一顆牙切錯（例如切成一大片），生成的牙會長到鄰牙的位置：和 `crown=exact` 一樣用鄰牙把它切開、列在 `results.exact_crown.{jaw}.engulfed`，請檢查那顆牙的分牙（8 個病例中 1 顆）。
+- 例外：Case 6（分牙把下顎 46 切錯的那一筆）在 `root=virtual` 時，46 接不上虛擬牙根、改接整顆牙後被推開變形：細長三角形 0.25%、一邊超過 1 mm 的 141 個、和 47 重疊 1.1 mm³。`none`、`generated` 沒有這個問題。
+- 個別牙擬合或切開失敗時：`root=none` 照 `crown=exact` 的做法回傳那顆，列在 `results.exact_crown.{jaw}.fallback`；`root=virtual` 改接擬合後的整顆牙，列在 `generated_root`。
+
 ## 牙根：`root=virtual`、`generated`、`none`（只有測試版）
 
-牙冠一律是口掃原本的網格（同 `crown=exact`），差別在牙冠下面接什麼：
+牙冠由 `crown` 決定（測試版預設 `fit`，見上一節），差別在牙冠下面接什麼：
 
 | | `virtual`（測試版預設） | `generated` | `none` |
 |---|---|---|---|
-| 牙根 | 矯正軟體的虛擬牙根演算法（ToothRootLoft）：牙冠邊緣沿牙軸往牙根方向延伸 3 mm，收成牙冠一半大的圓再封底 | AI 生成的牙根，接在牙冠邊緣下方 | 不接，由你們接自己的牙根 |
+| 牙根 | 矯正軟體的虛擬牙根演算法（ToothRootLoft）：牙冠邊緣沿牙軸往牙根方向延伸 3 mm，收成牙冠一半大的圓再封底 | AI 生成的牙根 | 不接，由你們接自己的牙根 |
 | 牙根方向 | 沿 AI 生成牙齒的牙軸 | AI 生成 | 牙軸照樣給（`tooth_axes.json`） |
 | 封閉 | 是 | 是 | 否：每顆牙冠在牙齦線處有一個開口邊緣 |
-| 鄰牙干涉 | 8 個測試病例都是 0 | 8 個測試病例都是 0 | 不處理（見下面） |
-| 自我交叉三角形（8 個病例，每筆） | 348–3,539 對 | 6,700–24,000 對 | 沒有量 |
+| 鄰牙干涉（8 個測試病例） | 0 | 0 | 牙冠在切開前已推開 |
+| 自我交叉三角形（8 個病例，每筆） | `fit` 0–62 對（`exact` 348–3,539 對） | `fit` 5–89 對（`exact` 6,700–24,000 對） | `fit` 0–62 對（`exact` 116–713 對） |
 | 排牙 | 有 | 有 | 沒有：job 做完 generate 就是 `done`，沒有 `aligning` |
 | 牙軸 `tooth_axes.json` | 有 | 沒有 | 有 |
-| 接牙根這一步的時間（Case 1，兩顎同時跑） | 每顎 9–10 秒 | 每顎 18–20 秒 | 每顎 3 秒 |
 
 `root=none`（只回牙冠，讓你們自己縫合牙根）：
 
-- 牙冠在 `result/{jaw}/teeth/tooth_{FDI}.ply`（`results.teeth` 列的就是它們）。和分牙結果 `segmentation/{jaw}/tooth_{FDI}.ply` 的差別：分割邊界上的鋸齒三角形修掉、細縫與小洞補起來、鄰接面那種窄而深的凹口先縫起來（這是接牙根時折疊、自交的主因），所以每顆只剩一個平順的開口邊緣。牙冠仍是口掃原本的網格，沒有重新生成。
-- 少數牙冠修整不成（例如分牙切出好幾個開口），會照分牙的原樣回傳，列在 `results.exact_crown.{jaw}.fallback`，內容寫「crown as segmented」。
-- 牙冠本身來自同一張口掃，彼此不會穿插；接上牙根封起來後，在緊接觸點可能會有很薄的重疊（`virtual` 模式在 Case 1 上顎全部加起來約 0.17 mm³，服務會切掉），請你們接牙根的流程自行處理。
+- 牙冠在 `result/{jaw}/teeth/tooth_{FDI}.ply`（`results.teeth` 列的就是它們），每顆只有一個開口邊緣。
+- `crown=fit`（預設）：擬合後的 AI 牙齒，在平滑的牙齦線處切開。切線是口掃牙冠的邊緣，但鄰接面不再沿凹口爬到接觸點，而是用牙齦的高度橫過去（切在 AI 的鄰接面上），再沿牙軸平滑。切口附近的頂點先移到切線上，所以切口不會留下細長三角形。
+- `crown=exact`：口掃原本的網格，分割邊界上的鋸齒修掉、細縫與小洞補起來、鄰接面窄而深的凹口用一條三角形帶縫起來（這條帶子就是細長三角形的來源）。少數修整不成的會照分牙原樣回傳，列在 `results.exact_crown.{jaw}.fallback`，內容寫「crown as segmented」。
+- `crown=fit` 的牙冠在切開前已和鄰牙推開；接上你們的牙根後，牙根之間的干涉請你們的流程處理。
 - 不排牙：`until` 會自動停在 `generate`；`start=align` 或 `/run` 的 `step=align` 回 422。`results.abo.input` 照樣有（排牙前的 ABO）。
 - 想要排牙，就用 `root=virtual` 或 `generated`；要把自己的整顆牙拿去排牙，用 `start=align`（見「從中間開始」）。
 
 `root=virtual`：
 
 - 牙軸方向取自 AI 生成的整顆牙，所以牙根朝向和 AI 生成的牙根一致；長度固定 3 mm（短牙根）。
-- 牙冠邊緣繞不過牙軸的牙（8 個病例中 1 顆）改接 AI 生成的牙根，列在 `results.exact_crown.{jaw}.generated_root`。
+- 接不上虛擬牙根的牙列在 `results.exact_crown.{jaw}.generated_root`：`crown=fit` 改接擬合後的整顆牙（8 個病例中 2 顆，都在 Case 6：根分叉剛好在牙齦線高度，切口繞不過牙軸）；`crown=exact` 改接 AI 生成的牙根（1 顆）。
 - 排牙時虛擬牙根和牙冠一起剛體移動；`tooth_axes.json` 是排牙前的位置，排牙後的牙軸要再乘上那顆牙的排牙矩陣。
 
 ### 牙軸（tooth_axes.json）
@@ -212,8 +225,8 @@ curl -s "${H[@]}" -F start=align -F teeth=@crowns_and_teeth.zip $B/v1/jobs      
 | `results.aligned` | 排牙後的整顆牙，同上 |
 | `results.align` | 每顎每顆牙的排牙旋轉角（°）與位移（mm），以及平均、最大、超過 20° 的顆數 |
 | `results.abo` | 排牙前（`input`）與排牙後（`aligned`）的 ABO 各項與 ABO7、TOTAL（越低越好） |
-| `results.crown_stats` | AI 生成的牙冠離原口掃多遠（平均、p95，mm）、封閉的顆數、失敗的牙。`crown=exact` 時描述的是換回口掃前的生成牙冠 |
-| `results.exact_crown` | 只在 `crown=exact`：每顎的 `scan_crown`（用上口掃牙冠的顆數）、`fallback`（沒做成而保留生成牙冠的牙與原因）、`shared_mm3_generated` 與 `shared_mm3_after_parting`（推開前後鄰牙重疊的體積，mm³）、`contact_films_cut`（緊接觸點切掉的薄膜）、`engulfed`（生成的牙佔到鄰牙位置而被切開的牙，請檢查分牙）、`generated_root`（`root=virtual` 時改接 AI 生成牙根的牙） |
+| `results.crown_stats` | AI 生成的牙冠離原口掃多遠（平均、p95，mm）、封閉的顆數、失敗的牙。`crown=exact`、`fit` 時描述的是擬合或換回口掃前的生成牙冠 |
+| `results.exact_crown` | `crown=exact` 或 `fit`（測試版）：每顎的 `crown`（`exact` 或 `fit`）、`scan_crown`（用上口掃牙冠或擬合成功的顆數）、`fallback`（沒做成的牙與原因）、`shared_mm3_generated` 與 `shared_mm3_after_parting`（推開前後鄰牙重疊的體積，mm³；`fit` 只有推開後的）、`contact_films_cut`（`exact` 在緊接觸點切掉的薄膜）、`engulfed`（生成的牙佔到鄰牙位置而被切開的牙，請檢查分牙）、`generated_root`（`root=virtual` 時改接 AI 生成牙根的牙）、`triangles`（`fit`：這一顎交出去的牙的面數 `faces`、最小角小於 10° 的 `min_angle_lt10`、一邊超過 1 mm 的 `edge_gt1mm`） |
 | `results.root` | 測試版：這個 job 的 `root` |
 | `results.axes`、`results.axes_url` | 測試版 `root=virtual` 或 `none`：每顆牙的牙軸，與 `tooth_axes.json` 的路徑（見「牙軸」） |
 | `log_tail` | 紀錄檔最後 15 行（除錯用） |
@@ -324,8 +337,9 @@ job 本身失敗（`state` 是 `failed`）仍然回 200，原因在 `error` 與 
 | `seg=ssm`，`root_fix=1`（預設） | 121–138 秒 | 185 秒 |
 | `seg=ssm`，`root_fix=0` | 87–102 秒 | 約 141 秒（更新前量的） |
 | `seg=ssm`，`crown=exact`，`root=generated`（測試版） | 比 `crown=zhu` 每筆多 11–38 秒 | 未提供 |
-| `seg=ssm`，`root=virtual`（測試版預設，含排牙） | Case 1（`res=192`）145 秒 | 未提供 |
-| `seg=ssm`，`root=none`（測試版，不排牙） | Case 1（`res=192`）116 秒 | 未提供 |
+| `seg=ssm`，`crown=fit`，`root=virtual`（測試版預設，含排牙） | Case 1（`res=192`）135 秒；Case 2（`res=128`）137 秒 | 未提供 |
+| `seg=ssm`，`crown=fit`，`root=none`（測試版，不排牙） | Case 1（`res=192`）115 秒 | 未提供 |
+| 同上，`crown=exact`（10-30 下午的版本） | Case 1（`res=192`）`virtual` 145 秒、`none` 116 秒；接牙冠這一步比 `fit` 少約 6–7 秒（每筆時間的差異主要來自生成牙根本身的起伏） | 未提供 |
 | `seg=toothroot` | 未量 | 約 50–60 秒 |
 | `start=generate`（牙根＋排牙） | 100 秒 | 約 145 秒 |
 | `start=generate`，`until=generate`（只有牙根） | 約 90 秒 | 132 秒 |
@@ -370,7 +384,7 @@ BASE, H = pick_host()          # job 之後的每個請求都用同一台
 r = requests.post(f"{BASE}/v1/jobs", headers=H, timeout=300,
                   files={"upper": ("upper.stl.gz", gz("upper.stl")),
                          "lower": ("lower.stl.gz", gz("lower.stl"))},
-                  data={"seg": "ssm", "res": "128"})   # 測試版另可送 "crown"（exact／zhu）與 "root"（virtual／generated／none）
+                  data={"seg": "ssm", "res": "128"})   # 測試版另可送 "crown"（fit／exact／zhu）與 "root"（virtual／generated／none）
 r.raise_for_status()
 job = r.json()["job_id"]
 
@@ -406,7 +420,7 @@ B=https://ezai2.inteware.com.tw/toothssm
 
 curl -s "${H[@]}" $B/health
 curl -s "${H[@]}" -F upper=@upper.stl.gz -F lower=@lower.stl.gz -F seg=ssm $B/v1/jobs
-curl -s "${H[@]}" -F upper=@upper.stl.gz -F lower=@lower.stl.gz -F root=none $B/v1/jobs   # 測試版：只回牙冠＋牙軸，不排牙
+curl -s "${H[@]}" -F upper=@upper.stl.gz -F lower=@lower.stl.gz -F root=none $B/v1/jobs   # 測試版：只回牙冠＋牙軸，不排牙（牙冠預設 crown=fit；要口掃原樣加 -F crown=exact）
 curl -s "${H[@]}" $B/v1/jobs/<job_id>
 curl -s "${H[@]}" -o result.zip $B/v1/jobs/<job_id>/archive
 curl -s "${H[@]}" -X DELETE $B/v1/jobs/<job_id>
