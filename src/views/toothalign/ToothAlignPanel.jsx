@@ -6,6 +6,8 @@ import CaseScene from '../../utils/function/CaseScene';
 import ToothAlignScene, { CROWN_HEX, ROOT_HEX } from '../../utils/function/ToothAlignScene';
 import {
   TOOTHSSM_ACCEPT,
+  TOOTHSSM_ROOT_OPTIONS,
+  TOOTHSSM_ROOT_TARGETS,
   TOOTHSSM_SEG_OPTIONS,
   TOOTHSSM_TARGETS,
   deleteToothSsmJob,
@@ -86,6 +88,7 @@ const ToothAlignPanel = () => {
   const [target, setTarget] = useState('z790');
   const [res, setRes] = useState(128);
   const [seg, setSeg] = useState('ssm');
+  const [root, setRoot] = useState('virtual');
   const [running, setRunning] = useState(null);
   const [stage, setStage] = useState('');
   const [progress, setProgress] = useState(null);
@@ -211,7 +214,7 @@ const ToothAlignPanel = () => {
     ToothAlignScene.clearResults();
     const startedAt = performance.now();
     try {
-      const submitted = await submitToothSsmJob({ target, upper: files.upper, lower: files.lower, res, until, seg, onStage: setStage });
+      const submitted = await submitToothSsmJob({ target, upper: files.upper, lower: files.lower, res, until, seg, root, onStage: setStage });
       jobRef.current = { id: submitted.jobId, target };
       const doc = await follow();
       const download = await loadResults(doc, 'segment');
@@ -250,7 +253,8 @@ const ToothAlignPanel = () => {
     setError(null);
     const startedAt = performance.now();
     try {
-      await rerunToothSsmStep(jobRef.current.target, jobRef.current.id, { step, res });
+      // `root` only for generate: an align rerun keeps the job's own (root=none has no align at all)
+      await rerunToothSsmStep(jobRef.current.target, jobRef.current.id, { step, res, root: step === 'generate' ? root : null });
       const doc = await follow();
       const download = await loadResults(doc, step);
       setJob(doc);
@@ -305,6 +309,16 @@ const ToothAlignPanel = () => {
     }
   };
 
+  const downloadAxes = async () => {
+    if (!jobRef.current || !job?.results?.axes_url) return;
+    try {
+      const data = await fetchToothSsmFile(jobRef.current.target, jobRef.current.id, job.results.axes_url);
+      downloadBlob(new Blob([data], { type: 'application/json' }), `tooth_axes-${jobRef.current.id}.json`);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
   const clearAll = () => {
     forgetJob();
     ToothAlignScene.clearAll();
@@ -318,6 +332,7 @@ const ToothAlignPanel = () => {
   const caseReady = Boolean(caseScene.hasUpper && caseScene.hasLower);
   const hasSeg = Boolean(r?.crowns?.length);
   const hasTeeth = Boolean(r?.teeth?.length);
+  const crownsOnly = job?.params?.root === 'none';
   const abo = r?.abo;
   const t = timing?.timings ?? {};
 
@@ -367,6 +382,11 @@ const ToothAlignPanel = () => {
           分牙＋牙根
           <Select size='small' value={seg} onChange={setSeg} options={TOOTHSSM_SEG_OPTIONS} disabled={busy} />
         </label>
+        {TOOTHSSM_ROOT_TARGETS.includes(target) && seg === 'ssm' && <label
+          title='牙冠一律用口掃原樣。虛擬牙根＝矯正軟體式的 3 mm 短牙根（方向取自 AI 生成的牙）；不接牙根＝只回牙冠與每顆牙的牙軸，給矯正軟體自己接牙根，不排牙'>
+          牙根
+          <Select size='small' value={root} onChange={setRoot} options={TOOTHSSM_ROOT_OPTIONS} disabled={busy} />
+        </label>}
         <label>
           牙齒網格解析度
           <Select size='small' value={res} onChange={setRes} options={RES_OPTIONS} disabled={busy} />
@@ -374,7 +394,8 @@ const ToothAlignPanel = () => {
       </div>
       <div className='button-grid'>
         <Button type='primary' loading={running === 'all'} disabled={busy && running !== 'all'} onClick={() => run('align')}>
-          AI 排牙（分牙→牙根→排牙）
+          {TOOTHSSM_ROOT_TARGETS.includes(target) && seg === 'ssm' && root === 'none'
+            ? 'AI 分牙→牙冠＋牙軸（不排牙）' : 'AI 排牙（分牙→牙根→排牙）'}
         </Button>
         <Button loading={running === 'segment'} disabled={busy && running !== 'segment'} onClick={() => run('segment')}>
           只做 AI 分牙
@@ -386,7 +407,7 @@ const ToothAlignPanel = () => {
           </Button>
         </Tooltip>
         <Tooltip title='用同一份牙齒，重新跑排牙模型'>
-          <Button loading={running === 'align'} disabled={!hasTeeth || (busy && running !== 'align')} onClick={() => rerun('align')}>
+          <Button loading={running === 'align'} disabled={!hasTeeth || crownsOnly || (busy && running !== 'align')} onClick={() => rerun('align')}>
             重新排牙
           </Button>
         </Tooltip>
@@ -442,7 +463,7 @@ const ToothAlignPanel = () => {
             <table className='toothseg-table'>
               <thead><tr>
                 <th>FDI</th>
-                <th>整顆牙</th>
+                <th>{crownsOnly ? '牙冠（開口）' : '整顆牙'}</th>
                 {align && <><th>旋轉 °</th><th title='牙冠中心的位移'>位移 mm</th></>}
               </tr></thead>
               <tbody>{crowns.map(crown => {
@@ -467,10 +488,15 @@ const ToothAlignPanel = () => {
           const total = x.scan_crown + Object.keys(x.fallback ?? {}).length;
           return `${JAW_NAME[jaw]} ${x.scan_crown} / ${total} 顆`;
         }).join('、')}
-        ；鄰牙重疊 {['upper', 'lower'].filter(jaw => r.exact_crown[jaw]).map(jaw => {
+        {r.root === 'virtual' && '，接矯正式虛擬牙根'}
+        {r.root === 'none' && '，不接牙根（牙冠在牙齦線處開口）'}
+        {['upper', 'lower'].some(jaw => r.exact_crown[jaw]?.generated_root?.length) && <span className='bad'>
+          ，改接 AI 生成牙根：{['upper', 'lower'].flatMap(jaw => r.exact_crown[jaw]?.generated_root ?? []).join('、')}
+        </span>}
+        {r.root !== 'none' && <>；鄰牙重疊 {['upper', 'lower'].filter(jaw => r.exact_crown[jaw]).map(jaw => {
           const x = r.exact_crown[jaw];
           return `${JAW_NAME[jaw]} ${(x.shared_mm3_generated ?? 0).toFixed(2)} → ${(x.shared_mm3_after_parting ?? 0).toFixed(2)} mm³`;
-        }).join('、')}（推開後再切掉接觸點薄膜）
+        }).join('、')}（推開後再切掉接觸點薄膜）</>}
         {['upper', 'lower'].some(jaw => Object.keys(r.exact_crown[jaw]?.fallback ?? {}).length) && <span className='bad'>
           ，沒換成口掃牙冠：{['upper', 'lower'].flatMap(jaw => Object.entries(r.exact_crown[jaw]?.fallback ?? {})
             .map(([fdi, why]) => `${fdi}（${why}）`)).join('、')}
@@ -509,8 +535,13 @@ const ToothAlignPanel = () => {
       </table>}
       {(abo?.input || abo?.aligned) && <div className='panel-note'>只用來比較排牙前後，不能對照 ABO 及格門檻（這個量表本來就偏高）。</div>}
 
+      {r?.axes_url && <div className='health-line'>
+        牙軸：{Object.keys(r.axes ?? {}).length} 顆（每顆牙的牙冠中心、由牙根指向牙冠的方向、根尖與 4×4 矩陣）
+        {crownsOnly && '；這個模式不排牙'}
+      </div>}
       {jobRef.current && <div className='button-row'>
         <Button size='small' disabled={busy} onClick={downloadArchive}>下載全部結果（zip）</Button>
+        {r?.axes_url && <Button size='small' disabled={busy} onClick={downloadAxes}>下載牙軸（tooth_axes.json）</Button>}
       </div>}
     </section>}
 

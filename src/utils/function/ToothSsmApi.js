@@ -32,6 +32,15 @@ const TOOTHSSM_SEG_OPTIONS = [
   { value: 'toothroot', label: 'ToothRoot 分牙＋牙根' },
 ];
 
+// What goes under the scan crown (`root`, 2026-10-30): only the test target takes it; its default is
+// virtual. `none` returns the crowns alone, with each tooth's axis, and makes no arrangement.
+const TOOTHSSM_ROOT_OPTIONS = [
+  { value: 'virtual', label: '矯正式虛擬牙根（測試預設）' },
+  { value: 'generated', label: 'AI 生成牙根' },
+  { value: 'none', label: '不接牙根：只回牙冠＋牙軸（不排牙）' },
+];
+const TOOTHSSM_ROOT_TARGETS = ['rtx5090_fit'];
+
 // What the service reads (it picks the reader from the name). Every scan is sent gzipped as
 // <name>.gz: an arch STL is 10-30 MB.
 const TOOTHSSM_FORMATS = ['stl', 'ply', 'obj', 'tri'];
@@ -86,7 +95,7 @@ const getToothSsmInfo = async target => (await axios.get(`${baseOf(target)}/`, {
  * the alignment model is dual-arch.
  * @returns {{ jobId: string, uploadSeconds: number, sentBytes: number, rawBytes: number }}
  */
-const submitToothSsmJob = async ({ target, upper, lower, res = 128, until = 'align', seg = 'ssm', onStage = () => {} }) => {
+const submitToothSsmJob = async ({ target, upper, lower, res = 128, until = 'align', seg = 'ssm', root = null, onStage = () => {} }) => {
   if (!upper || !lower) throw new Error('上下顎口掃都要：分牙與咬合是成對處理的，排牙模型也是上下顎一起看');
   const scans = [['upper', upper], ['lower', lower]];
   for (const [, file] of scans) {
@@ -107,6 +116,7 @@ const submitToothSsmJob = async ({ target, upper, lower, res = 128, until = 'ali
   form.append('res', String(res));
   form.append('until', until);
   form.append('seg', seg);
+  if (root && TOOTHSSM_ROOT_TARGETS.includes(target)) form.append('root', root);
 
   onStage(`正在上傳 ${(sentBytes / 1048576).toFixed(1)} MB 到${TOOTHSSM_TARGETS[target]?.box ?? ''}（原檔 ${(rawBytes / 1048576).toFixed(1)} MB）…`);
   const startedAt = performance.now();
@@ -119,10 +129,11 @@ const submitToothSsmJob = async ({ target, upper, lower, res = 128, until = 'ali
 };
 
 /** `step` (generate or align) and the steps after it, on a finished job's earlier results. */
-const rerunToothSsmStep = async (target, jobId, { step, res }) => {
+const rerunToothSsmStep = async (target, jobId, { step, res, root = null }) => {
   const form = new FormData();
   form.append('step', step);
   if (res) form.append('res', String(res));
+  if (root && TOOTHSSM_ROOT_TARGETS.includes(target)) form.append('root', root);
   try {
     await axios.post(`${baseOf(target)}/v1/jobs/${jobId}/run`, form, { timeout: 60000 });
   } catch (error) {
@@ -190,6 +201,8 @@ const deleteToothSsmJob = (target, jobId) =>
 export {
   TOOTHSSM_ACCEPT,
   TOOTHSSM_FORMATS,
+  TOOTHSSM_ROOT_OPTIONS,
+  TOOTHSSM_ROOT_TARGETS,
   TOOTHSSM_SEG_OPTIONS,
   TOOTHSSM_TARGETS,
   deleteToothSsmJob,
