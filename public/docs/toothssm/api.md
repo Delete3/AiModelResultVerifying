@@ -1,6 +1,6 @@
 # AI排牙 API 串接說明
 
-文件版本：2026-11-02（新增一節「只分牙＋生成牙齒、不排牙」；更正 `root=none` 沒有 ABO）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
+文件版本：2026-11-02 傍晚（生成牙根加快、新欄位 `results.fast_roots`、速度表；同日稍早：新增一節「只分牙＋生成牙齒、不排牙」，更正 `root=none` 沒有 ABO）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
 
 上傳一組上下顎口掃，服務會自動分牙、替每顆牙生成牙根、用 AI 排牙，並回傳排牙前後的 ABO 評分；也可以只分牙＋生成牙齒、不排牙。這是非同步 API。嘉義、台中兩台主機提供同一個 API、互為備援，一筆全口在嘉義約 2 分鐘、台中約 3 分鐘。
 
@@ -55,7 +55,7 @@ curl -s "${H[@]}" -F upper=@upper.stl.gz -F lower=@lower.stl.gz -F until=generat
 | 排牙矩陣、`results.align`、`results.transforms_url` | 有 | 沒有（null） |
 | ABO `results.abo` | 排牙前、排牙後 | 沒有（兩項都是 null） |
 | 整包 zip（Case 1） | 約 130 MB | 約 25 MB |
-| 時間（嘉義，Case 1，`res=128`，27 顆） | 多排牙這一步（約 10–15 秒） | 120 秒（分牙 18 秒、生成 102 秒） |
+| 時間（嘉義，Case 1，`res=128`，27 顆） | 多排牙這一步（約 10–15 秒） | 120 秒（分牙 18 秒、生成 102 秒；2026-11-02 生成牙根加快前量的） |
 
 - 拿到的牙和完整流程裡「排牙前」的牙相同：都在 `results.teeth`，排牙不會改動它們。
 - 之後想排牙：在 job 還在的 2 小時內，對同一個 job 送 `POST /v1/jobs/{job_id}/run`、`step=align`，就用這筆生成的牙齒排牙，不必重新上傳。
@@ -253,6 +253,7 @@ curl -s "${H[@]}" -F start=align -F teeth=@crowns_and_teeth.zip $B/v1/jobs      
 | `results.crown_stats` | AI 生成的牙冠離原口掃多遠（平均、p95，mm）、封閉的顆數、失敗的牙。`crown=exact`、`fit` 時描述的是擬合或換回口掃前的生成牙冠 |
 | `results.exact_crown` | `crown=exact` 或 `fit`，或 `root` 不是 `generated` 時：每顎的 `crown`（`exact` 或 `fit`）、`scan_crown`（用上口掃牙冠或擬合成功的顆數）、`fallback`（沒做成的牙與原因）、`shared_mm3_generated` 與 `shared_mm3_after_parting`（推開前後鄰牙重疊的體積，mm³；`fit` 只有推開後的）、`contact_films_cut`（`exact` 在緊接觸點切掉的薄膜）、`engulfed`（生成的牙佔到鄰牙位置而被切開的牙，請檢查分牙）、`generated_root`（`root=virtual` 時改接 AI 生成牙根的牙）、`triangles`（`fit`：這一顎交出去的牙的面數 `faces`、最小角小於 10° 的 `min_angle_lt10`、一邊超過 1 mm 的 `edge_gt1mm`） |
 | `results.root` | 這個 job 的 `root` |
+| `results.fast_roots` | 這台是否用加速的生成牙根（2026-11-02 傍晚起兩台都是 `true`；見更新內容） |
 | `results.axes`、`results.axes_url` | `root=virtual` 或 `none`：每顆牙的牙軸，與 `tooth_axes.json` 的路徑（見「牙軸」） |
 | `log_tail` | 紀錄檔最後 15 行（除錯用） |
 
@@ -439,7 +440,7 @@ job 本身失敗（`state` 是 `failed`）仍然回 200，原因在 `error` 與 
 
 | 設定 | 嘉義 RTX 5090 | 台中 RTX 5080 |
 |---|---|---|
-| `seg=ssm`，預設（`crown=fit`、`root=virtual`、`root_fix=1`，含排牙） | Case 1（`res=192`）135 秒；Case 2（`res=128`）137 秒 | Case 1（`res=128`）187 秒 |
+| `seg=ssm`，預設（`crown=fit`、`root=virtual`、`root_fix=1`，含排牙） | Case 1（`res=128`）83 秒（生成牙根加快前 128 秒；`res=192` 加快前 135 秒） | Case 1（`res=128`）127 秒（加快前 187 秒） |
 | `seg=ssm`，預設，`until=generate`（只分牙＋生成牙齒，不排牙） | Case 1（`res=128`）120 秒 | 未量（少掉的排牙這一步約 16 秒） |
 | `seg=ssm`，`crown=fit`，`root=none`（不排牙） | Case 1（`res=192`）115 秒 | 未量 |
 | `seg=ssm`，`crown=exact`，`root=virtual`／`none` | Case 1（`res=192`）`virtual` 145 秒、`none` 116 秒；接牙冠這一步比 `fit` 少約 6–7 秒（每筆時間的差異主要來自生成牙根本身的起伏） | 未量 |
@@ -450,6 +451,8 @@ job 本身失敗（`state` 是 `failed`）仍然回 200，原因在 `error` 與 
 | `start=generate`（牙根＋排牙；以下三列是舊預設 `crown=zhu` 量的，新預設多接牙冠這一步約 20–30 秒） | 100 秒 | 約 145 秒 |
 | `start=generate`，`until=generate`（只有牙根） | 約 90 秒 | 132 秒 |
 | `start=align`（只有排牙） | 10–14 秒 | 16 秒 |
+
+2026-11-02 傍晚生成牙根這一步加快後，只重量了第一列（Case 1 的生成牙根：嘉義 74 → 31 秒，台中 113 → 58 秒）；其他列是加快前量的，有生成牙根的設定應該也會變快，但沒有量。
 
 ## 範例程式
 
