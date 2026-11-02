@@ -5,9 +5,10 @@ import { Alert, Button, Checkbox, Input, InputNumber, Select, Tag, Tooltip, Uplo
 import CaseScene from '../../utils/function/CaseScene';
 import MarginEditor from '../../utils/function/margin-editor/MarginEditor';
 import { formatMarginPts } from '../../utils/function/margin-editor/marginPts';
-import { getPipelineHealth, isAnteriorFdi, singleArchTargets, PIPELINE_MODES, PIPELINE_TARGETS, runPipelineJob } from '../../utils/function/EzaiPipelineApi';
+import { getPipelineHealth, isAnteriorFdi, singleArchTargets, CROWN_MODELS, PIPELINE_MODES, PIPELINE_TARGETS, runPipelineJob } from '../../utils/function/EzaiPipelineApi';
 import { SCAN_ACCEPT } from '../../utils/loader/loadGeometry';
 import { useMarginEditor } from '../../utils/tool/useStores';
+import CrownDocs from './CrownDocs';
 import describeFailure from './describeFailure';
 import MarginSection from './MarginSection';
 import ResultView from './ResultView';
@@ -36,6 +37,10 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
   const [marginNotice, setMarginNotice] = useState(null);
   const [ignoreOpposing, setIgnoreOpposing] = useState(false);
   const [contralateral, setContralateral] = useState(false);
+  // 'default' (the service's own, v3) or a CROWN_MODELS key; deliberately not remembered across
+  // visits, so nobody builds HeyGears crowns today because of a choice made last week.
+  const [crownModel, setCrownModel] = useState('default');
+  const [occlusalClearance, setOcclusalClearance] = useState(null);
   const [target, setTarget] = useState(readStoredTarget);
   const [viewerConfig, setViewerConfig] = useState(null);
   const [health, setHealth] = useState(null);
@@ -66,6 +71,11 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
   // FDI changes so going 11 -> 21 -> 11 does not lose it.
   const useContralateral = contralateral && anterior && Boolean(site.contralateral);
   const contraTarget = Object.keys(PIPELINE_TARGETS).find(key => PIPELINE_TARGETS[key].contralateral);
+  const model = CROWN_MODELS[crownModel] ?? null;  // null: the service's default
+  const modelTargetOf = name => Object.keys(PIPELINE_TARGETS)
+    .find(key => !PIPELINE_TARGETS[key].panel && PIPELINE_TARGETS[key].crownModels?.includes(name));
+  // A tooth the model was not trained on is still sent; the crown service answers with v3.
+  const modelSkipsTooth = Boolean(model && prepJaw && !model.teeth.includes(Number(fdi) % 10));
 
   const chooseTarget = value => {
     setTarget(value);
@@ -108,6 +118,22 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
   if (singleArch && !site.singleArch) blockers.push(`「${site.label}」不支援單顎：改選 ${singleArchTargets()} 或補上對咬顎`);
   if (!targetConfigured) blockers.push(`這個實例沒有設定「${site.label}」`);
   if (contralateral && anterior && !site.contralateral) blockers.push(`「${site.label}」不能參考對側牙：改選「${PIPELINE_TARGETS[contraTarget]?.label}」或取消勾選`);
+  // Only generating needs the model, so this one does not stop a margin prediction.
+  const modelBlocker = model && !site.crownModels?.includes(crownModel)
+    ? `「${site.label}」還沒有「${model.label}」牙冠模型：改選「${PIPELINE_TARGETS[modelTargetOf(crownModel)]?.label}」或改回 v3`
+    : null;
+  if (modelBlocker) blockers.push(modelBlocker);
+
+  const chooseCrownModel = value => {
+    setCrownModel(value);
+    // Each model comes with the clearance its customer's callers send (HeyGears 0.2 mm), and the
+    // default goes back to none, as every other caller sends; either can be edited afterwards.
+    setOcclusalClearance(CROWN_MODELS[value]?.occlusalClearanceMm ?? null);
+    // As 「參考對側牙」 did while it lived on one endpoint: picking a model takes the panel to a
+    // target that has it.
+    const next = modelTargetOf(value);
+    if (CROWN_MODELS[value] && !site.crownModels?.includes(value) && next) chooseTarget(next);
+  };
 
   const toggleContralateral = checked => {
     setContralateral(checked);
@@ -117,7 +143,7 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
     if (checked && !site.contralateral && contraTarget) chooseTarget(contraTarget);
   };
 
-  const predictBlockers = blockers.filter(b => !b.includes('margin'));
+  const predictBlockers = blockers.filter(b => !b.includes('margin') && b !== modelBlocker);
 
   const run = async (mode) => {
     const kind = mode === PIPELINE_MODES.marginOnly ? 'margin' : 'crown';
@@ -141,6 +167,9 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
         marginPts: ring ? formatMarginPts(ring, fdi) : null,
         singleArch,
         contralateral: useContralateral,
+        // A margin prediction builds no crown, so neither is sent with it.
+        crownModel: kind === 'crown' && model ? crownModel : null,
+        occlusalClearanceMm: kind === 'crown' ? occlusalClearance : null,
         target,
         onStage: setProgress,
       });
@@ -206,9 +235,22 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
     </div>,
   }));
 
+  const crownModelOptions = [
+    { value: 'default', label: <div className='target-option'><span>v3（預設）</span><span className='target-hint'>其他客戶都用這個</span></div> },
+    ...Object.entries(CROWN_MODELS).map(([key, entry]) => ({
+      value: key,
+      label: <div className='target-option'>
+        <span>{entry.label}</span>
+        <span className='target-hint'>{entry.hint}{modelTargetOf(key) ? '' : '（目前沒有主機）'}</span>
+      </div>,
+    })),
+  ];
+
   const generateMode = marginSource === 'custom' ? PIPELINE_MODES.marginOverride : PIPELINE_MODES.full;
 
   return <div className='design-panel'>
+    <CrownDocs />
+
     <section className='panel-section'>
       <div className='section-title'><span className='step'>1</span>病例</div>
       <div className='field-row'>
@@ -273,6 +315,29 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
       </label>
       {health && <div className={`health-line ${health.ok === false ? 'bad' : health.ok ? 'good' : ''}`}>{health.text}</div>}
 
+      <div className='field-row'>
+        <label>
+          <Tooltip title='生成牙冠用的模型。「HeyGears 風格」是用 HeyGears 技師的 exocad 牙冠再訓練的 v3，只學過小臼齒、大臼齒，其他牙位會自動改用 v3（結果會註明）。目前只有嘉義有。'>
+            牙冠模型
+          </Tooltip>
+          <Select value={crownModel} onChange={chooseCrownModel} options={crownModelOptions} disabled={Boolean(running)}
+            popupMatchSelectWidth={false} labelRender={() => <span>{model ? model.label : 'v3（預設）'}</span>} />
+        </label>
+        <label>
+          <Tooltip title='牙冠咬合面和對咬牙之間至少留這個距離（mm），由牙冠服務在生成後調整。HeyGears 的設計習慣是 0.2，選 HeyGears 風格時自動填入。空白＝不另外留，其他客戶都是這樣。兩台都支援。'>
+            咬合間隙 mm
+          </Tooltip>
+          <InputNumber min={-0.3} max={1} step={0.05} value={occlusalClearance} onChange={setOcclusalClearance}
+            placeholder='不指定' disabled={Boolean(running)} />
+        </label>
+      </div>
+      {modelSkipsTooth && <Alert
+        className='section-alert'
+        type='info'
+        showIcon
+        message={`「${model.label}」只學過小臼齒、大臼齒：FDI ${fdi} 會用 v3 生成，結果會註明`}
+      />}
+
       <Tooltip title={anterior
         ? '把整個口掃左右鏡射找出中線，讓牙冠的形狀接近另一側的同名牙（例如 11 參考 21）。位置仍照實際空間。對側缺牙、也是支台齒、或只掃半邊時會自動不套用，並說明原因。每顆約多 2 秒。台中、嘉義的正式 pipeline 都能用。'
         : '只適用前牙（FDI x1–x3）'}>
@@ -285,6 +350,8 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
         <Tag>{generateMode === PIPELINE_MODES.full ? 'AI margin（mode=full）' : '自訂 margin（mode=margin_override）'}</Tag>
         {hasPrep && <Tag color={singleArch ? 'orange' : 'blue'}>{singleArch ? '單顎' : '上下顎'}</Tag>}
         {useContralateral && <Tag color='purple'>參考對側牙</Tag>}
+        {model && <Tag color='geekblue'>{model.label}</Tag>}
+        {occlusalClearance != null && <Tag>咬合間隙 {occlusalClearance} mm</Tag>}
       </div>
       <Button
         type='primary'

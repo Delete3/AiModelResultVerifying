@@ -38,6 +38,11 @@ const PIPELINE_BASE = '/api/pipeline';
 // virtual stump inside the ring, for a site with no abutment yet (mode=margin_override only).
 // Both production pipelines have it -- z790 since 2026-10-06, Chiayi since 2026-10-07 -- and
 // a deployment without it answers such a job with a 422.
+//
+// `crownModels` lists the crown models a deployment serves besides its default (v3), by the name
+// sent as crown_model (CROWN_MODELS below): Chiayi 'heygears' since 2026-11-03. A pipeline older
+// than the option does not refuse it -- it drops it, and the job comes back with a v3 crown and
+// no warning -- so the panel only ever sends a name to a target that lists it.
 const BASE_FORMATS = ['stl', 'ply', 'obj'];
 const TRI_FORMATS = [...BASE_FORMATS, 'tri'];
 
@@ -78,6 +83,9 @@ const PIPELINE_TARGETS = {
     // contralateral=true since 2026-10-08 (FlowToothSDF bc3281b on Chiayi's production crown
     // service; before that only the test endpoint /pipeline-contra/ had it).
     contralateral: true,
+    // crown_model=heygears since 2026-11-03 (FlowToothSDF train/exocad f4c6d16 + ezai-pipeline
+    // 83927a3 on this box); z790 not yet.
+    crownModels: ['heygears'],
   },
   // The same box and the same proxy as above -- only how the meshes get there differs. The
   // scans go to object storage and the POST carries two URLs instead of 30 MB of body, so
@@ -97,6 +105,7 @@ const PIPELINE_TARGETS = {
     formats: TRI_FORMATS,
     noAbutment: true,
     contralateral: true,
+    crownModels: ['heygears'],
   },
   // The library-stump test pipeline on the Chiayi box (/pipeline-stump/, 2026-10-14):
   // production main plus mode=stump (a stump from EZCAD's abutment library grown on the margin
@@ -128,6 +137,25 @@ const PIPELINE_TARGETS = {
 
 /** FDI x1-x3: the teeth the contralateral option is for. */
 const isAnteriorFdi = fdi => [1, 2, 3].includes(Number(fdi) % 10) && [1, 2, 3, 4].includes(Math.floor(Number(fdi) / 10));
+
+/**
+ * The crown models a target may list under `crownModels`, by the name sent as crown_model; the
+ * service's own default (v3) is not one of them. `teeth`: the tooth positions (FDI second digit)
+ * the crown service serves the model for -- any other tooth gets v3, and the job a warning.
+ * `occlusalClearanceMm`: what that customer's callers send with it as occlusal_clearance, which
+ * the panel fills in when the model is picked.
+ */
+const CROWN_MODELS = {
+  // v3 fine-tuned on HeyGears' exocad crowns, premolars and molars only (2026-11-02 retrain;
+  // 95 /data/crown-heygears-v2-20261030/). HeyGears' designers leave ~0.2 mm to the antagonist,
+  // which the model does not learn by itself.
+  heygears: {
+    label: 'HeyGears 風格',
+    hint: '只有小臼齒、大臼齒；其他牙位用 v3',
+    teeth: [4, 5, 6, 7],
+    occlusalClearanceMm: 0.2,
+  },
+};
 
 /**
  * What the crown service did with contralateral=true, from the job's manifest: null when it
@@ -336,6 +364,12 @@ const singleArchTargets = () => Object.values(PIPELINE_TARGETS)
  * `contralateral` (anterior teeth, a target flagged `contralateral`): the crown is refitted to
  * the mirrored same tooth on the other side; the service may decline, and says why
  * (contralateralOutcome reads it from the manifest).
+ *
+ * `crownModel` (a name the target lists under `crownModels`) builds the crown with that model
+ * instead of the service's default; the result's `crownModelUsed` is the model the crown
+ * service says it used, which is 'default' for a tooth the model does not cover.
+ * `occlusalClearanceMm` keeps the crown's occlusal surface at least that far off the antagonist
+ * (the crown service's post-processing; both boxes). Both go in the query string, not the form.
  */
 const runPipelineJob = async ({
   upperStl,
@@ -348,6 +382,8 @@ const runPipelineJob = async ({
   noAbutment = null,
   stump = null,
   contralateral = false,
+  crownModel = null,
+  occlusalClearanceMm = null,
   onStage = () => {},
   pollMs = 500,
   timeoutMs = 15 * 60 * 1000,
@@ -384,6 +420,9 @@ const runPipelineJob = async ({
     if (mode !== PIPELINE_MODES.marginOverride) throw new Error('無支台齒模式需要自訂 margin');
   }
   if (contralateral && !site.contralateral) throw new Error(`${site.label} 不支援「參考對側牙」`);
+  if (crownModel && !site.crownModels?.includes(crownModel)) {
+    throw new Error(`${site.label} 沒有「${CROWN_MODELS[crownModel]?.label ?? crownModel}」牙冠模型`);
+  }
   // Each scan goes out under its REAL extension, because that is all the service reads the
   // format from: until 2026-09-18 this sent everything as <jaw>.stl, so a PLY uploaded here
   // was parsed as STL and the job died at its first stage.
@@ -475,9 +514,16 @@ const runPipelineJob = async ({
     onStage(`正在上傳${sent.length === 2 ? '上下顎' : '單顎'}口掃到 ${site.label}（${site.hint}）…`);
   }
 
+  // The crown service's own knobs are query parameters of POST /v1/jobs, not form fields: a
+  // crown_model sent in the form would be dropped without a word.
+  const query = new URLSearchParams();
+  if (crownModel) query.set('crown_model', crownModel);
+  if (occlusalClearanceMm != null) query.set('occlusal_clearance', String(occlusalClearanceMm));
+  const submitUrl = `${base}/v1/jobs${query.toString() ? `?${query}` : ''}`;
+
   let submitted;
   try {
-    submitted = await axios.post(`${base}/v1/jobs`, form, { timeout: timeoutMs });
+    submitted = await axios.post(submitUrl, form, { timeout: timeoutMs });
   } catch (error) {
     // Keep the axios error shape for the caller's session-expiry check, with a readable
     // message on top of it.
@@ -547,7 +593,7 @@ const runPipelineJob = async ({
     // The target is in the filename so that two downloads of the same case do not collide
     // in ~/Downloads as "…(1).ply", which is exactly the moment a comparison stops being
     // one.
-    fileName: `pipeline_crown_FDI${fdi}_${target}${singleArch ? '_single' : ''}${contralateral ? '_contra' : ''}.ply`,
+    fileName: `pipeline_crown_FDI${fdi}_${target}${crownModel ? `_${crownModel}` : ''}${singleArch ? '_single' : ''}${contralateral ? '_contra' : ''}.ply`,
     archive: new Blob([archive.data], { type: 'application/zip' }),
     archiveName: `ezai-pipeline-${jobId}-FDI${fdi}.zip`,
     // The virtual stump the crown was built over (original frame), and the service's record
@@ -583,6 +629,11 @@ const runPipelineJob = async ({
     // The service fixes these itself; the direct-call options in the advanced tab do not
     // reach it.
     crownParams: job.crown_params ?? {},
+    // The crown model asked for (null: the default), and the one the crown service says it
+    // used -- 'default' for a tooth the model does not cover; null from a pipeline too old to
+    // record it.
+    crownModel,
+    crownModelUsed: manifest.backends?.crown?.model ?? null,
     // Which box produced this, for the panel to label the result and its timings.
     target,
     site,
@@ -608,4 +659,4 @@ const getPipelineHealth = async (target) => {
   }
 };
 
-export { runPipelineJob, getPipelineHealth, singleArchTargets, PIPELINE_TARGETS, PIPELINE_MODES, isAnteriorFdi, contralateralOutcome };
+export { runPipelineJob, getPipelineHealth, singleArchTargets, PIPELINE_TARGETS, PIPELINE_MODES, CROWN_MODELS, isAnteriorFdi, contralateralOutcome };

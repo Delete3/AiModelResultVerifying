@@ -1,7 +1,7 @@
 /* eslint-disable react/prop-types -- props are documented at each component; no prop-types dependency here */
 import { Alert, Button, Collapse, Spin, Tag, Tooltip } from 'antd';
 
-import { contralateralOutcome } from '../../utils/function/EzaiPipelineApi';
+import { contralateralOutcome, CROWN_MODELS } from '../../utils/function/EzaiPipelineApi';
 import { formatTimings } from '../../utils/function/formatTimings';
 import { downloadBlob } from '../../utils/tool/useStores';
 
@@ -50,6 +50,19 @@ const cutbackTags = record => <>
   {record.base && <Tag>牙冠先長在資料庫支台齒上（{Number(record.base.height_mm).toFixed(1)} mm · {record.base.cap}）</Tag>}
   {record.open_margin_edges > 0 && <Tag color='red'>margin 有 {record.open_margin_edges} 條邊沒縫合</Tag>}
 </>;
+
+/**
+ * Which crown model built the crown, when the job asked for one -- the default needs no tag.
+ * The crown service answers a tooth the model does not cover with v3, and says so.
+ */
+const crownModelTag = result => {
+  if (!result.crownModel) return null;
+  const label = CROWN_MODELS[result.crownModel]?.label ?? result.crownModel;
+  if (result.crownModelUsed === result.crownModel) return <Tag color='geekblue'>{label}</Tag>;
+  return <Tag color='orange'>
+    {result.crownModelUsed ? `用 v3 生成：「${label}」沒學過這個牙位` : `服務沒有回報牙冠模型：可能沒用「${label}」`}
+  </Tag>;
+};
 
 /** The per-stage table, plus whatever the browser waited on top of the service's own time. */
 const timingBlock = result => {
@@ -122,6 +135,8 @@ const ResultView = ({ running, progress, error, result, onEditRing }) => {
             {result.singleArch
               ? <Tag color='orange'>單顎 · 對咬為平面替身 {standin?.height_above_margin_mm != null ? `${Number(standin.height_above_margin_mm).toFixed(1)} mm` : ''}</Tag>
               : result.mode !== 'margin_only' && <Tag color='blue'>上下顎</Tag>}
+            {crownModelTag(result)}
+            {result.crownParams?.occlusal_clearance != null && <Tag>咬合間隙 {result.crownParams.occlusal_clearance} mm</Tag>}
             {library && libraryStumpTags(library)}
             {cutback && cutbackTags(cutback)}
             {relief > 0 && <Tag color='gold'>對咬被移開 {relief.toFixed(2)} mm</Tag>}

@@ -871,15 +871,15 @@ $muted: #6b7280;
   border: 0;
 }
 
-// The AI排牙 tab's API documents (ToothSsmDocs.jsx, MarkdownView.jsx).
-.ssm-docs-bar {
+// The API documents of the AI排牙 and 牙冠設計 tabs (docs/ApiDocs.jsx, docs/MarkdownView.jsx).
+.api-docs-bar {
   margin: 0 0 10px;
   padding: 8px 10px;
   border: 1px solid #d6e4ff;
   border-radius: 6px;
   background: #f0f5ff;
 
-  .ssm-docs-latest {
+  .api-docs-latest {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
@@ -889,7 +889,7 @@ $muted: #6b7280;
   }
 }
 
-.ssm-docs-toc {
+.api-docs-toc {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
@@ -897,7 +897,7 @@ $muted: #6b7280;
   font-size: 12px;
 }
 
-.ssm-docs-body {
+.api-docs-body {
   max-height: 68vh;
   overflow: auto;
   padding-right: 6px;
