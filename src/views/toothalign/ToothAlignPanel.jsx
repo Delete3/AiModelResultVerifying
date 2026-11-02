@@ -39,6 +39,9 @@ const ABO_ROWS = [
   ['OJ', '覆蓋'], ['IPC', '鄰接接觸'], ['RA', '牙根平行（生成的）'], ['ABO7', 'ABO7＝總分−RA'], ['TOTAL', '總分'],
 ];
 const STEP_LABEL = { segment: '分牙', generate: '牙根', align: '排牙' };
+// the service's `issues` levels (tooth_ssm test service since 2026-11-02)
+const ISSUE_LEVEL = { error: { label: '錯誤', color: 'red' }, warning: { label: '警告', color: 'orange' },
+  info: { label: '提示', color: 'blue' } };
 const DETAIL_LABEL = {
   toothroot_segment: 'ToothRoot 分牙',
   articulate: '咬合檢查',
@@ -331,6 +334,8 @@ const ToothAlignPanel = () => {
   };
 
   const r = job?.results;
+  // each error / warning issue is also a `[code] ...` line in warnings: show it once
+  const otherWarnings = (job?.warnings ?? []).filter(w => !(job?.issues && /^\[(seg|gen|input)\./.test(w)));
   const busy = Boolean(running);
   const caseReady = Boolean(caseScene.hasUpper && caseScene.hasLower);
   const hasSeg = Boolean(r?.crowns?.length);
@@ -448,8 +453,17 @@ const ToothAlignPanel = () => {
         <Tag color='green'>總共 {fmtSeconds(timing.total)}</Tag>
       </div>}
       {job?.job_id && <div className='health-line'>Job {job.job_id}{jobRef.current ? ` · ${TOOTHSSM_TARGETS[jobRef.current.target].box}` : ''}</div>}
-      {job?.warnings?.length > 0 && <Alert className='section-alert' type='warning' showIcon message={
-        <ul className='warning-list'>{job.warnings.map(w => <li key={w}>{w}</li>)}</ul>
+      {job?.issues?.length > 0 && <Alert className='section-alert' showIcon
+        type={job.issues.some(i => i.level === 'error') ? 'error' : 'warning'}
+        message={<>
+          <div>服務檢查到的問題：</div>
+          <ul className='warning-list'>{job.issues.map(i => <li key={`${i.stage}-${i.code}-${i.jaw}-${i.teeth.join(',')}`}>
+            <Tag color={ISSUE_LEVEL[i.level]?.color}>{ISSUE_LEVEL[i.level]?.label ?? i.level}</Tag>
+            {i.jaw ? `${JAW_NAME[i.jaw]} ` : ''}{i.message} <span className='issue-code'>{i.code}</span>
+          </li>)}</ul>
+        </>} />}
+      {otherWarnings.length > 0 && <Alert className='section-alert' type='warning' showIcon message={
+        <ul className='warning-list'>{otherWarnings.map(w => <li key={w}>{w}</li>)}</ul>
       } />}
 
       {r?.crowns?.length > 0 && <div className='toothseg-summary'>
@@ -516,7 +530,7 @@ const ToothAlignPanel = () => {
             .map(([fdi, why]) => `${fdi}（${why}）`)).join('、')}
         </span>}
       </div>}
-      {r?.exact_crown && ['upper', 'lower'].some(jaw => r.exact_crown[jaw]?.engulfed?.length) && <Alert className='section-alert' type='warning' showIcon
+      {!job?.issues && r?.exact_crown && ['upper', 'lower'].some(jaw => r.exact_crown[jaw]?.engulfed?.length) && <Alert className='section-alert' type='warning' showIcon
         message={`請檢查分牙：${['upper', 'lower'].flatMap(jaw => (r.exact_crown[jaw]?.engulfed ?? [])
           .map(e => `${e.cut}（生成的牙長到 ${e.neighbour} 的位置，${e.mm3} mm³，已用 ${e.neighbour} 切開）`)).join('、')}`} />}
 
