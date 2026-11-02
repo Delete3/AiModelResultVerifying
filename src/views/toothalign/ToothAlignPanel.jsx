@@ -349,7 +349,7 @@ const ToothAlignPanel = () => {
       矯正 AI 排牙（tooth_ssm）：上下顎口掃 → AI 分牙 → 依牙冠生成整顆牙（含牙根）→ 排牙模型移動每顆牙（牙根跟著動）→ ABO 評分。
       預設是 tooth_ssm 原作者流程；矯正專案檔的口掃是減過面的（約 1.2 萬面），原流程在這種檔上常會漏牙，可改選「ToothRoot 分牙＋牙根」。排牙一律用 tooth_ssm 的模型。
       上下顎都要。上下顎朝同一方向時，服務會把上顎轉成估計的咬合位置再分一次。結果在服務端保留 2 小時。
-      主機「嘉義 5090 測試（牙冠貼合口掃）」是還沒上正式版的新流程：AI 生成的牙齒擬合到口掃上（網格均勻、沒有縫線）、和鄰牙不干涉，可選牙根接法。
+      2026-11-02 起兩台的預設是 AI 生成的牙齒擬合到口掃上（網格均勻、沒有縫線）、和鄰牙不干涉，接矯正式虛擬牙根；要之前的結果，牙冠選「整顆 AI 重新生成」、牙根選「AI 生成牙根」。
     </p>
 
     <ToothSsmDocs />
@@ -391,7 +391,7 @@ const ToothAlignPanel = () => {
           <Select size='small' value={seg} onChange={setSeg} options={TOOTHSSM_SEG_OPTIONS} disabled={busy} />
         </label>
         {TOOTHSSM_ROOT_TARGETS.includes(target) && seg === 'ssm' && <label
-          title='AI 牙齒擬合口掃＝AI 生成的牙重新網格化、牙冠拉到口掃上、推開鄰牙，網格均勻沒有縫線；口掃牙冠原樣＝分牙切下來的口掃網格（鄰接面凹口用三角形帶補起，會有細長三角形）'>
+          title='AI 牙齒擬合口掃＝AI 生成的牙重新網格化、牙冠拉到口掃上、推開鄰牙，網格均勻沒有縫線；口掃牙冠原樣＝分牙切下來的口掃網格（鄰接面凹口用三角形帶補起，會有細長三角形）；整顆 AI 重新生成＝原作者流程（牙冠會離開口掃、和鄰牙穿插），配虛擬牙根或不接牙根時當成口掃牙冠原樣'>
           牙冠
           <Select size='small' value={crown} onChange={setCrown} options={TOOTHSSM_CROWN_OPTIONS} disabled={busy} />
         </label>}

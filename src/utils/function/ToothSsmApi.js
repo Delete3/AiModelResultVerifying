@@ -20,7 +20,6 @@ import { getFileExtension } from '../tool/StringProcessing.js';
 const TOOTHSSM_TARGETS = {
   z790: { label: '台中 5080', base: '/api/toothssm-z790', box: '台中 5080' },
   rtx5090: { label: '嘉義 5090', base: '/api/toothssm-rtx5090', box: '嘉義 5090' },
-  rtx5090_fit: { label: '嘉義 5090 測試（牙冠貼合口掃）', base: '/api/toothssm-fit', box: '嘉義 5090 測試' },
 };
 
 // Who segments the scans and grows the roots; either way tooth_ssm's alignment model arranges the
@@ -33,19 +32,22 @@ const TOOTHSSM_SEG_OPTIONS = [
   { value: 'toothroot', label: 'ToothRoot 分牙＋牙根' },
 ];
 
-// What goes under the scan crown (`root`, 2026-10-30): only the test target takes it; its default is
-// virtual. `none` returns the crowns alone, with each tooth's axis, and makes no arrangement.
+// What goes under the crown (`root`): both production boxes take it since 2026-11-02 (the test
+// target /api/toothssm-fit of 10-30..11-02 is gone); the default is virtual. `none` returns the
+// crowns alone, with each tooth's axis, and makes no arrangement.
 const TOOTHSSM_ROOT_OPTIONS = [
-  { value: 'virtual', label: '矯正式虛擬牙根（測試預設）' },
+  { value: 'virtual', label: '矯正式虛擬牙根（預設）' },
   { value: 'generated', label: 'AI 生成牙根' },
   { value: 'none', label: '不接牙根：只回牙冠＋牙軸（不排牙）' },
 ];
-const TOOTHSSM_ROOT_TARGETS = ['rtx5090_fit'];
-// How the crown is made (`crown`), on the same target: `fit` (its default since 2026-10-30 pm) the
-// generated tooth fitted onto the scan, an even mesh with no seam; `exact` the scan crown as segmented.
+const TOOTHSSM_ROOT_TARGETS = ['z790', 'rtx5090'];
+// How the crown is made (`crown`): `fit` (the default) the generated tooth fitted onto the scan, an
+// even mesh with no seam; `exact` the scan crown as segmented; `zhu` the author's whole regenerated
+// tooth -- with root=generated, what production returned until 2026-11-01.
 const TOOTHSSM_CROWN_OPTIONS = [
-  { value: 'fit', label: 'AI 牙齒擬合口掃（測試預設）' },
+  { value: 'fit', label: 'AI 牙齒擬合口掃（預設）' },
   { value: 'exact', label: '口掃牙冠原樣' },
+  { value: 'zhu', label: '整顆 AI 重新生成（舊預設，配 AI 生成牙根）' },
 ];
 
 // What the service reads (it picks the reader from the name). Every scan is sent gzipped as
