@@ -138,11 +138,15 @@ const submitToothSsmJob = async ({ target, upper, lower, res = 128, until = 'ali
   }
 };
 
-/** `step` (generate or align) and the steps after it, on a finished job's earlier results. */
-const rerunToothSsmStep = async (target, jobId, { step, res, root = null, crown = null }) => {
+/**
+ * `step` (generate or align) and the steps after it, up to `until`, on a finished job's earlier
+ * results. Without `until` the service goes on to align, whatever the job was created with.
+ */
+const rerunToothSsmStep = async (target, jobId, { step, res, until = null, root = null, crown = null }) => {
   const form = new FormData();
   form.append('step', step);
   if (res) form.append('res', String(res));
+  if (until) form.append('until', until);
   if (root && TOOTHSSM_ROOT_TARGETS.includes(target)) form.append('root', root);
   if (crown && TOOTHSSM_ROOT_TARGETS.includes(target)) form.append('crown', crown);
   try {

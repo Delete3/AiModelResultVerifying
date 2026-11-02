@@ -1,8 +1,8 @@
 # AI排牙 API 串接說明
 
-文件版本：2026-11-02 下午（測試版的功能上正式版：牙冠擬合口掃、虛擬牙根、`issues`；測試版端點關閉）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
+文件版本：2026-11-02（新增一節「只分牙＋生成牙齒、不排牙」；更正 `root=none` 沒有 ABO）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
 
-上傳一組上下顎口掃，服務會自動分牙、替每顆牙生成牙根、用 AI 排牙，並回傳排牙前後的 ABO 評分。這是非同步 API。嘉義、台中兩台主機提供同一個 API、互為備援，一筆全口在嘉義約 2 分鐘、台中約 3 分鐘。
+上傳一組上下顎口掃，服務會自動分牙、替每顆牙生成牙根、用 AI 排牙，並回傳排牙前後的 ABO 評分；也可以只分牙＋生成牙齒、不排牙。這是非同步 API。嘉義、台中兩台主機提供同一個 API、互為備援，一筆全口在嘉義約 2 分鐘、台中約 3 分鐘。
 
 ## 連線與認證
 
@@ -34,9 +34,34 @@
 3. 下載結果：照 `results` 裡的路徑一個一個拿，或 `GET /v1/jobs/{job_id}/archive` 一次拿整包 zip。
 4. `DELETE /v1/jobs/{job_id}`。口掃是病人資料，用完就刪；沒刪的話，job 結束 2 小時後會自動刪除。
 
-- 只想要分牙或只到牙根，建立 job 時帶 `until=segment` 或 `until=generate`，job 會在那一步做完就是 `done`。之後可以用 `POST /v1/jobs/{job_id}/run` 接著跑後面的步驟，或換參數重跑。
+- 只要分牙＋生成牙齒、不排牙，建立 job 時帶 `until=generate`，見下一節。只要分牙，帶 `until=segment`。job 會在那一步做完就是 `done`；之後可以用 `POST /v1/jobs/{job_id}/run` 接著跑後面的步驟，或換參數重跑。
 - 想用自己的牙冠或牙齒直接從生成牙根或排牙開始，見下面「從中間開始」一節。
 - 服務重新啟動時，所有 job 與檔案都會清掉；輪詢拿到 404 就表示 job 已經不在了，要重新上傳。
+
+## 只分牙＋生成牙齒、不排牙
+
+建立 job 時加 `until=generate`：服務做完分牙和生成整顆牙就結束，不跑排牙模型。`state` 從 `generating` 直接變成 `done`，不會出現 `aligning`。其他參數照常可用，預設也一樣：`crown=fit`、`root=virtual`。
+
+```bash
+curl -s "${H[@]}" -F upper=@upper.stl.gz -F lower=@lower.stl.gz -F until=generate $B/v1/jobs
+```
+
+| | 完整流程（預設，`until=align`） | 不排牙（`until=generate`） |
+|---|---|---|
+| 分牙結果 `results.crowns`、問題回報 `issues` | 有 | 有 |
+| 整顆牙 `results.teeth`（`result/{jaw}/teeth/`）、整顎 `full_jaw.ply` | 有 | 有 |
+| 牙軸 `tooth_axes.json`（`root=virtual`、`none`） | 有 | 有 |
+| 排牙後的牙 `results.aligned`、`full_jaw_aligned.ply` | 有 | 沒有（`results.aligned` 是空列表） |
+| 排牙矩陣、`results.align`、`results.transforms_url` | 有 | 沒有（null） |
+| ABO `results.abo` | 排牙前、排牙後 | 沒有（兩項都是 null） |
+| 整包 zip（Case 1） | 約 130 MB | 約 25 MB |
+| 時間（嘉義，Case 1，`res=128`，27 顆） | 多排牙這一步（約 10–15 秒） | 120 秒（分牙 18 秒、生成 102 秒） |
+
+- 拿到的牙和完整流程裡「排牙前」的牙相同：都在 `results.teeth`，排牙不會改動它們。
+- 之後想排牙：在 job 還在的 2 小時內，對同一個 job 送 `POST /v1/jobs/{job_id}/run`、`step=align`，就用這筆生成的牙齒排牙，不必重新上傳。
+- 換參數重新生成（例如換 `root` 或 `res`）而且仍然不排牙：`/run` 送 `step=generate` 時**要帶 `until=generate`**。沒帶的話，服務會接著排牙（`/run` 的 `until` 預設是 `align`，不看 job 原本的設定）。
+- `root=none`（只回開口的牙冠＋牙軸）本來就不排牙，等於自動帶 `until=generate`。
+- 用自己的牙冠只生成牙齒（`start=generate` 加 `until=generate`），見「從中間開始」。
 
 ## 兩台備援怎麼用
 
@@ -77,7 +102,7 @@
 | `root` | `virtual`、`generated`、`none` | `virtual`（2026-11-02 起；之前沒有這個參數，等於 `generated`） | 牙冠下面接什麼，只對 `seg=ssm` 有效，見「牙根」一節。`virtual` 和 `none` 的牙冠：`crown=fit` 是擬合後的 AI 牙齒，`exact` 是口掃原樣；送 `zhu` 當成 `exact` |
 | `root_fix` | `1` 或 `0` | `1` | 牙根歪斜修正（只對 `seg=ssm` 有效）。`0` 是修正前的做法，留著給比對用 |
 | `res` | `128`、`160`、`192` | `128` | 牙齒網格的解析度。192 細一點，每筆多約 10 秒 |
-| `until` | `segment`、`generate`、`align` | `align` | 做到哪一步為止 |
+| `until` | `segment`、`generate`、`align` | `align` | 做到哪一步為止。`generate`＝只分牙＋生成牙齒、不排牙（見「只分牙＋生成牙齒、不排牙」） |
 
 - `POST /v1/jobs/{job_id}/run` 收 `step`（必填，`generate` 或 `align`）以及 `res`、`until`、`root_fix`、`crown`、`root`；沒送的沿用這個 job 原本的值，只有 `until` 例外（沒送就是 `align`）。分牙不能重跑，要換分牙就建新的 job。`root=none` 的 job 沒有排牙，`step=align` 會回 422。
 - 口掃上很小的漂浮碎片（每塊小於表面積 0.5%）若會讓分牙誤判，服務會先移掉並在 `warnings` 說明。兩顎沒有對合（咬合方向不平行，或兩顎朝同一邊而被重新擺位）時，也會在 `warnings` 提醒。
@@ -131,7 +156,7 @@
 - `crown=fit`（預設）：擬合後的 AI 牙齒，在平滑的牙齦線處切開。切線是口掃牙冠的邊緣，但鄰接面不再沿凹口爬到接觸點，而是用牙齦的高度橫過去（切在 AI 的鄰接面上），再沿牙軸平滑：牙冠邊緣離鄰牙 1.5 mm 以內的部分當成凹口，切線也從不高於該處牙冠邊緣的最低點，所以不會切到口掃牙冠。切口附近的頂點先移到切線上，所以切口不會留下細長三角形。
 - `crown=exact`：口掃原本的網格，分割邊界上的鋸齒修掉、細縫與小洞補起來、鄰接面窄而深的凹口用一條三角形帶縫起來（這條帶子就是細長三角形的來源）。少數修整不成的會照分牙原樣回傳，列在 `results.exact_crown.{jaw}.fallback`，內容寫「crown as segmented」。
 - `crown=fit` 的牙冠在切開前已和鄰牙推開；接上你們的牙根後，牙根之間的干涉請你們的流程處理。
-- 不排牙：`until` 會自動停在 `generate`；`start=align` 或 `/run` 的 `step=align` 回 422。`results.abo.input` 照樣有（排牙前的 ABO）。
+- 不排牙：`until` 會自動停在 `generate`；`start=align` 或 `/run` 的 `step=align` 回 422。ABO 是排牙那一步算的，所以這個模式沒有 ABO（`results.abo` 兩項都是 null）。
 - 想要排牙，就用 `root=virtual` 或 `generated`；要把自己的整顆牙拿去排牙，用 `start=align`（見「從中間開始」）。
 
 `root=virtual`：
@@ -222,9 +247,9 @@ curl -s "${H[@]}" -F start=align -F teeth=@crowns_and_teeth.zip $B/v1/jobs      
 | `results.scans` | 上傳的口掃（已轉成 STL） |
 | `results.crowns` | 分牙結果：每顆牙冠 `{jaw, fdi, color, url}`，fdi 為 0 的是牙齦 |
 | `results.teeth` | 排牙前、含牙根的整顆牙 `{jaw, fdi, color, coloured, url}`；`root=none` 時是開口的牙冠 |
-| `results.aligned` | 排牙後的整顆牙，同上 |
-| `results.align` | 每顎每顆牙的排牙旋轉角（°）與位移（mm），以及平均、最大、超過 20° 的顆數 |
-| `results.abo` | 排牙前（`input`）與排牙後（`aligned`）的 ABO 各項與 ABO7、TOTAL（越低越好） |
+| `results.aligned` | 排牙後的整顆牙，同上；沒有排牙（`until=generate`、`root=none`）時是空列表 |
+| `results.align` | 每顎每顆牙的排牙旋轉角（°）與位移（mm），以及平均、最大、超過 20° 的顆數；沒有排牙時是 null |
+| `results.abo` | 排牙前（`input`）與排牙後（`aligned`）的 ABO 各項與 ABO7、TOTAL（越低越好）；兩項都在排牙那一步算，沒有排牙時都是 null |
 | `results.crown_stats` | AI 生成的牙冠離原口掃多遠（平均、p95，mm）、封閉的顆數、失敗的牙。`crown=exact`、`fit` 時描述的是擬合或換回口掃前的生成牙冠 |
 | `results.exact_crown` | `crown=exact` 或 `fit`，或 `root` 不是 `generated` 時：每顎的 `crown`（`exact` 或 `fit`）、`scan_crown`（用上口掃牙冠或擬合成功的顆數）、`fallback`（沒做成的牙與原因）、`shared_mm3_generated` 與 `shared_mm3_after_parting`（推開前後鄰牙重疊的體積，mm³；`fit` 只有推開後的）、`contact_films_cut`（`exact` 在緊接觸點切掉的薄膜）、`engulfed`（生成的牙佔到鄰牙位置而被切開的牙，請檢查分牙）、`generated_root`（`root=virtual` 時改接 AI 生成牙根的牙）、`triangles`（`fit`：這一顎交出去的牙的面數 `faces`、最小角小於 10° 的 `min_angle_lt10`、一邊超過 1 mm 的 `edge_gt1mm`） |
 | `results.root` | 這個 job 的 `root` |
@@ -415,6 +440,7 @@ job 本身失敗（`state` 是 `failed`）仍然回 200，原因在 `error` 與 
 | 設定 | 嘉義 RTX 5090 | 台中 RTX 5080 |
 |---|---|---|
 | `seg=ssm`，預設（`crown=fit`、`root=virtual`、`root_fix=1`，含排牙） | Case 1（`res=192`）135 秒；Case 2（`res=128`）137 秒 | Case 1（`res=128`）187 秒 |
+| `seg=ssm`，預設，`until=generate`（只分牙＋生成牙齒，不排牙） | Case 1（`res=128`）120 秒 | 未量（少掉的排牙這一步約 16 秒） |
 | `seg=ssm`，`crown=fit`，`root=none`（不排牙） | Case 1（`res=192`）115 秒 | 未量 |
 | `seg=ssm`，`crown=exact`，`root=virtual`／`none` | Case 1（`res=192`）`virtual` 145 秒、`none` 116 秒；接牙冠這一步比 `fit` 少約 6–7 秒（每筆時間的差異主要來自生成牙根本身的起伏） | 未量 |
 | `seg=ssm`，`crown=exact`，`root=generated` | 比 `crown=zhu` 每筆多 11–38 秒 | 未量 |
@@ -463,7 +489,7 @@ BASE, H = pick_host()          # job 之後的每個請求都用同一台
 r = requests.post(f"{BASE}/v1/jobs", headers=H, timeout=300,
                   files={"upper": ("upper.stl.gz", gz("upper.stl")),
                          "lower": ("lower.stl.gz", gz("lower.stl"))},
-                  data={"seg": "ssm", "res": "128"})   # 另可送 "crown"（fit／exact／zhu）與 "root"（virtual／generated／none）
+                  data={"seg": "ssm", "res": "128"})   # 另可送 "crown"（fit／exact／zhu）、"root"（virtual／generated／none），不排牙加 "until": "generate"
 r.raise_for_status()
 job = r.json()["job_id"]
 
@@ -481,7 +507,7 @@ for i in s.get("issues", []):           # 分牙與生成的問題（見「問�
 if s["state"] == "done":
     z = requests.get(f"{BASE}/v1/jobs/{job}/archive", headers=H, timeout=600)
     open(f"toothssm-{job}.zip", "wb").write(z.content)
-    for t in s["results"]["aligned"]:          # 排牙後的每顆牙（root=none 沒有排牙：改用 results["teeth"]，是開口的牙冠）
+    for t in s["results"]["aligned"]:          # 排牙後的每顆牙（until=generate、root=none 沒有排牙：改用 results["teeth"]）
         url = f"{BASE}/v1/jobs/{job}/{t['url']}"   # t['url'] 是 files/... 開頭的相對路徑
         open(f"aligned_{t['jaw']}_{t['fdi']}.ply", "wb").write(
             requests.get(url, headers=H, timeout=120).content)
@@ -500,6 +526,8 @@ B=https://ezai2.inteware.com.tw/toothssm
 
 curl -s "${H[@]}" $B/health
 curl -s "${H[@]}" -F upper=@upper.stl.gz -F lower=@lower.stl.gz -F seg=ssm $B/v1/jobs
+curl -s "${H[@]}" -F upper=@upper.stl.gz -F lower=@lower.stl.gz -F until=generate $B/v1/jobs   # 只分牙＋生成牙齒，不排牙
+curl -s "${H[@]}" -F step=align $B/v1/jobs/<job_id>/run                                      # 之後再用同一筆的牙齒排牙
 curl -s "${H[@]}" -F upper=@upper.stl.gz -F lower=@lower.stl.gz -F root=none $B/v1/jobs   # 只回牙冠＋牙軸，不排牙（牙冠預設 crown=fit；要口掃原樣加 -F crown=exact）
 curl -s "${H[@]}" $B/v1/jobs/<job_id>
 curl -s "${H[@]}" -o result.zip $B/v1/jobs/<job_id>/archive

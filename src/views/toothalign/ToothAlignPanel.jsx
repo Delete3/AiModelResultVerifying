@@ -31,6 +31,13 @@ const RES_OPTIONS = [
   { value: 160, label: '160' },
   { value: 192, label: '192（較慢）' },
 ];
+// How far a new job goes (`until`): the whole chain, or the segmentation and the whole teeth with no
+// arrangement (2026-11-02; the service has always stopped there on until=generate). root=none never
+// arranges: the service clamps it, and the select shows that.
+const FLOW_OPTIONS = [
+  { value: 'align', label: '分牙→生成牙齒→排牙（預設）' },
+  { value: 'generate', label: '只分牙＋生成牙齒（不排牙）' },
+];
 // The eight ABO criteria, all penalty points (lower is better). RA reads the generated roots,
 // so the scale for scans is ABO7 = TOTAL - RA. Only for comparing before / after -- not
 // against the ABO pass thresholds (third_party/abo_eval/SOURCE.md).
@@ -83,7 +90,8 @@ const pooled = async (tasks, size = 6) => {
  *   step 3  排牙   the alignment model (a diffusion transformer over both arches' crowns)
  *                  predicts one rigid move per tooth; the roots move with their crowns
  *
- * Both arches are required. Its own pair of scans, or the design tab's.
+ * 「流程」 can stop a job after step 2 (until=generate); step 3 then runs on its teeth later
+ * (「接著排牙」). Both arches are required. Its own pair of scans, or the design tab's.
  */
 const ToothAlignPanel = () => {
   const view = useToothAlignScene();
@@ -94,6 +102,7 @@ const ToothAlignPanel = () => {
   const [seg, setSeg] = useState('ssm');
   const [root, setRoot] = useState('virtual');
   const [crown, setCrown] = useState('fit');
+  const [flow, setFlow] = useState('align');
   const [running, setRunning] = useState(null);
   const [stage, setStage] = useState('');
   const [progress, setProgress] = useState(null);
@@ -106,6 +115,10 @@ const ToothAlignPanel = () => {
   const [reach, setReach] = useState({});
   // The job lives on the box that took it: polls, files and deletes go to that one.
   const jobRef = useRef(null);
+  // what the next job (or generate rerun) is set to do: root=none returns crowns and never arranges
+  const rootChoice = TOOTHSSM_ROOT_TARGETS.includes(target) && seg === 'ssm';
+  const crownsChosen = rootChoice && root === 'none';
+  const noAlign = crownsChosen || flow === 'generate';
 
   useEffect(() => {
     for (const key of Object.keys(TOOTHSSM_TARGETS)) {
@@ -212,7 +225,7 @@ const ToothAlignPanel = () => {
       setError('上下顎口掃都要選');
       return;
     }
-    setRunning(until === 'align' ? 'all' : until);
+    setRunning(until === 'segment' ? 'segment' : 'all');
     setError(null);
     setTiming(null);
     forgetJob();
@@ -258,9 +271,12 @@ const ToothAlignPanel = () => {
     setError(null);
     const startedAt = performance.now();
     try {
-      // `root` and `crown` only for generate: an align rerun keeps the job's own (root=none has no align at all)
-      await rerunToothSsmStep(jobRef.current.target, jobRef.current.id,
-        { step, res, root: step === 'generate' ? root : null, crown: step === 'generate' ? crown : null });
+      // `root` and `crown` only for generate: an align rerun keeps the job's own (root=none has no align at all).
+      // A generate rerun stops where 「流程」 says; the service's own default would go on to align.
+      await rerunToothSsmStep(jobRef.current.target, jobRef.current.id, {
+        step, res, until: step === 'generate' ? (noAlign ? 'generate' : 'align') : null,
+        root: step === 'generate' ? root : null, crown: step === 'generate' ? crown : null,
+      });
       const doc = await follow();
       const download = await loadResults(doc, step);
       setJob(doc);
@@ -340,6 +356,7 @@ const ToothAlignPanel = () => {
   const caseReady = Boolean(caseScene.hasUpper && caseScene.hasLower);
   const hasSeg = Boolean(r?.crowns?.length);
   const hasTeeth = Boolean(r?.teeth?.length);
+  const hasAligned = Boolean(r?.aligned?.length);
   const crownsOnly = job?.params?.root === 'none';
   const abo = r?.abo;
   const t = timing?.timings ?? {};
@@ -350,6 +367,7 @@ const ToothAlignPanel = () => {
       預設是 tooth_ssm 原作者流程；矯正專案檔的口掃是減過面的（約 1.2 萬面），原流程在這種檔上常會漏牙，可改選「ToothRoot 分牙＋牙根」。排牙一律用 tooth_ssm 的模型。
       上下顎都要。上下顎朝同一方向時，服務會把上顎轉成估計的咬合位置再分一次。結果在服務端保留 2 小時。
       2026-11-02 起兩台的預設是 AI 生成的牙齒擬合到口掃上（網格均勻、沒有縫線）、和鄰牙不干涉，接矯正式虛擬牙根；要之前的結果，牙冠選「整顆 AI 重新生成」、牙根選「AI 生成牙根」。
+      「流程」選「只分牙＋生成牙齒（不排牙）」時，做到整顆牙（含牙根、牙軸）就結束，之後要排牙再按「接著排牙」。
     </p>
 
     <ToothSsmDocs />
@@ -386,16 +404,22 @@ const ToothAlignPanel = () => {
             value: key, label: value.label + (reach[key] === 'down' ? '（目前無法使用）' : reach[key] === 'ok' ? '' : '（檢查中）'),
           }))} />
         </label>
+        <label title={crownsChosen
+          ? '牙根選「不接牙根」時一律不排牙'
+          : '排牙＝分牙、生成整顆牙，再用排牙模型移動每顆牙；不排牙＝分牙和生成整顆牙（含牙根、牙軸）做完就結束，之後可以按「接著排牙」'}>
+          流程
+          <Select size='small' value={noAlign ? 'generate' : 'align'} onChange={setFlow} options={FLOW_OPTIONS} disabled={busy || crownsChosen} />
+        </label>
         <label title='誰負責分牙和生成牙根；排牙一律是 tooth_ssm 的排牙模型。矯正專案檔裡的口掃是減過面的（約 1.2 萬面），tooth_ssm 自己的分牙在這種檔上會漏掉大部分的牙'>
           分牙＋牙根
           <Select size='small' value={seg} onChange={setSeg} options={TOOTHSSM_SEG_OPTIONS} disabled={busy} />
         </label>
-        {TOOTHSSM_ROOT_TARGETS.includes(target) && seg === 'ssm' && <label
+        {rootChoice && <label
           title='AI 牙齒擬合口掃＝AI 生成的牙重新網格化、牙冠拉到口掃上、推開鄰牙，網格均勻沒有縫線；口掃牙冠原樣＝分牙切下來的口掃網格（鄰接面凹口用三角形帶補起，會有細長三角形）；整顆 AI 重新生成＝原作者流程（牙冠會離開口掃、和鄰牙穿插），配虛擬牙根或不接牙根時當成口掃牙冠原樣'>
           牙冠
           <Select size='small' value={crown} onChange={setCrown} options={TOOTHSSM_CROWN_OPTIONS} disabled={busy} />
         </label>}
-        {TOOTHSSM_ROOT_TARGETS.includes(target) && seg === 'ssm' && <label
+        {rootChoice && <label
           title='虛擬牙根＝矯正軟體式的 3 mm 短牙根（方向取自 AI 生成的牙）；AI 生成牙根＝整顆 AI 牙；不接牙根＝只回牙冠（在牙齦線處開口）與每顆牙的牙軸，給矯正軟體自己接牙根，不排牙'>
           牙根
           <Select size='small' value={root} onChange={setRoot} options={TOOTHSSM_ROOT_OPTIONS} disabled={busy} />
@@ -406,22 +430,21 @@ const ToothAlignPanel = () => {
         </label>
       </div>
       <div className='button-grid'>
-        <Button type='primary' loading={running === 'all'} disabled={busy && running !== 'all'} onClick={() => run('align')}>
-          {TOOTHSSM_ROOT_TARGETS.includes(target) && seg === 'ssm' && root === 'none'
-            ? 'AI 分牙→牙冠＋牙軸（不排牙）' : 'AI 排牙（分牙→牙根→排牙）'}
+        <Button type='primary' loading={running === 'all'} disabled={busy && running !== 'all'} onClick={() => run(noAlign ? 'generate' : 'align')}>
+          {crownsChosen ? 'AI 分牙→牙冠＋牙軸（不排牙）' : noAlign ? 'AI 分牙→生成牙齒（不排牙）' : 'AI 排牙（分牙→牙根→排牙）'}
         </Button>
         <Button loading={running === 'segment'} disabled={busy && running !== 'segment'} onClick={() => run('segment')}>
           只做 AI 分牙
         </Button>
-        <Tooltip title='用同一份分牙結果、目前選的解析度，重新生成牙根，再排牙'>
+        <Tooltip title={noAlign ? '用同一份分牙結果、目前選的設定，重新生成牙齒，不排牙' : '用同一份分牙結果、目前選的解析度，重新生成牙根，再排牙'}>
           <Button loading={running === 'generate'} disabled={!hasSeg || (busy && running !== 'generate')} onClick={() => rerun('generate')}
             title={job?.params?.seg ? `沿用這筆的「${TOOTHSSM_SEG_OPTIONS.find(o => o.value === job.params.seg)?.label}」` : undefined}>
-            {hasTeeth ? '重新生成牙根＋排牙' : '生成牙根＋排牙'}
+            {hasTeeth ? '重新' : ''}{noAlign ? '生成牙齒（不排牙）' : '生成牙根＋排牙'}
           </Button>
         </Tooltip>
-        <Tooltip title='用同一份牙齒，重新跑排牙模型'>
+        <Tooltip title={hasAligned || !hasTeeth ? '用同一份牙齒，重新跑排牙模型' : '用這筆生成的牙齒跑排牙模型'}>
           <Button loading={running === 'align'} disabled={!hasTeeth || crownsOnly || (busy && running !== 'align')} onClick={() => rerun('align')}>
-            重新排牙
+            {hasAligned || !hasTeeth ? '重新排牙' : '接著排牙'}
           </Button>
         </Tooltip>
         <Button disabled={busy} onClick={checkHealth}>檢查排牙 API</Button>
@@ -438,7 +461,8 @@ const ToothAlignPanel = () => {
         {timing.box && <Tag>{timing.box}</Tag>}
         {timing.seg && <Tag>{timing.seg === 'toothroot' ? 'ToothRoot 分牙＋牙根' : 'tooth_ssm 原流程'}</Tag>}
         {timing.upload != null && <Tag>上傳 {fmtSeconds(timing.upload)}（{timing.sentMb.toFixed(1)} MB，原檔 {timing.rawMb.toFixed(1)} MB）</Tag>}
-        {['segment', 'generate', 'align'].map(step => t[`${step}_s`] != null && <Tooltip key={step} title={
+        {/* a generate rerun with no arrangement leaves the service's align_s of an earlier align run in timings */}
+        {['segment', 'generate', 'align'].map(step => t[`${step}_s`] != null && (step !== 'align' || hasAligned) && <Tooltip key={step} title={
           Object.entries(t.detail ?? {}).filter(([name]) => ({
             segment: ['seg+articulate', 'toothroot_segment', 'articulate'],
             generate: ['roots', 'publish+merge+export', 'publish+exact+merge+export', 'colour', 'toothroot_roots'],
@@ -565,7 +589,9 @@ const ToothAlignPanel = () => {
 
       {r?.axes_url && <div className='health-line'>
         牙軸：{Object.keys(r.axes ?? {}).length} 顆（每顆牙的牙冠中心、由牙根指向牙冠的方向、根尖與 4×4 矩陣）
-        {crownsOnly && '；這個模式不排牙'}
+      </div>}
+      {job?.state === 'done' && hasTeeth && !hasAligned && <div className='health-line'>
+        這筆沒有排牙（{crownsOnly ? '不接牙根的模式一律不排牙' : '只分牙＋生成牙齒；要排牙按「接著排牙」'}）
       </div>}
       {jobRef.current && <div className='button-row'>
         <Button size='small' disabled={busy} onClick={downloadArchive}>下載全部結果（zip）</Button>
