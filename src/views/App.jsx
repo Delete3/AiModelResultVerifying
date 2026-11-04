@@ -16,6 +16,7 @@ import DesignPanel from './design/DesignPanel';
 import DirectFlowToothPanel from './advanced/DirectFlowToothPanel';
 import LegacyTools from './legacy/LegacyTools';
 import PeekAbutPanel from './peek/PeekAbutPanel';
+import StumpPanel from './stump/StumpPanel';
 import PreviewOverlay from './preview/PreviewOverlay';
 import PreviewPanel from './preview/PreviewPanel';
 import SceneOverlay from './SceneOverlay';
@@ -104,6 +105,14 @@ function App({ appSwitcher }) {
                   key: 'peek',
                   label: 'peek abut設計',
                   children: <PeekAbutPanel fdi={fdi} setFdi={setFdi} prepJaw={prepJaw} scene={scene} />,
+                },
+                {
+                  // A stump from the abutment library grown on the margin and stitched into
+                  // the scan (an AI abutment's upper part), through the Chiayi box's
+                  // library-stump test pipeline. Shares the case with the design tab.
+                  key: 'stump',
+                  label: '產生支台齒',
+                  children: <StumpPanel fdi={fdi} setFdi={setFdi} prepJaw={prepJaw} scene={scene} active={tab === 'stump'} />,
                 },
                 {
                   key: 'preview',
