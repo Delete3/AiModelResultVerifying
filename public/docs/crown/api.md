@@ -1,15 +1,15 @@
 # 牙冠設計 API 串接說明
 
-文件版本：2026-11-03（新增 HeyGears 牙冠模型 `crown_model=heygears`，目前只有嘉義）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
+文件版本：2026-11-04（新增咬合面細節 `occlusal_detail=1`，目前只有嘉義；2026-11-03 新增 HeyGears 牙冠模型 `crown_model=heygears`，也只有嘉義）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
 
 上傳一組上下顎口掃和要做牙冠的牙位（FDI），服務會自動擺正口掃、預測 margin（也可以用你畫好的 margin）、生成牙冠，最後回傳一個 zip。這是非同步 API：上傳後立刻拿到 `job_id`，再輪詢結果。嘉義、台中兩台主機提供同一個 API、互為備援；一個 job 在服務端約 3–8 秒。
 
 ## 連線與認證
 
-| 端點 | 基底網址 | `crown_model=heygears` |
-|---|---|---|
-| 嘉義（RTX 5090） | `https://ezai2.inteware.com.tw/pipeline` | 有（2026-11-03 起） |
-| 台中（RTX 5080） | `https://ezai.inteware.com.tw/pipeline` | **還沒有**：送了不會報錯，拿到的是 v3 牙冠（見「牙冠模型」） |
+| 端點 | 基底網址 | `crown_model=heygears` | `occlusal_detail` |
+|---|---|---|---|
+| 嘉義（RTX 5090） | `https://ezai2.inteware.com.tw/pipeline` | 有（2026-11-03 起） | 有（2026-11-04 起） |
+| 台中（RTX 5080） | `https://ezai.inteware.com.tw/pipeline` | **還沒有**：送了不會報錯，拿到的是 v3 牙冠（見「牙冠模型」） | **還沒有**：送了不會報錯，牙冠沒有補細節（見「咬合面細節」） |
 
 兩台各用一組 Service Token（兩個 Cloudflare Access 應用）。每個請求都要帶下面三個 header，缺一個就會被 Cloudflare 擋下。
 
@@ -74,6 +74,7 @@
 |---|---|---|---|
 | `crown_model` | `heygears` | 不帶＝v3 | 用哪個牙冠模型，見下一節。**目前只有嘉義認得** |
 | `occlusal_clearance` | −0.3–1.0（mm） | 不帶＝不另外留 | 牙冠咬合面和對咬牙之間至少留這個距離，由牙冠服務在生成後調整。HeyGears 建議 `0.2`。兩台都有 |
+| `occlusal_detail` | 0–2 | 不帶＝不補 | 生成後沿窩溝往下挖深，補回模型磨平的咬合面細節；`1` 是建議值。只對小臼齒、大臼齒，見「咬合面細節」。**目前只有嘉義認得** |
 | `job_id` | 英數字、`_`、`.`、`-`，最多 64 字 | 服務產生 | 自訂 job id，方便追蹤。**要保證不重複**：重複的 id 會蓋掉同名的 job |
 
 其他網址參數（`res`、`steps`、`guide`、`frame`、`chamfer`、`shell`、`contact_clearance`、`jaw_samples`）是模型的內部設定，請維持預設；改了以後，結果就和其他客戶的不一樣。
@@ -110,6 +111,45 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 - 形態差最多的是鄰接面（0.182 → 0.148 mm）、咬合面（0.252 → 0.215 mm）、頰舌面（0.185 → 0.161 mm）。
 - 近心鄰接區的高度補上和 HeyGears 之間 77% 的差距；頰舌側外形的凸出量這批沒有改善。
 
+## 咬合面細節：`occlusal_detail`
+
+模型生成的牙冠，咬合面最細的起伏（例如窩溝底的 V 形）比技師設計的平滑。`occlusal_detail=1` 讓牙冠服務在生成後把它補回來。
+
+| | |
+|---|---|
+| 做什麼 | 沿窩溝、窩往下挖深；挖多少，依技師牙冠量出的「模型平均磨掉多少」 |
+| 不動的地方 | 牙尖、接觸點、外壁、邊緣。只往下挖，所以不會更靠近對咬牙，`occlusal_clearance` 照樣有效 |
+| 牙位 | 只有小臼齒、大臼齒（牙位第二碼 4–7）；其他牙位照常生成、不補，`warnings` 會註明 |
+| 值 | `1`＝量出來的強度；可給 0–2（`0.5` 挖一半深、`2` 挖兩倍深）；`0` 或不帶＝不補；超出範圍或不是數字回 422 |
+| 模型 | v3、`heygears` 都可以 |
+| 哪台有 | 嘉義（2026-11-04 起）；台中之後再上 |
+| 時間 | 每顆約多 0.1 秒 |
+
+HeyGears 的呼叫要像這樣（網址參數）：
+
+```
+POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusal_clearance=0.2&occlusal_detail=1
+```
+
+**怎麼確認有補**：
+
+- 結果 zip 裡 `manifest.json` 的 `backends.crown.occlusal_detail` 是 `applied`；`backends.crown.occlusal_detail_info` 有 `deepest_mm`（最深挖了幾 mm）、`mean_mm`（平均）、`moved`（動了幾個頂點）、`seconds`。
+- 不是 `applied` 時 `warnings` 會有一則 `occlusal_detail: …`：`skipped: FDI 13 (premolars and molars only)` 是牙位不適用；`failed: …` 是處理失敗，回傳模型原本的牙冠，job 仍然成功。
+- **台中還不認得這個參數：不會報錯、沒有警告，也沒有這兩個欄位，牙冠沒有補細節。** 要寫成兩台通用，就先看 `GET /` 回傳的 `options` 有沒有 `occlusal_detail`。
+
+**效果**（第二批 75 例 HeyGears 病例，沒有參與訓練，和 HeyGears 技師的牙冠比；一次一個請求；中位數）：
+
+| | HeyGears＋0.2 mm | 加 `occlusal_detail=1` | 技師 |
+|---|---|---|---|
+| 咬合面起伏（mm，越大越銳利） | 0.123 | 0.139（74/75 例變銳利） | 0.157 |
+| 窩溝深度（mm） | 0.986 | 1.078 | 1.107 |
+| 牙尖斜度 | 18.1° | 19.1° | 21.3° |
+| 形態誤差（去掉大小差異，mm） | 0.181 | 0.182（47/75 例更接近技師） | — |
+
+- v3 也一樣：起伏 0.132 → 0.148，形態不變。
+- 看起來是「窩溝清楚一點」，不是大改；技師那種很細的副溝補不出來。
+- 逐頂點量，沒有任何一顆更靠近對咬牙；移動量平均 0.04 mm，最深約 0.19 mm。
+
 ## 狀態回應
 
 `GET /v1/jobs/{job_id}`（以及 `POST` 的 202 回應）是 JSON，主要欄位：
@@ -121,7 +161,7 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 | `stage` | `running` 時正在跑的步驟；其他時候是 null |
 | `queue_position` | `queued` 時前面還有幾筆 |
 | `fdi`、`mode`、`arches` | 這個 job 的牙位、模式，以及收到哪幾顎（`scan` 或 `absent`） |
-| `crown_params` | 送給牙冠服務的參數，包括 `model`（有帶 `crown_model` 時）、`occlusal_clearance` |
+| `crown_params` | 送給牙冠服務的參數，包括 `model`（有帶 `crown_model` 時）、`occlusal_clearance`、`occlusal_detail` |
 | `timings_ms` | 每一步的毫秒數，`total_ms` 是總計 |
 | `warnings` | 警告（英文），例如單顎、margin 離口掃太遠、牙冠還和鄰牙重疊、模型改用 v3。請顯示給使用者或記錄下來 |
 | `error`、`error_stage` | 失敗時的原因與哪一步 |
@@ -147,7 +187,8 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 `manifest.json` 裡值得讀的欄位：
 
 - `backends.crown.model`：實際用的牙冠模型（`default` 或 `heygears`）。
-- `crown_params`：送給牙冠服務的參數（含 `model`、`occlusal_clearance`）。
+- `crown_params`：送給牙冠服務的參數（含 `model`、`occlusal_clearance`、`occlusal_detail`）。
+- `backends.crown.occlusal_detail`、`occlusal_detail_info`：只有帶了 `occlusal_detail` 才有；有沒有補、挖了多少（見「咬合面細節」）。
 - `backends.crown.antagonist_relief`：大於 0 表示備牙的咬合空間不夠，服務把對咬往外移了這麼多 mm 才做得出牙冠，`warnings` 也會說明；這種牙冠的咬合要另外處理。
 - `backends.crown.antagonist`：單顎時用的對咬替身。
 - `contact_fit`：和鄰牙的重疊處理前後的數字。
@@ -158,7 +199,7 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 - 送出前先 `GET /health`：回 200 且 `status` 是 `ok` 才送。回 503、5xx、連不上或逾時，就改用另一台。
 - job 只存在收到它的那一台：輪詢、下載、刪除都要送回同一台。請把 `job_id` 和基底網址一起記下來。
 - 一台在 job 進行中掛掉（輪詢一直失敗或拿到 404），那個 job 不會轉到另一台，要重新上傳到另一台。
-- 兩台的程式、參數預設值、模型權重都一樣（`crown_model` 例外：台中還沒有）；結果不會逐位元組相同（顯示卡不同），差異只在浮點誤差的等級。
+- 兩台的程式、參數預設值、模型權重都一樣（`crown_model`、`occlusal_detail` 例外：台中還沒有）；結果不會逐位元組相同（顯示卡不同），差異只在浮點誤差的等級。
 - **HeyGears 的 job 目前只能送嘉義。** 嘉義不能用時，送台中只會拿到 v3 牙冠；要等嘉義恢復，或明確接受 v3。
 
 ## 錯誤碼與限制
@@ -172,7 +213,7 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 | 409 | job 還沒成功就要下載結果 | 等 `status` 是 `succeeded` |
 | 410 | 結果已經被清掉 | 重新上傳 |
 | 413 | 上傳太大（Cloudflare 上限 100 MB） | 先 gzip、用 `.tri`，或改用網址傳檔 |
-| 422 | 參數或檔案不對：缺一顎、不支援的副檔名、讀不出檔案、牙位不對、`margin_pts` 和 `mode` 不搭、`single_arch` 又送了對咬顎、`no_abutment` 沒有搭配 `margin_override` | 看 `detail` |
+| 422 | 參數或檔案不對：缺一顎、不支援的副檔名、讀不出檔案、牙位不對、`margin_pts` 和 `mode` 不搭、`single_arch` 又送了對咬顎、`no_abutment` 沒有搭配 `margin_override`、`occlusal_detail` 不是 0–2 的數字 | 看 `detail` |
 | 429 | 排隊已滿（100 筆） | 等 `Retry-After`（30 秒）再送，或改送另一台 |
 | 503 | `/health`：後面的 AI 服務有一個連不上 | 改送另一台 |
 
@@ -194,7 +235,7 @@ job 本身失敗（`status` 是 `failed`）時 `GET` 仍然回 200，原因在 `
 | `margin_override`（用你的 margin） | 約 3–5 秒 | 不跑 margin 模型 |
 | `margin_only` | 約 4 秒 | 不生成牙冠 |
 
-- `crown_model=heygears` 和 v3 差不多快；`occlusal_clearance=0.2` 每顆約多 0.3–0.4 秒；`contralateral=true` 每顆約多 2 秒。
+- `crown_model=heygears` 和 v3 差不多快；`occlusal_clearance=0.2` 每顆約多 0.3–0.4 秒；`occlusal_detail=1` 每顆約多 0.1 秒；`contralateral=true` 每顆約多 2 秒。
 - 經 Cloudflare 還要加上傳與輪詢的時間，主要看口掃大小與你的網路。
 
 ## 範例程式
@@ -213,9 +254,10 @@ def gz(path):
     with open(path, "rb") as f:
         return gzip.compress(f.read(), compresslevel=6)
 
-# 1. 建立 job：crown_model、occlusal_clearance 是網址參數；其他是表單欄位
+# 1. 建立 job：crown_model、occlusal_clearance、occlusal_detail 是網址參數；其他是表單欄位
 r = requests.post(f"{BASE}/v1/jobs", headers=H, timeout=300,
-                  params={"crown_model": "heygears", "occlusal_clearance": "0.2"},
+                  params={"crown_model": "heygears", "occlusal_clearance": "0.2",
+                          "occlusal_detail": "1"},              # 不要補咬合面細節就拿掉這行
                   files={"upper_stl": ("upper.stl.gz", gz("upper.stl")),
                          "lower_stl": ("lower.stl.gz", gz("lower.stl")),
                          "margin_pts": ("margin.pts", open("margin.pts", "rb").read())},
@@ -237,8 +279,9 @@ for w in s["warnings"]:
 if s["status"] == "succeeded":
     z = requests.get(f"{BASE}/v1/jobs/{job}/result", headers=H, timeout=120)
     zf = zipfile.ZipFile(io.BytesIO(z.content))
-    model = json.loads(zf.read("manifest.json"))["backends"]["crown"].get("model")
-    print("crown model:", model)                    # 後牙應該是 heygears；前牙等是 default
+    crown = json.loads(zf.read("manifest.json"))["backends"]["crown"]
+    print("crown model:", crown.get("model"))       # 後牙應該是 heygears；前牙等是 default
+    print("occlusal detail:", crown.get("occlusal_detail"))   # 後牙應該是 applied
     open(f"crown_{job}.ply", "wb").write(zf.read("crown.ply"))
 
 # 4. 刪除
@@ -254,9 +297,9 @@ B=https://ezai2.inteware.com.tw/pipeline
 
 curl -s "${H[@]}" $B/health
 curl -s "${H[@]}" $B/                                                   # options 裡有 crown_model 才認得
-curl -s "${H[@]}" "$B/v1/jobs?crown_model=heygears&occlusal_clearance=0.2" \
+curl -s "${H[@]}" "$B/v1/jobs?crown_model=heygears&occlusal_clearance=0.2&occlusal_detail=1" \
   -F upper_stl=@upper.stl.gz -F lower_stl=@lower.stl.gz -F fdi=36 \
-  -F mode=margin_override -F margin_pts=@margin.pts                     # HeyGears＋0.2 mm，用你的 margin
+  -F mode=margin_override -F margin_pts=@margin.pts                     # HeyGears＋0.2 mm＋咬合面細節，用你的 margin
 curl -s "${H[@]}" $B/v1/jobs -F upper_stl=@upper.stl.gz -F lower_stl=@lower.stl.gz -F fdi=36   # v3，AI 預測 margin
 curl -s "${H[@]}" $B/v1/jobs/<job_id>
 curl -s "${H[@]}" -o result.zip $B/v1/jobs/<job_id>/result

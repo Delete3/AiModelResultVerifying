@@ -5,7 +5,7 @@ import { Alert, Button, Checkbox, Input, InputNumber, Select, Tag, Tooltip, Uplo
 import CaseScene from '../../utils/function/CaseScene';
 import MarginEditor from '../../utils/function/margin-editor/MarginEditor';
 import { formatMarginPts } from '../../utils/function/margin-editor/marginPts';
-import { getPipelineHealth, isAnteriorFdi, singleArchTargets, CROWN_MODELS, PIPELINE_MODES, PIPELINE_TARGETS, runPipelineJob } from '../../utils/function/EzaiPipelineApi';
+import { getPipelineHealth, isAnteriorFdi, isPosteriorFdi, singleArchTargets, CROWN_MODELS, PIPELINE_MODES, PIPELINE_TARGETS, runPipelineJob } from '../../utils/function/EzaiPipelineApi';
 import { SCAN_ACCEPT } from '../../utils/loader/loadGeometry';
 import { useMarginEditor } from '../../utils/tool/useStores';
 import CrownDocs from './CrownDocs';
@@ -41,6 +41,7 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
   // visits, so nobody builds HeyGears crowns today because of a choice made last week.
   const [crownModel, setCrownModel] = useState('default');
   const [occlusalClearance, setOcclusalClearance] = useState(null);
+  const [occlusalDetail, setOcclusalDetail] = useState(false);
   const [target, setTarget] = useState(readStoredTarget);
   const [viewerConfig, setViewerConfig] = useState(null);
   const [health, setHealth] = useState(null);
@@ -74,6 +75,12 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
   const model = CROWN_MODELS[crownModel] ?? null;  // null: the service's default
   const modelTargetOf = name => Object.keys(PIPELINE_TARGETS)
     .find(key => !PIPELINE_TARGETS[key].panel && PIPELINE_TARGETS[key].crownModels?.includes(name));
+  // Like 「參考對側牙」: only sent for a back tooth on a target that has it, and the box stays
+  // ticked across FDI changes.
+  const posterior = isPosteriorFdi(fdi);
+  const useOcclusalDetail = occlusalDetail && posterior && Boolean(site.occlusalDetail);
+  const detailTarget = Object.keys(PIPELINE_TARGETS)
+    .find(key => !PIPELINE_TARGETS[key].panel && PIPELINE_TARGETS[key].occlusalDetail);
   // A tooth the model was not trained on is still sent; the crown service answers with v3.
   const modelSkipsTooth = Boolean(model && prepJaw && !model.teeth.includes(Number(fdi) % 10));
 
@@ -123,6 +130,11 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
     ? `「${site.label}」還沒有「${model.label}」牙冠模型：改選「${PIPELINE_TARGETS[modelTargetOf(crownModel)]?.label}」或改回 v3`
     : null;
   if (modelBlocker) blockers.push(modelBlocker);
+  // Generating only, as with the model.
+  const detailBlocker = occlusalDetail && posterior && !site.occlusalDetail
+    ? `「${site.label}」還沒有「咬合面細節」：改選「${PIPELINE_TARGETS[detailTarget]?.label}」或取消勾選`
+    : null;
+  if (detailBlocker) blockers.push(detailBlocker);
 
   const chooseCrownModel = value => {
     setCrownModel(value);
@@ -143,7 +155,14 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
     if (checked && !site.contralateral && contraTarget) chooseTarget(contraTarget);
   };
 
-  const predictBlockers = blockers.filter(b => !b.includes('margin') && b !== modelBlocker);
+  const toggleOcclusalDetail = checked => {
+    setOcclusalDetail(checked);
+    // Ticking it takes the panel to a target that has it; unticking leaves the target alone,
+    // so on / off on the same case and target is one click.
+    if (checked && !site.occlusalDetail && detailTarget) chooseTarget(detailTarget);
+  };
+
+  const predictBlockers = blockers.filter(b => !b.includes('margin') && b !== modelBlocker && b !== detailBlocker);
 
   const run = async (mode) => {
     const kind = mode === PIPELINE_MODES.marginOnly ? 'margin' : 'crown';
@@ -170,6 +189,7 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
         // A margin prediction builds no crown, so neither is sent with it.
         crownModel: kind === 'crown' && model ? crownModel : null,
         occlusalClearanceMm: kind === 'crown' ? occlusalClearance : null,
+        occlusalDetail: kind === 'crown' && useOcclusalDetail,
         target,
         onStage: setProgress,
       });
@@ -345,11 +365,19 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
           參考對側牙（前牙）
         </Checkbox>
       </Tooltip>
+      <Tooltip title={posterior
+        ? '生成後沿窩溝、窩往下挖深，補回模型磨平的咬合面細節。只往下挖：牙尖、接觸點、外壁和邊緣不動，不會更靠近對咬牙，咬合間隙照樣保留。75 例測試起伏多約 12%、形態不變，每顆約多 0.1 秒。v3、HeyGears 都能用；目前只有嘉義有。'
+        : '只適用小臼齒、大臼齒（FDI x4–x7）'}>
+        <Checkbox checked={occlusalDetail} onChange={e => toggleOcclusalDetail(e.target.checked)} disabled={Boolean(running) || !posterior}>
+          咬合面細節（後牙）
+        </Checkbox>
+      </Tooltip>
 
       <div className='generate-summary'>
         <Tag>{generateMode === PIPELINE_MODES.full ? 'AI margin（mode=full）' : '自訂 margin（mode=margin_override）'}</Tag>
         {hasPrep && <Tag color={singleArch ? 'orange' : 'blue'}>{singleArch ? '單顎' : '上下顎'}</Tag>}
         {useContralateral && <Tag color='purple'>參考對側牙</Tag>}
+        {useOcclusalDetail && <Tag color='cyan'>咬合面細節</Tag>}
         {model && <Tag color='geekblue'>{model.label}</Tag>}
         {occlusalClearance != null && <Tag>咬合間隙 {occlusalClearance} mm</Tag>}
       </div>

@@ -2,6 +2,23 @@
 
 最新的一版在最上面。每次 API 更新都會在這裡加一節，並同步更新「API 串接文件」。這裡的 API 是牙冠生成 pipeline（網址結尾 `/pipeline`）：上傳口掃與牙位，回傳牙冠。
 
+## 2026-11-04　咬合面細節：`occlusal_detail=1`（先上嘉義）
+
+嘉義（`https://ezai2.inteware.com.tw/pipeline`）08:49–08:51 換版：牙冠服務約 14 秒、pipeline 約 2 秒不能用，當時沒有 job 在跑。台中還沒有換。
+
+- **新參數 `occlusal_detail`**（網址參數，不是表單欄位）：`occlusal_detail=1` 讓牙冠服務在生成後沿窩溝、窩往下挖深，補回模型磨平的咬合面細節。也可以給 0–2 的強度（`0.5` 挖一半深、`2` 挖兩倍深）；不帶或 `0` 就是原本的牙冠。
+- **只往下挖**：牙尖、接觸點、外壁和邊緣不動，牙冠不會更靠近對咬牙，`occlusal_clearance` 留的間隙照樣保留。v3、HeyGears 模型都能用。
+- **只處理小臼齒和大臼齒**（牙位第二碼 4–7）：其他牙位帶了也照常生成，只是不補，`warnings` 會註明。
+- **不帶新參數的呼叫完全不變**：換版前後用 13 個病例、單顎 FDI 13、5 個無支台齒病例比對，輸出逐位元組相同（只有 `manifest.json` 的時間不同）。
+- **新欄位**（只有帶了這個參數的 job 才有）：`manifest.json` 的 `backends.crown.occlusal_detail` 是 `applied`（有補）、`skipped: …`（牙位不適用）或 `failed: …`（處理失敗，回傳模型原本的牙冠，job 仍然成功）；`backends.crown.occlusal_detail_info` 是移動了多少（`deepest_mm` 最深、`mean_mm` 平均、`moved` 頂點數、`seconds`）。`GET /` 的 `options` 多了 `occlusal_detail`。
+- **台中還不認得 `occlusal_detail`**：送了不會報錯、也沒有警告，拿到的牙冠沒有補細節，`manifest.json` 也沒有這兩個欄位。要寫成兩台通用，先看 `GET /` 的 `options`。
+- **效果**（第二批 75 例 HeyGears 病例，沒有參與訓練，一次一個請求，和 HeyGears 技師的牙冠比）：
+  - 咬合面起伏（越大越銳利）：HeyGears＋0.2 mm 0.123 → 0.139（多 12.6%，74/75 例變銳利），技師 0.157；v3 0.132 → 0.148。
+  - 窩溝深度 0.986 → 1.078 mm（技師 1.107）；牙尖斜度 18.1° → 19.1°（技師 21.3°）。
+  - 形態誤差不變（HeyGears 0.181 → 0.182 mm，47/75 例更接近技師）。
+  - 逐頂點量，沒有任何一顆牙冠更靠近對咬牙。移動量平均 0.04 mm，最深約 0.19 mm（最多 0.33 mm）。
+- **速度**：每顆多約 0.1 秒（只用 CPU）。
+
 ## 2026-11-03　HeyGears 牙冠模型：`crown_model=heygears`（先上嘉義）
 
 嘉義（`https://ezai2.inteware.com.tw/pipeline`）07:30–07:35 換版：牙冠服務約 15 秒、pipeline 約 2 秒不能用，當時沒有 job 在跑。台中還沒有換。

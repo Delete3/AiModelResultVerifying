@@ -43,6 +43,10 @@ const PIPELINE_BASE = '/api/pipeline';
 // sent as crown_model (CROWN_MODELS below): Chiayi 'heygears' since 2026-11-03. A pipeline older
 // than the option does not refuse it -- it drops it, and the job comes back with a v3 crown and
 // no warning -- so the panel only ever sends a name to a target that lists it.
+//
+// `occlusalDetail: true` marks a deployment whose pipeline passes occlusal_detail=1 to the crown
+// service: grooves and fossae deepened after decoding, premolars and molars only. Chiayi since
+// 2026-11-04. A pipeline older than the option drops it without a warning, as with crown_model.
 const BASE_FORMATS = ['stl', 'ply', 'obj'];
 const TRI_FORMATS = [...BASE_FORMATS, 'tri'];
 
@@ -86,6 +90,9 @@ const PIPELINE_TARGETS = {
     // crown_model=heygears since 2026-11-03 (FlowToothSDF train/exocad f4c6d16 + ezai-pipeline
     // 83927a3 on this box); z790 not yet.
     crownModels: ['heygears'],
+    // occlusal_detail=1 since 2026-11-04 (FlowToothSDF train/exocad 98c1d73 + ezai-pipeline
+    // 6b96617 on this box); z790 not yet.
+    occlusalDetail: true,
   },
   // The same box and the same proxy as above -- only how the meshes get there differs. The
   // scans go to object storage and the POST carries two URLs instead of 30 MB of body, so
@@ -106,6 +113,7 @@ const PIPELINE_TARGETS = {
     noAbutment: true,
     contralateral: true,
     crownModels: ['heygears'],
+    occlusalDetail: true,
   },
   // The library-stump test pipeline on the Chiayi box (/pipeline-stump/, 2026-10-14):
   // production main plus mode=stump (a stump from EZCAD's abutment library grown on the margin
@@ -137,6 +145,9 @@ const PIPELINE_TARGETS = {
 
 /** FDI x1-x3: the teeth the contralateral option is for. */
 const isAnteriorFdi = fdi => [1, 2, 3].includes(Number(fdi) % 10) && [1, 2, 3, 4].includes(Math.floor(Number(fdi) / 10));
+
+/** FDI x4-x7: the teeth occlusal_detail is for (the crown service skips any other). */
+const isPosteriorFdi = fdi => [4, 5, 6, 7].includes(Number(fdi) % 10) && [1, 2, 3, 4].includes(Math.floor(Number(fdi) / 10));
 
 /**
  * The crown models a target may list under `crownModels`, by the name sent as crown_model; the
@@ -184,6 +195,23 @@ const contralateralOutcome = manifest => {
   const raw = status.replace(/^skipped:\s*/, '');
   const hit = CONTRA_REASONS.find(([key]) => raw.startsWith(key));
   return { applied: false, reason: hit ? hit[1] : raw, raw, info: crown.contralateral_info ?? null };
+};
+
+/**
+ * What the crown service did with occlusal_detail=1, from the job's manifest: null when it was
+ * not asked, else { applied, reason (Chinese, for the tag), raw (the service's words), info
+ * (vertices moved, deepest_mm, mean_mm, seconds, ...) }.
+ */
+const occlusalDetailOutcome = manifest => {
+  const crown = manifest?.backends?.crown;
+  if (!manifest?.crown_params?.occlusal_detail) return null;
+  const status = crown?.occlusal_detail;
+  const info = crown?.occlusal_detail_info ?? null;
+  if (!status) return { applied: false, reason: '服務不支援這個選項', raw: '', info: null };
+  if (status === 'applied') return { applied: true, reason: '', raw: status, info };
+  const reason = status.startsWith('skipped') ? '不是小臼齒或大臼齒'
+    : status.startsWith('failed') ? '處理失敗，回傳模型原本的牙冠' : status;
+  return { applied: false, reason, raw: status, info };
 };
 
 /**
@@ -370,6 +398,10 @@ const singleArchTargets = () => Object.values(PIPELINE_TARGETS)
  * service says it used, which is 'default' for a tooth the model does not cover.
  * `occlusalClearanceMm` keeps the crown's occlusal surface at least that far off the antagonist
  * (the crown service's post-processing; both boxes). Both go in the query string, not the form.
+ *
+ * `occlusalDetail` (premolars and molars, a target flagged `occlusalDetail`) sends
+ * occlusal_detail=1, also in the query string: the crown service deepens the occlusal grooves
+ * after decoding, downward only (occlusalDetailOutcome reads what it did from the manifest).
  */
 const runPipelineJob = async ({
   upperStl,
@@ -384,6 +416,7 @@ const runPipelineJob = async ({
   contralateral = false,
   crownModel = null,
   occlusalClearanceMm = null,
+  occlusalDetail = false,
   onStage = () => {},
   pollMs = 500,
   timeoutMs = 15 * 60 * 1000,
@@ -423,6 +456,7 @@ const runPipelineJob = async ({
   if (crownModel && !site.crownModels?.includes(crownModel)) {
     throw new Error(`${site.label} 沒有「${CROWN_MODELS[crownModel]?.label ?? crownModel}」牙冠模型`);
   }
+  if (occlusalDetail && !site.occlusalDetail) throw new Error(`${site.label} 不支援「咬合面細節」`);
   // Each scan goes out under its REAL extension, because that is all the service reads the
   // format from: until 2026-09-18 this sent everything as <jaw>.stl, so a PLY uploaded here
   // was parsed as STL and the job died at its first stage.
@@ -519,6 +553,7 @@ const runPipelineJob = async ({
   const query = new URLSearchParams();
   if (crownModel) query.set('crown_model', crownModel);
   if (occlusalClearanceMm != null) query.set('occlusal_clearance', String(occlusalClearanceMm));
+  if (occlusalDetail) query.set('occlusal_detail', '1');
   const submitUrl = `${base}/v1/jobs${query.toString() ? `?${query}` : ''}`;
 
   let submitted;
@@ -593,7 +628,7 @@ const runPipelineJob = async ({
     // The target is in the filename so that two downloads of the same case do not collide
     // in ~/Downloads as "…(1).ply", which is exactly the moment a comparison stops being
     // one.
-    fileName: `pipeline_crown_FDI${fdi}_${target}${crownModel ? `_${crownModel}` : ''}${singleArch ? '_single' : ''}${contralateral ? '_contra' : ''}.ply`,
+    fileName: `pipeline_crown_FDI${fdi}_${target}${crownModel ? `_${crownModel}` : ''}${singleArch ? '_single' : ''}${contralateral ? '_contra' : ''}${occlusalDetail ? '_detail' : ''}.ply`,
     archive: new Blob([archive.data], { type: 'application/zip' }),
     archiveName: `ezai-pipeline-${jobId}-FDI${fdi}.zip`,
     // The virtual stump the crown was built over (original frame), and the service's record
@@ -659,4 +694,4 @@ const getPipelineHealth = async (target) => {
   }
 };
 
-export { runPipelineJob, getPipelineHealth, singleArchTargets, PIPELINE_TARGETS, PIPELINE_MODES, CROWN_MODELS, isAnteriorFdi, contralateralOutcome };
+export { runPipelineJob, getPipelineHealth, singleArchTargets, PIPELINE_TARGETS, PIPELINE_MODES, CROWN_MODELS, isAnteriorFdi, isPosteriorFdi, contralateralOutcome, occlusalDetailOutcome };
