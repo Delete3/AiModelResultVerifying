@@ -87,6 +87,10 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
   const chooseTarget = value => {
     setTarget(value);
     setHealth(null);
+    if (CROWN_MODELS[crownModel] && !PIPELINE_TARGETS[value]?.crownModels?.includes(crownModel)) {
+      setCrownModel('default');
+      setOcclusalClearance(null);
+    }
     try {
       window.localStorage.setItem(TARGET_STORAGE_KEY, value);
     } catch {
@@ -141,10 +145,6 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
     // Each model comes with the clearance its customer's callers send (HeyGears 0.2 mm), and the
     // default goes back to none, as every other caller sends; either can be edited afterwards.
     setOcclusalClearance(CROWN_MODELS[value]?.occlusalClearanceMm ?? null);
-    // As 「參考對側牙」 did while it lived on one endpoint: picking a model takes the panel to a
-    // target that has it.
-    const next = modelTargetOf(value);
-    if (CROWN_MODELS[value] && !site.crownModels?.includes(value) && next) chooseTarget(next);
   };
 
   const toggleContralateral = checked => {
@@ -257,13 +257,19 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
 
   const crownModelOptions = [
     { value: 'default', label: <div className='target-option'><span>v3（預設）</span><span className='target-hint'>其他客戶都用這個</span></div> },
-    ...Object.entries(CROWN_MODELS).map(([key, entry]) => ({
-      value: key,
-      label: <div className='target-option'>
-        <span>{entry.label}</span>
-        <span className='target-hint'>{entry.hint}{modelTargetOf(key) ? '' : '（目前沒有主機）'}</span>
-      </div>,
-    })),
+    ...Object.entries(CROWN_MODELS).map(([key, entry]) => {
+      // Only selectable while the chosen pipeline serves it (HeyGears: the Chiayi targets).
+      const served = Boolean(site.crownModels?.includes(key));
+      const where = PIPELINE_TARGETS[modelTargetOf(key)]?.label;
+      return {
+        value: key,
+        disabled: !served,
+        label: <div className='target-option'>
+          <span>{entry.label}</span>
+          <span className='target-hint'>{served ? entry.hint : where ? `pipeline 選「${where}」才能選` : '目前沒有主機'}</span>
+        </div>,
+      };
+    }),
   ];
 
   const generateMode = marginSource === 'custom' ? PIPELINE_MODES.marginOverride : PIPELINE_MODES.full;
@@ -337,7 +343,7 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
 
       <div className='field-row'>
         <label>
-          <Tooltip title='生成牙冠用的模型。「HeyGears 風格」是用 HeyGears 技師的 exocad 牙冠再訓練的 v3，只學過小臼齒、大臼齒，其他牙位會自動改用 v3（結果會註明）。目前只有嘉義有。'>
+          <Tooltip title='生成牙冠用的模型。「HeyGears 風格」是用 HeyGears 技師的 exocad 牙冠再訓練的 v3，只學過小臼齒、大臼齒，其他牙位會自動改用 v3（結果會註明）。只有 pipeline 選嘉義時才能選；換到其他 pipeline 會自動改回 v3。'>
             牙冠模型
           </Tooltip>
           <Select value={crownModel} onChange={chooseCrownModel} options={crownModelOptions} disabled={Boolean(running)}
