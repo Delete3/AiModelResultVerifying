@@ -1,6 +1,6 @@
 # 牙冠設計 API 串接說明
 
-文件版本：2026-11-04（新增咬合面細節 `occlusal_detail=1`，目前只有嘉義；2026-11-03 新增 HeyGears 牙冠模型 `crown_model=heygears`，也只有嘉義）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
+文件版本：2026-11-04（貼合鄰牙不再在牙冠側面留下折痕，兩台；新增咬合面細節 `occlusal_detail=1`，目前只有嘉義；2026-11-03 新增 HeyGears 牙冠模型 `crown_model=heygears`，也只有嘉義）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
 
 上傳一組上下顎口掃和要做牙冠的牙位（FDI），服務會自動擺正口掃、預測 margin（也可以用你畫好的 margin）、生成牙冠，最後回傳一個 zip。這是非同步 API：上傳後立刻拿到 `job_id`，再輪詢結果。嘉義、台中兩台主機提供同一個 API、互為備援；一個 job 在服務端約 3–8 秒。
 
@@ -62,7 +62,7 @@
 | `margin_pts` | 檔案 | — | `mode=margin_override` 時必填，其他模式送了會回 422。`.pts`（`BEGIN_<FDI>`、每行 `x y z`、`END_<FDI>`）、`.json`（`[[x,y,z], …]`，或之前 job 的 `margin.json`）或 `.txt`，可以再加 `.gz`。座標要和一起上傳的口掃同一個座標系 |
 | `all_tooth_numbers` | 文字，例如 `14,15` | 空白 | 同一顎所有備牙的牙位（含這一顆），給 margin 模型參考；單顆可留白。`margin_override` 時沒有作用 |
 | `single_arch` | `true`、`false` | `false` | 只送備牙那一顎（另一顎的欄位要留空，送了會回 422）。對咬用鄰牙高度的平面代替，咬合面不是照真實咬合做的，每顆都會有一則警告 |
-| `contact_fit` | `true`、`false` | `true` | 牙冠穿進鄰牙的那面牆整平、往回推最多 0.3 mm；推完還重疊的留給編修並發警告。`false` 回傳模型原樣 |
+| `contact_fit` | `true`、`false` | `true` | 牙冠穿進鄰牙的那面牆整平、往回推最多 0.3 mm；margin 上方 1 mm 內（牙齦帶）不動，牆從那裡照原本的斜度接上去。推完還重疊的留給編修並發警告。`false` 回傳模型原樣 |
 | `contralateral` | `true`、`false` | `false` | 只對前牙（牙位第二碼 1–3）：形狀擬合另一側的同名牙，每顆約多 2 秒。不適用時不套用，原因寫在 `warnings` |
 | `no_abutment` | `true`、`false` | `false` | 還沒有支台齒的位置（例如植體）：要搭配 `mode=margin_override`。服務放一個虛擬支台齒再生成牙冠，多回傳 `virtual_prep.ply`；**牙冠只用外表面** |
 | `stump_height_mm`、`stump_shoulder_mm` | 數字 | 服務決定 | 只能和 `no_abutment=true` 一起送：虛擬支台齒的高度（1.0–6.0）與肩台寬（0.3–1.5） |
