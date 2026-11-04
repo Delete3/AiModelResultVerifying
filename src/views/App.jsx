@@ -14,10 +14,8 @@ import ToothSegScene from '../utils/function/ToothSegScene';
 import { useCaseScene } from '../utils/tool/useStores';
 import DesignPanel from './design/DesignPanel';
 import DirectFlowToothPanel from './advanced/DirectFlowToothPanel';
-import DirectFSAbutmentPanel from './advanced/DirectFSAbutmentPanel';
 import LegacyTools from './legacy/LegacyTools';
 import PeekAbutPanel from './peek/PeekAbutPanel';
-import StumpPanel from './stump/StumpPanel';
 import PreviewOverlay from './preview/PreviewOverlay';
 import PreviewPanel from './preview/PreviewPanel';
 import SceneOverlay from './SceneOverlay';
@@ -108,14 +106,6 @@ function App({ appSwitcher }) {
                   children: <PeekAbutPanel fdi={fdi} setFdi={setFdi} prepJaw={prepJaw} scene={scene} />,
                 },
                 {
-                  // A stump from the abutment library grown on the margin and stitched into
-                  // the scan (an AI abutment's upper part), through the Chiayi box's
-                  // library-stump test pipeline. Shares the case with the design tab.
-                  key: 'stump',
-                  label: '產生支台齒',
-                  children: <StumpPanel fdi={fdi} setFdi={setFdi} prepJaw={prepJaw} scene={scene} active={tab === 'stump'} />,
-                },
-                {
                   key: 'preview',
                   label: '模型預覽',
                   children: <PreviewPanel />,
@@ -124,14 +114,6 @@ function App({ appSwitcher }) {
                   key: 'direct',
                   label: '直接呼叫 FlowTooth',
                   children: <DirectFlowToothPanel fdi={fdi} prepJaw={prepJaw} />,
-                },
-                {
-                  // A different project from the ezai chain, on the Chiayi box only, and
-                  // it takes its own four uploads rather than the design tab's scans --
-                  // see the panel for why.
-                  key: 'fsabutment',
-                  label: 'Abutment（5090）',
-                  children: <DirectFSAbutmentPanel />,
                 },
                 {
                   // The orthodontic team's ToothRoot on the Chiayi box: AI tooth

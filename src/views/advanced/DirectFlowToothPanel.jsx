@@ -62,8 +62,9 @@ const DirectFlowToothPanel = ({ fdi }) => {
         return { ok: false, text: `${FLOWTOOTH_MODEL_LABEL[model]} 無法連線：${error.message}` };
       }
     };
-    // Both at once: an A/B is worth nothing if one side is down and only the other was checked.
-    const results = await Promise.all([describe('dev'), describe('prod')]);
+    // Only prod is left: the dev instance on 8010 (the comparison side) was deleted on
+    // 2026-11-04.
+    const results = await Promise.all([describe('prod')]);
     setMessage({ type: results.every(r => r.ok) ? 'success' : 'error', text: results.map(r => r.text).join('\n') });
   };
 
@@ -121,7 +122,7 @@ const DirectFlowToothPanel = ({ fdi }) => {
 
   return <div className='direct-panel'>
     <p className='panel-note'>
-      繞過 pipeline，直接呼叫這台主機上的兩個 FlowToothSDF（dev 8010 / prod 8013）做對照。
+      繞過 pipeline，直接呼叫這台主機上的 FlowToothSDF（prod 8013；做對照的 dev 8010 已於 2026-11-04 移除）。
       <b>不會擺正</b>：口掃、margin、contacts 必須已在同一座標系，或另外提供 jaw matrix。
       口掃沿用「牙冠設計」分頁上傳的檔案。
     </p>
@@ -154,7 +155,6 @@ const DirectFlowToothPanel = ({ fdi }) => {
 
     <section className='panel-section'>
       <div className='button-grid'>
-        <Button loading={running === 'dev'} disabled={Boolean(running)} onClick={() => generate('dev')}>生成（dev 8010・對照組）</Button>
         <Button className='prod-model-button' loading={running === 'prod'} disabled={Boolean(running)} onClick={() => generate('prod')}>
           生成（prod 8013・線上權重）
         </Button>

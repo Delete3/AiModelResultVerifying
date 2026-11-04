@@ -6,7 +6,6 @@ import PredictDirection from '../../utils/function/PredictDirection';
 import PredictAbutment from '../../utils/function/predict-abutment/PredictAbutment';
 import { setupByAbutTaskUrl, setupByDirectionTaskUrl } from '../../utils/function/SetupByTaskUrl';
 import CheckGroundTrue from '../../utils/function/CheckGroundTrue';
-import CheckAIMarginResult from '../../utils/function/CheckAIMarginResult';
 import { onUploadFile } from './legacyUpload';
 
 const taskDomainOption = [{
@@ -59,27 +58,6 @@ const LegacyTools = ({ setIsLoading }) => {
           forceRerender();
         }}
         placeholder='input FDI'
-        onPressEnter={withLoading(async () => {
-          await PredictDirection.predictMesh(PredictAbutment.toothFdi < 30);
-          await PredictAbutment.callApi_2();
-        })}
-      />
-    </div>
-    <div className='function-group'>
-      <Input
-        className='function-button'
-        value={PredictAbutment.allToothFdi}
-        onChange={e => {
-          PredictAbutment.allToothFdi = e.target.value;
-          forceRerender();
-        }}
-        placeholder='input All FDI'
-        onPressEnter={withLoading(async () => {
-          const fdiStrArray = PredictAbutment.allToothFdi.split(',');
-          if (!fdiStrArray[0]) return;
-          await PredictDirection.predictMesh(fdiStrArray[0] < 30);
-          await PredictAbutment.callApi_2();
-        })}
       />
     </div>
   </>;
@@ -94,10 +72,6 @@ const LegacyTools = ({ setIsLoading }) => {
         await PredictDirection.predictMesh(PredictAbutment.toothFdi < 30);
         await PredictAbutment.callApi(2);
       })}>predict dir and margin 1_2</Button>
-      <Button className='function-button' onClick={withLoading(async () => {
-        await PredictDirection.predictMesh(PredictAbutment.toothFdi < 30);
-        await PredictAbutment.callApi_2();
-      })}>predict dir and margin 2</Button>
     </div>
     <div className='function-group'>
       <Button className='function-button' onClick={withLoading(() => PredictDirection.predictMesh(true))}>
@@ -110,10 +84,6 @@ const LegacyTools = ({ setIsLoading }) => {
     <div className='function-group'>
       <Button className='function-button' onClick={withLoading(() => PredictAbutment.callApi())}>predict margin 1</Button>
       <Button className='function-button' onClick={withLoading(() => PredictAbutment.callApi(2))}>predict margin 1_2</Button>
-      <Button className='function-button' onClick={withLoading(() => PredictAbutment.callApi_2())}>predict margin 2</Button>
-      <Button className='function-button' onClick={withLoading(() => PredictAbutment.callApi_checkNPZ())}>
-        predict margin 2_checkNPZ
-      </Button>
     </div>
   </div>;
 
@@ -158,14 +128,12 @@ const LegacyTools = ({ setIsLoading }) => {
       }}>next</Button>
       <Button className='function-button' onClick={() => CheckGroundTrue.save()}>save</Button>
     </div>
-    <div className='function-group'>
-      <Button className='function-button' onClick={() => CheckAIMarginResult.init()}>checkAIMarginResult</Button>
-    </div>
   </div>;
 
   return <div className='legacy-tools-panel'>
     <p className='panel-note'>
       這些是牙冠流程之前的舊工具，使用自己的模型與 mesh，和「牙冠設計」分頁上傳的口掃無關。
+      呼叫 margin v6（8011）的按鈕已於 2026-11-04 隨該服務移除。
     </p>
     <Collapse
       className='legacy-tools'
