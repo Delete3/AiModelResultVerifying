@@ -165,6 +165,8 @@ const CROWN_MODELS = {
     hint: '只有小臼齒、大臼齒；其他牙位用 v3',
     teeth: [4, 5, 6, 7],
     occlusalClearanceMm: 0.2,
+    // The panel ticks 咬合面細節 when this model is picked (user, 2026-11-04); still optional.
+    occlusalDetail: true,
   },
 };
 
