@@ -40,8 +40,11 @@ const libraryStumpTags = record => <>
 /** A cutback stump's record (kind 'cutback': the crown built over the library stump, cut back). */
 const cutbackTags = record => <>
   <Tag color='gold'>
-    Cutback 支台齒 {Number(record.height_mm).toFixed(1)} mm（牆 {record.cutback_mm} · 咬合面 {record.occlusal_mm} mm）
+    {record.style === 'ezcad'
+      ? <>Cutback 支台齒 {Number(record.height_mm).toFixed(1)} mm（EZCAD 式：等距 {record.cutback_mm} mm · 交界 {record.junction_mm} mm{record.junction_source === 'auto' ? ' 自動' : ''}）</>
+      : <>Cutback 支台齒 {Number(record.height_mm).toFixed(1)} mm（牆 {record.cutback_mm} · 咬合面 {record.occlusal_mm} mm）</>}
   </Tag>
+  {record.style === 'ezcad' && record.held_in_mm > 0.1 && <Tag color='orange'>交界以上被防倒凹收進 {Number(record.held_in_mm).toFixed(2)} mm</Tag>}
   {record.antagonist_gap_mm != null && <Tag>離對咬 {Number(record.antagonist_gap_mm).toFixed(2)} mm</Tag>}
   <Tag color={record.axis_source === 'occlusal' ? 'orange' : 'default'}>
     {record.axis_source === 'occlusal' ? '插入方向：咬合方向（沿自然傾斜切不出來）'

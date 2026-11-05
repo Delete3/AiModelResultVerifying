@@ -386,10 +386,13 @@ const singleArchTargets = () => Object.values(PIPELINE_TARGETS)
  * `stumpMesh` (stump.ply) and `stumpScan` (scan_with_stump.ply).
  *
  * `stump.shape: 'cutback'` (and `noAbutment.stumpShape: 'cutback'`): the service builds a crown
- * over the library stump and returns that crown cut back by `cutbackMm` (walls) and
- * `cutbackOcclusalMm` (occlusal, along the axis) as the stump -- ezai-pipeline
- * app/cutback_stump.py. mode 'stump' then also carries `cutbackCrown` (cutback_crown.ply, the
- * crown it was cut back from).
+ * over the library stump and returns that crown cut back as the stump -- ezai-pipeline
+ * app/cutback_stump.py. `cutbackStyle` null / 'ezcad' (the service's default since 2026-11-05):
+ * EZCAD's structure, the crown and the stump meeting `cutbackJunctionMm` above the ring on the
+ * crown's wall (null: the service finds it), the crown taken in by one even `cutbackMm` above
+ * it; 'ring' (2026-10-14): from the ring, `cutbackMm` on the walls and `cutbackOcclusalMm` along
+ * the axis. mode 'stump' then also carries `cutbackCrown` (cutback_crown.ply, the crown it was
+ * cut back from).
  *
  * `contralateral` (anterior teeth, a target flagged `contralateral`): the crown is refitted to
  * the mirrored same tooth on the other side; the service may decline, and says why
@@ -505,8 +508,10 @@ const runPipelineJob = async ({
       if (noAbutment.insertionAxis) form.append('insertion_axis', noAbutment.insertionAxis.join(','));
     }
     if (noAbutment.stumpShape === 'cutback') {
+      if (noAbutment.cutbackStyle) form.append('cutback_style', noAbutment.cutbackStyle);
       if (noAbutment.cutbackMm != null) form.append('cutback_mm', String(noAbutment.cutbackMm));
       if (noAbutment.cutbackOcclusalMm != null) form.append('cutback_occlusal_mm', String(noAbutment.cutbackOcclusalMm));
+      if (noAbutment.cutbackJunctionMm != null) form.append('cutback_junction_mm', String(noAbutment.cutbackJunctionMm));
     }
   }
   if (mode === PIPELINE_MODES.stump && stump) {
@@ -516,8 +521,10 @@ const runPipelineJob = async ({
     if (stump.insertionAxis) form.append('insertion_axis', stump.insertionAxis.join(','));
     if (stump.shape === 'cutback') {
       form.append('stump_shape', 'cutback');
+      if (stump.cutbackStyle) form.append('cutback_style', stump.cutbackStyle);
       if (stump.cutbackMm != null) form.append('cutback_mm', String(stump.cutbackMm));
       if (stump.cutbackOcclusalMm != null) form.append('cutback_occlusal_mm', String(stump.cutbackOcclusalMm));
+      if (stump.cutbackJunctionMm != null) form.append('cutback_junction_mm', String(stump.cutbackJunctionMm));
     }
   }
   if (allToothFdi.trim() && !ringMode) {

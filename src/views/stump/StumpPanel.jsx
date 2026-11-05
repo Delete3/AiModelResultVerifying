@@ -29,11 +29,15 @@ const CLEARANCE_RANGE = [0.5, 3.0];
 const DEFAULT_SHOULDER = 0.6;
 const DEFAULT_CLEARANCE = 1.0;
 // stump_shape=cutback (ezai-pipeline app/cutback_stump.py): the crown built over the library
-// stump, cut back by these.
+// stump, cut back by these. cutback_style=ezcad (the service's default since 2026-11-05): one
+// even cutback above a junction raised onto the crown's wall; ring (2026-10-14): walls and
+// occlusal (along the axis) from the ring.
 const CUTBACK_RANGE = [0.5, 2.5];
 const OCCLUSAL_RANGE = [0.5, 3.0];
-const DEFAULT_CUTBACK = 1.0;
+const JUNCTION_RANGE = [0, 4];
+const DEFAULT_CUTBACK = { ezcad: 1.2, ring: 1.0 };
 const DEFAULT_OCCLUSAL = 1.8;
+const DEFAULT_JUNCTION = 1.0;
 // Parameters settling before the custom abutment is rebuilt (as the peek tab's lower part).
 const REBUILD_DELAY_MS = 350;
 // A custom abutment as one titanium piece on the implant: a 2-piece Ti-base's chimney seldom
@@ -99,9 +103,13 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
   const [axis, setAxis] = useState([0, 0, 1]);
   const [viewAxis, setViewAxis] = useState(null);
   const [shape, setShape] = useState('library');
-  const [cutbackMm, setCutbackMm] = useState(DEFAULT_CUTBACK);
+  const [cutbackStyle, setCutbackStyle] = useState('ezcad');
+  const [cutbackMm, setCutbackMm] = useState(DEFAULT_CUTBACK.ezcad);
   const [occlusalMm, setOcclusalMm] = useState(DEFAULT_OCCLUSAL);
+  const [junctionMode, setJunctionMode] = useState('auto');
+  const [junction, setJunction] = useState(DEFAULT_JUNCTION);
   const cutback = shape === 'cutback';
+  const ezcadStyle = cutbackStyle === 'ezcad';
   const [abutEnabled, setAbutEnabled] = useState(true);
   const [abutParams, setAbutParams] = useState({ ...PEEK_DEFAULTS });
   const [libraryIndex, setLibraryIndex] = useState(null);
@@ -282,8 +290,11 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
           insertionAxis: sentAxis,
           ...(cutback ? {
             shape: 'cutback',
-            cutbackMm: cutbackMm !== DEFAULT_CUTBACK ? cutbackMm : null,
-            cutbackOcclusalMm: occlusalMm !== DEFAULT_OCCLUSAL ? occlusalMm : null,
+            // ezcad is the service's default style; ring is asked for by name
+            cutbackStyle: ezcadStyle ? null : 'ring',
+            cutbackMm: cutbackMm !== DEFAULT_CUTBACK[cutbackStyle] ? cutbackMm : null,
+            cutbackOcclusalMm: !ezcadStyle && occlusalMm !== DEFAULT_OCCLUSAL ? occlusalMm : null,
+            cutbackJunctionMm: ezcadStyle && junctionMode === 'manual' ? junction : null,
           } : {}),
         },
         target: TARGET,
@@ -404,6 +415,18 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
         disabled={Boolean(running)}
         options={[{ label: '資料庫支台齒', value: 'library' }, { label: 'Cutback（牙冠往內縮）', value: 'cutback' }]}
       />
+      {cutback && <Radio.Group
+        value={cutbackStyle}
+        onChange={e => { setCutbackStyle(e.target.value); setCutbackMm(DEFAULT_CUTBACK[e.target.value]); setResult(null); }}
+        disabled={Boolean(running)}
+        options={[{ label: 'EZCAD 式（交界提高到外壁、等距內縮）', value: 'ezcad' }, { label: '舊版（從 margin 內縮、咬合面沿軸）', value: 'ring' }]}
+      />}
+      {cutback && ezcadStyle && <Radio.Group
+        value={junctionMode}
+        onChange={e => setJunctionMode(e.target.value)}
+        disabled={Boolean(running)}
+        options={[{ label: '交界高度：自動', value: 'auto' }, { label: '交界高度：指定', value: 'manual' }]}
+      />}
       {!cutback && <Radio.Group
         value={heightMode}
         onChange={e => setHeightMode(e.target.value)}
@@ -416,10 +439,14 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
           <InputNumber min={HEIGHT_RANGE[0]} max={HEIGHT_RANGE[1]} step={0.5} value={height} onChange={v => setHeight(v ?? 4.0)} disabled={Boolean(running)} />
         </label>}
         {cutback && <label>
-          軸面內縮（mm）
-          <InputNumber min={CUTBACK_RANGE[0]} max={CUTBACK_RANGE[1]} step={0.1} value={cutbackMm} onChange={v => setCutbackMm(v ?? DEFAULT_CUTBACK)} disabled={Boolean(running)} />
+          {ezcadStyle ? '等距內縮（mm）' : '軸面內縮（mm）'}
+          <InputNumber min={CUTBACK_RANGE[0]} max={CUTBACK_RANGE[1]} step={0.1} value={cutbackMm} onChange={v => setCutbackMm(v ?? DEFAULT_CUTBACK[cutbackStyle])} disabled={Boolean(running)} />
         </label>}
-        {cutback && <label>
+        {cutback && ezcadStyle && junctionMode === 'manual' && <label>
+          交界高度（mm，margin 以上）
+          <InputNumber min={JUNCTION_RANGE[0]} max={JUNCTION_RANGE[1]} step={0.25} value={junction} onChange={v => setJunction(v ?? DEFAULT_JUNCTION)} disabled={Boolean(running)} />
+        </label>}
+        {cutback && !ezcadStyle && <label>
           咬合面內縮（mm）
           <InputNumber min={OCCLUSAL_RANGE[0]} max={OCCLUSAL_RANGE[1]} step={0.1} value={occlusalMm} onChange={v => setOcclusalMm(v ?? DEFAULT_OCCLUSAL)} disabled={Boolean(running)} />
         </label>}
@@ -432,9 +459,17 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
           <InputNumber min={CLEARANCE_RANGE[0]} max={CLEARANCE_RANGE[1]} step={0.1} value={clearance} onChange={v => setClearance(v ?? DEFAULT_CLEARANCE)} disabled={Boolean(running)} />
         </label>}
       </div>
-      {cutback && <p className='panel-note'>
-        先用資料庫支台齒（自然高度、離對咬 1.0 mm）生成牙冠，再把牙冠往內縮：軸面 {DEFAULT_CUTBACK} mm（靠近 margin 的 2 mm 內逐漸收到肩台寬）、
+      {cutback && ezcadStyle && <p className='panel-note'>
+        照 EZCAD 的做法：先用資料庫支台齒（自然高度、離對咬 1.0 mm）生成牙冠，牙冠和支台齒的<b>交界</b>放在牙冠外壁上、margin 上方。
+        交界以下支台齒就是牙冠外壁；交界處往內收一個肩台；交界以上把牙冠沿法向<b>等距</b>內縮 {DEFAULT_CUTBACK.ezcad} mm（咬合面和軸面一樣厚，EZCAD 預設值），
+        而且不超出交界的輪廓、每邊往內傾 6°，牙冠才套得上去。交界高度「自動」＝最低、而且以上的等距內縮不會被防倒凹切到的高度
+        （牙冠在 margin 外凸得越多就越高：植體常在 1.75–3.5 mm，自然牙中位數 1.5 mm）；指定得比較低時，交界以上靠外的部分會被收進去、不再等距。
+        支台齒高度由牙冠決定；牙冠半透明顯示在支台齒外面。空間不夠切不出來時會改回資料庫支台齒並說明。
+      </p>}
+      {cutback && !ezcadStyle && <p className='panel-note'>
+        先用資料庫支台齒（自然高度、離對咬 1.0 mm）生成牙冠，再把牙冠往內縮：軸面 {DEFAULT_CUTBACK.ring} mm（靠近 margin 的 2 mm 內逐漸收到肩台寬）、
         咬合面沿插入方向 {DEFAULT_OCCLUSAL} mm，軸面每邊往內傾 6°，不超出 margin。預設值來自 99 筆技師牙冠量到的厚度。
+        這個做法不是等距內縮：margin 比牙冠窄很多時（植體），支台齒大半是錐面、牙尖會被切掉。
         支台齒高度由牙冠決定；牙冠半透明顯示在支台齒外面。空間不夠切不出來時會改回資料庫支台齒並說明。
       </p>}
       <Radio.Group
@@ -484,7 +519,7 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
       <div className='generate-summary'>
         <Tag>自訂 margin（mode=stump）</Tag>
         {cutback
-          ? <Tag color='gold'>Cutback：資料庫支台齒 → 牙冠 → 往內縮</Tag>
+          ? <Tag color='gold'>Cutback（{ezcadStyle ? 'EZCAD 式' : '舊版'}）：資料庫支台齒 → 牙冠 → 往內縮</Tag>
           : <Tag color='gold'>EZCAD 支台齒資料庫</Tag>}
         {axisMode !== 'natural' && <Tag color='purple'>插入方向：{AXIS_SOURCE[axisMode]}</Tag>}
         {hasPrep && <Tag color={singleArch ? 'orange' : 'blue'}>{singleArch ? '單顎' : '上下顎'}</Tag>}
@@ -511,7 +546,12 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
         onEditRing={() => {}}
       />
       {record?.kind === 'cutback' && <pre className='flow-message'>{[
-        `Cutback：軸面 ${record.cutback_mm} mm · 咬合面 ${record.occlusal_mm} mm · 肩台 ${record.shoulder_mm} mm · 軸面傾斜 ${record.taper_deg}°（體素 ${record.voxel_mm} mm）`,
+        record.style === 'ezcad'
+          ? `Cutback（EZCAD 式）：等距內縮 ${record.cutback_mm} mm · 交界 ${record.junction_mm} mm（${record.junction_source === 'auto' ? '自動' : '指定'}）· 肩台 ${record.shoulder_mm} mm · 交界以上每邊內傾 ${record.taper_deg}°（體素 ${record.voxel_mm} mm）`
+          : `Cutback（舊版）：軸面 ${record.cutback_mm} mm · 咬合面 ${record.occlusal_mm} mm · 肩台 ${record.shoulder_mm} mm · 軸面傾斜 ${record.taper_deg}°（體素 ${record.voxel_mm} mm）`,
+        record.style === 'ezcad'
+          ? `防倒凹收進：最多 ${record.held_in_mm} mm（${(100 * (record.held_in_share ?? 0)).toFixed(1)}% 的內縮體積）${record.held_in_mm > 0.1 ? '——交界以上不是處處等距，可以把交界調高' : ''}`
+          : '',
         `高度 ${record.height_mm} mm · 離對咬 ${record.antagonist_gap_mm ?? '—'} mm · 沒縫合的邊 ${record.open_margin_edges}`,
         `插入方向 ${record.axis_source === 'occlusal' ? '咬合方向（沿原本的方向切不出來）' : record.base?.axis_source === 'caller' ? '指定' : '自然傾斜'}，離咬合方向 ${record.axis_from_occlusal_deg}° · 原座標 [${formatAxis(record.insertion_axis_original ?? [])}]`,
         record.base ? `牙冠先長在資料庫支台齒上：${record.base.group} · ${record.base.cap} · ${record.base.height_mm} mm` : '',
