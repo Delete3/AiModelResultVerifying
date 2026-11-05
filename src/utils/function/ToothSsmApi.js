@@ -50,6 +50,15 @@ const TOOTHSSM_CROWN_OPTIONS = [
   { value: 'zhu', label: '整顆 AI 重新生成（舊預設，配 AI 生成牙根）' },
 ];
 
+// The roots step (`fast_roots`, both boxes since 2026-11-05): the cheaper latent fits that went to
+// production on 2026-11-02 (TF32, a 250-step first fit, the anchored fit carried on from it), or
+// the fits as before. A switch so that the user can test the difference for a report; the boxes'
+// default is `1`.
+const TOOTHSSM_FAST_ROOTS_OPTIONS = [
+  { value: '1', label: '加速版（預設）' },
+  { value: '0', label: '加速前（原本的擬合）' },
+];
+
 // What the service reads (it picks the reader from the name). Every scan is sent gzipped as
 // <name>.gz: an arch STL is 10-30 MB.
 const TOOTHSSM_FORMATS = ['stl', 'ply', 'obj', 'tri'];
@@ -104,7 +113,7 @@ const getToothSsmInfo = async target => (await axios.get(`${baseOf(target)}/`, {
  * the alignment model is dual-arch.
  * @returns {{ jobId: string, uploadSeconds: number, sentBytes: number, rawBytes: number }}
  */
-const submitToothSsmJob = async ({ target, upper, lower, res = 128, until = 'align', seg = 'ssm', root = null, crown = null, onStage = () => {} }) => {
+const submitToothSsmJob = async ({ target, upper, lower, res = 128, until = 'align', seg = 'ssm', root = null, crown = null, fastRoots = null, onStage = () => {} }) => {
   if (!upper || !lower) throw new Error('上下顎口掃都要：分牙與咬合是成對處理的，排牙模型也是上下顎一起看');
   const scans = [['upper', upper], ['lower', lower]];
   for (const [, file] of scans) {
@@ -127,6 +136,7 @@ const submitToothSsmJob = async ({ target, upper, lower, res = 128, until = 'ali
   form.append('seg', seg);
   if (root && TOOTHSSM_ROOT_TARGETS.includes(target)) form.append('root', root);
   if (crown && TOOTHSSM_ROOT_TARGETS.includes(target)) form.append('crown', crown);
+  if (fastRoots && TOOTHSSM_ROOT_TARGETS.includes(target)) form.append('fast_roots', fastRoots);
 
   onStage(`正在上傳 ${(sentBytes / 1048576).toFixed(1)} MB 到${TOOTHSSM_TARGETS[target]?.box ?? ''}（原檔 ${(rawBytes / 1048576).toFixed(1)} MB）…`);
   const startedAt = performance.now();
@@ -142,13 +152,14 @@ const submitToothSsmJob = async ({ target, upper, lower, res = 128, until = 'ali
  * `step` (generate or align) and the steps after it, up to `until`, on a finished job's earlier
  * results. Without `until` the service goes on to align, whatever the job was created with.
  */
-const rerunToothSsmStep = async (target, jobId, { step, res, until = null, root = null, crown = null }) => {
+const rerunToothSsmStep = async (target, jobId, { step, res, until = null, root = null, crown = null, fastRoots = null }) => {
   const form = new FormData();
   form.append('step', step);
   if (res) form.append('res', String(res));
   if (until) form.append('until', until);
   if (root && TOOTHSSM_ROOT_TARGETS.includes(target)) form.append('root', root);
   if (crown && TOOTHSSM_ROOT_TARGETS.includes(target)) form.append('crown', crown);
+  if (fastRoots && TOOTHSSM_ROOT_TARGETS.includes(target)) form.append('fast_roots', fastRoots);
   try {
     await axios.post(`${baseOf(target)}/v1/jobs/${jobId}/run`, form, { timeout: 60000 });
   } catch (error) {
@@ -216,6 +227,7 @@ const deleteToothSsmJob = (target, jobId) =>
 export {
   TOOTHSSM_ACCEPT,
   TOOTHSSM_CROWN_OPTIONS,
+  TOOTHSSM_FAST_ROOTS_OPTIONS,
   TOOTHSSM_FORMATS,
   TOOTHSSM_ROOT_OPTIONS,
   TOOTHSSM_ROOT_TARGETS,

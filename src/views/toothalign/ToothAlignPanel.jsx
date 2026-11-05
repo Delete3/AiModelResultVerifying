@@ -7,6 +7,7 @@ import ToothAlignScene, { CROWN_HEX, ROOT_HEX } from '../../utils/function/Tooth
 import {
   TOOTHSSM_ACCEPT,
   TOOTHSSM_CROWN_OPTIONS,
+  TOOTHSSM_FAST_ROOTS_OPTIONS,
   TOOTHSSM_ROOT_OPTIONS,
   TOOTHSSM_ROOT_TARGETS,
   TOOTHSSM_SEG_OPTIONS,
@@ -102,6 +103,7 @@ const ToothAlignPanel = () => {
   const [seg, setSeg] = useState('ssm');
   const [root, setRoot] = useState('virtual');
   const [crown, setCrown] = useState('fit');
+  const [fastRoots, setFastRoots] = useState('1');
   const [flow, setFlow] = useState('align');
   const [running, setRunning] = useState(null);
   const [stage, setStage] = useState('');
@@ -232,7 +234,7 @@ const ToothAlignPanel = () => {
     ToothAlignScene.clearResults();
     const startedAt = performance.now();
     try {
-      const submitted = await submitToothSsmJob({ target, upper: files.upper, lower: files.lower, res, until, seg, root, crown, onStage: setStage });
+      const submitted = await submitToothSsmJob({ target, upper: files.upper, lower: files.lower, res, until, seg, root, crown, fastRoots: rootChoice ? fastRoots : null, onStage: setStage });
       jobRef.current = { id: submitted.jobId, target };
       const doc = await follow();
       const download = await loadResults(doc, 'segment');
@@ -276,6 +278,7 @@ const ToothAlignPanel = () => {
       await rerunToothSsmStep(jobRef.current.target, jobRef.current.id, {
         step, res, until: step === 'generate' ? (noAlign ? 'generate' : 'align') : null,
         root: step === 'generate' ? root : null, crown: step === 'generate' ? crown : null,
+        fastRoots: step === 'generate' && rootChoice ? fastRoots : null,
       });
       const doc = await follow();
       const download = await loadResults(doc, step);
@@ -424,6 +427,11 @@ const ToothAlignPanel = () => {
           牙根
           <Select size='small' value={root} onChange={setRoot} options={TOOTHSSM_ROOT_OPTIONS} disabled={busy} />
         </label>}
+        {rootChoice && <label
+          title='加速版＝2026-11-02 上線的生成牙根（TF32、第一次擬合 250 步、牙根校正接著做 150 步），兩台的預設；加速前＝原本的擬合（500＋500 步、FP32），生成牙根約慢一倍。要比較時：先跑一筆，再切這裡按「重新生成牙根＋排牙」，用的是同一份分牙'>
+          生成牙根
+          <Select size='small' value={fastRoots} onChange={setFastRoots} options={TOOTHSSM_FAST_ROOTS_OPTIONS} disabled={busy} />
+        </label>}
         <label>
           牙齒網格解析度
           <Select size='small' value={res} onChange={setRes} options={RES_OPTIONS} disabled={busy} />
@@ -460,6 +468,9 @@ const ToothAlignPanel = () => {
       {timing && <div className='toothseg-timing'>
         {timing.box && <Tag>{timing.box}</Tag>}
         {timing.seg && <Tag>{timing.seg === 'toothroot' ? 'ToothRoot 分牙＋牙根' : 'tooth_ssm 原流程'}</Tag>}
+        {job?.results?.fast_roots != null && job?.params?.seg === 'ssm' && <Tag color={job.results.fast_roots ? 'green' : 'orange'}>
+          生成牙根：{job.results.fast_roots ? '加速版' : '加速前'}
+        </Tag>}
         {timing.upload != null && <Tag>上傳 {fmtSeconds(timing.upload)}（{timing.sentMb.toFixed(1)} MB，原檔 {timing.rawMb.toFixed(1)} MB）</Tag>}
         {/* a generate rerun with no arrangement leaves the service's align_s of an earlier align run in timings */}
         {['segment', 'generate', 'align'].map(step => t[`${step}_s`] != null && (step !== 'align' || hasAligned) && <Tooltip key={step} title={
