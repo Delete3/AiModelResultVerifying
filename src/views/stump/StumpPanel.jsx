@@ -462,7 +462,7 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
       {cutback && ezcadStyle && <p className='panel-note'>
         照 EZCAD 的做法：先用資料庫支台齒（自然高度、離對咬 1.0 mm）生成牙冠，牙冠和支台齒的<b>交界</b>放在牙冠外壁上、margin 上方。
         交界以下支台齒就是牙冠外壁；交界處往內收一個肩台；交界以上把牙冠沿法向<b>等距</b>內縮 {DEFAULT_CUTBACK.ezcad} mm（咬合面和軸面一樣厚，EZCAD 預設值），
-        而且不超出交界的輪廓、每邊往內傾 6°，牙冠才套得上去。交界高度「自動」＝最低、而且以上的等距內縮不會被防倒凹切到的高度
+        而且不超出交界的輪廓、每邊往內傾 6°；肩台上方過渡段若比上面窄（凹槽、倒凹），會沿插入軸填平，牙冠才套得上去。交界高度「自動」＝最低、而且以上的等距內縮不會被防倒凹切到的高度
         （牙冠在 margin 外凸得越多就越高：植體常在 1.75–3.5 mm，自然牙中位數 1.5 mm）；指定得比較低時，交界以上靠外的部分會被收進去、不再等距。
         支台齒高度由牙冠決定；牙冠半透明顯示在支台齒外面。空間不夠切不出來時會改回資料庫支台齒並說明。
       </p>}
@@ -551,6 +551,9 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
           : `Cutback（舊版）：軸面 ${record.cutback_mm} mm · 咬合面 ${record.occlusal_mm} mm · 肩台 ${record.shoulder_mm} mm · 軸面傾斜 ${record.taper_deg}°（體素 ${record.voxel_mm} mm）`,
         record.style === 'ezcad'
           ? `防倒凹收進：最多 ${record.held_in_mm} mm（${(100 * (record.held_in_share ?? 0)).toFixed(1)}% 的內縮體積）${record.held_in_mm > 0.1 ? '——交界以上不是處處等距，可以把交界調高' : ''}`
+          : '',
+        record.style === 'ezcad' && record.blocked_out_mm != null
+          ? `肩台上方凹槽填平：最深 ${record.blocked_out_mm} mm（${record.blocked_out_mm3} mm³）`
           : '',
         `高度 ${record.height_mm} mm · 離對咬 ${record.antagonist_gap_mm ?? '—'} mm · 沒縫合的邊 ${record.open_margin_edges}`,
         `插入方向 ${record.axis_source === 'occlusal' ? '咬合方向（沿原本的方向切不出來）' : record.base?.axis_source === 'caller' ? '指定' : '自然傾斜'}，離咬合方向 ${record.axis_from_occlusal_deg}° · 原座標 [${formatAxis(record.insertion_axis_original ?? [])}]`,
