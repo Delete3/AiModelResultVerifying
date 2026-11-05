@@ -1,6 +1,6 @@
 # AI排牙 API 串接說明
 
-文件版本：2026-11-02 傍晚（生成牙根加快、新欄位 `results.fast_roots`、速度表；同日稍早：新增一節「只分牙＋生成牙齒、不排牙」，更正 `root=none` 沒有 ABO）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
+文件版本：2026-11-05（新參數 `fast_roots`：生成牙根可以每筆選加速版或加速前）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
 
 上傳一組上下顎口掃，服務會自動分牙、替每顆牙生成牙根、用 AI 排牙，並回傳排牙前後的 ABO 評分；也可以只分牙＋生成牙齒、不排牙。這是非同步 API。嘉義、台中兩台主機提供同一個 API、互為備援，一筆全口在嘉義約 2 分鐘、台中約 3 分鐘。
 
@@ -101,10 +101,11 @@ curl -s "${H[@]}" -F upper=@upper.stl.gz -F lower=@lower.stl.gz -F until=generat
 | `crown` | `fit`、`exact` 或 `zhu` | `fit`（2026-11-02 起；之前是 `zhu`） | 整顆牙的牙冠怎麼來，只對 `seg=ssm` 有效，見下一節 |
 | `root` | `virtual`、`generated`、`none` | `virtual`（2026-11-02 起；之前沒有這個參數，等於 `generated`） | 牙冠下面接什麼，只對 `seg=ssm` 有效，見「牙根」一節。`virtual` 和 `none` 的牙冠：`crown=fit` 是擬合後的 AI 牙齒，`exact` 是口掃原樣；送 `zhu` 當成 `exact` |
 | `root_fix` | `1` 或 `0` | `1` | 牙根歪斜修正（只對 `seg=ssm` 有效）。`0` 是修正前的做法，留著給比對用 |
+| `fast_roots` | `1` 或 `0` | `1`（主機的預設，`GET /info` 的 `fast_roots`） | 生成牙根用哪一種擬合（只對 `seg=ssm` 有效，2026-11-05 起）。`1`＝2026-11-02 上線的加速版；`0`＝加速前，生成牙根約慢一倍，留著給比對用。分牙、接牙冠、排牙不受影響 |
 | `res` | `128`、`160`、`192` | `128` | 牙齒網格的解析度。192 細一點，每筆多約 10 秒 |
 | `until` | `segment`、`generate`、`align` | `align` | 做到哪一步為止。`generate`＝只分牙＋生成牙齒、不排牙（見「只分牙＋生成牙齒、不排牙」） |
 
-- `POST /v1/jobs/{job_id}/run` 收 `step`（必填，`generate` 或 `align`）以及 `res`、`until`、`root_fix`、`crown`、`root`；沒送的沿用這個 job 原本的值，只有 `until` 例外（沒送就是 `align`）。分牙不能重跑，要換分牙就建新的 job。`root=none` 的 job 沒有排牙，`step=align` 會回 422。
+- `POST /v1/jobs/{job_id}/run` 收 `step`（必填，`generate` 或 `align`）以及 `res`、`until`、`root_fix`、`crown`、`root`、`fast_roots`；沒送的沿用這個 job 原本的值，只有 `until` 例外（沒送就是 `align`）。分牙不能重跑，要換分牙就建新的 job。`root=none` 的 job 沒有排牙，`step=align` 會回 422。
 - 口掃上很小的漂浮碎片（每塊小於表面積 0.5%）若會讓分牙誤判，服務會先移掉並在 `warnings` 說明。兩顎沒有對合（咬合方向不平行，或兩顎朝同一邊而被重新擺位）時，也會在 `warnings` 提醒。
 - `seg=toothroot` 另外會自動偵測上下顎檔案送反並對調，同樣寫在 `warnings`；`seg=ssm` 不會，請確認欄位沒放反。
 
@@ -240,7 +241,7 @@ curl -s "${H[@]}" -F start=align -F teeth=@crowns_and_teeth.zip $B/v1/jobs      
 | `error` | 失敗原因（成功時為 null） |
 | `warnings` | 提醒列表：移除了碎片、某顎分到的牙少於 6 顆、兩顎沒有對合……（`issues` 的每筆錯誤與警告也會寫成一行） |
 | `issues` | 服務檢查到的分牙與生成問題，每筆有固定代碼、等級與相關牙位，見「問題回報」 |
-| `params` | 這個 job 實際用的 `seg`、`res`、`until`、`root_fix`、`crown`、`root`、`start` |
+| `params` | 這個 job 實際用的 `seg`、`res`、`until`、`root_fix`、`crown`、`root`、`fast_roots`、`start` |
 | `timings` | 每步秒數（`segment_s`、`generate_s`、`align_s`、`total_s`）與更細的 `detail` |
 | `progress` | 生成牙根時的 `{teeth_done, teeth_total}`，其他時候是 null |
 | `queue_position` | 排隊中時，前面還有幾個 job |
@@ -253,7 +254,7 @@ curl -s "${H[@]}" -F start=align -F teeth=@crowns_and_teeth.zip $B/v1/jobs      
 | `results.crown_stats` | AI 生成的牙冠離原口掃多遠（平均、p95，mm）、封閉的顆數、失敗的牙。`crown=exact`、`fit` 時描述的是擬合或換回口掃前的生成牙冠 |
 | `results.exact_crown` | `crown=exact` 或 `fit`，或 `root` 不是 `generated` 時：每顎的 `crown`（`exact` 或 `fit`）、`scan_crown`（用上口掃牙冠或擬合成功的顆數）、`fallback`（沒做成的牙與原因）、`shared_mm3_generated` 與 `shared_mm3_after_parting`（推開前後鄰牙重疊的體積，mm³；`fit` 只有推開後的）、`contact_films_cut`（`exact` 在緊接觸點切掉的薄膜）、`engulfed`（生成的牙佔到鄰牙位置而被切開的牙，請檢查分牙）、`generated_root`（`root=virtual` 時改接 AI 生成牙根的牙）、`triangles`（`fit`：這一顎交出去的牙的面數 `faces`、最小角小於 10° 的 `min_angle_lt10`、一邊超過 1 mm 的 `edge_gt1mm`） |
 | `results.root` | 這個 job 的 `root` |
-| `results.fast_roots` | 這台是否用加速的生成牙根（2026-11-02 傍晚起兩台都是 `true`；見更新內容） |
+| `results.fast_roots` | 這筆的生成牙根是否用加速版（`fast_roots` 參數；沒送時是主機的預設，兩台都是 `true`） |
 | `results.axes`、`results.axes_url` | `root=virtual` 或 `none`：每顆牙的牙軸，與 `tooth_axes.json` 的路徑（見「牙軸」） |
 | `log_tail` | 紀錄檔最後 15 行（除錯用） |
 
