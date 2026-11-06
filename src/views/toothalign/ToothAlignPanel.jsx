@@ -12,11 +12,13 @@ import {
   TOOTHSSM_ROOT_TARGETS,
   TOOTHSSM_SEG_OPTIONS,
   TOOTHSSM_TARGETS,
+  boxLabel,
   deleteToothSsmJob,
   fetchToothSsmArchive,
   fetchToothSsmFile,
   getToothSsmHealth,
   getToothSsmInfo,
+  isDispatched,
   rerunToothSsmStep,
   submitToothSsmJob,
   waitForToothSsmJob,
@@ -121,6 +123,15 @@ const ToothAlignPanel = () => {
   const rootChoice = TOOTHSSM_ROOT_TARGETS.includes(target) && seg === 'ssm';
   const crownsChosen = rootChoice && root === 'none';
   const noAlign = crownsChosen || flow === 'generate';
+  // The cloud has no ToothRoot: only the segmentations a target has are offered.
+  const segsOf = key => TOOTHSSM_TARGETS[key]?.segs ?? TOOTHSSM_SEG_OPTIONS.map(o => o.value);
+  const segOptions = TOOTHSSM_SEG_OPTIONS.filter(o => segsOf(target).includes(o.value));
+  const chooseTarget = value => {
+    setTarget(value);
+    if (!segsOf(value).includes(seg)) setSeg(segsOf(value)[0]);
+  };
+  // Through the dispatcher, where a job ran (or runs), for the labels.
+  const ranOn = doc => (doc?.dispatcher?.where ? boxLabel(doc.dispatcher.where) : null);
 
   useEffect(() => {
     for (const key of Object.keys(TOOTHSSM_TARGETS)) {
@@ -197,23 +208,34 @@ const ToothAlignPanel = () => {
     const { id, target: box } = jobRef.current;
     const doc = await waitForToothSsmJob(box, id, {
       onUpdate: update => {
-        setJob(update);
+        // A running dispatcher job's document has no results yet: keep the last one's on screen.
+        if (update.state === 'done' || update.state === 'failed' || !update.dispatcher) setJob(update);
         const elapsed = update.step_elapsed_s != null ? `，${Math.round(update.step_elapsed_s)} 秒` : '';
         const viaToothRoot = update.params?.seg === 'toothroot';
+        // Through the dispatcher: which box (or the cloud) has it.
+        const on = ranOn(update) ? `${ranOn(update)}：` : '';
         if (update.state === 'queued') {
-          setStage(`排隊中${update.queue_position ? `（前面還有 ${update.queue_position} 筆）` : ''}…`);
+          if (update.dispatcher) {
+            const eta = update.predicted_finish_s != null ? `，預計 ${Math.round(update.predicted_finish_s)} 秒後完成` : '';
+            setStage(`分派器排隊中${update.dispatcher.route === 'cloud' ? '（等雲端容器開機）' : ''}${eta}…`);
+          } else {
+            setStage(`排隊中${update.queue_position ? `（前面還有 ${update.queue_position} 筆）` : ''}…`);
+          }
+          setProgress(null);
+        } else if (update.state === 'starting') {
+          setStage(`${on}取口掃、送進排牙服務${update.queue_position ? `（服務裡前面還有 ${update.queue_position} 筆）` : ''}…`);
           setProgress(null);
         } else if (update.state === 'segmenting') {
-          setStage(viaToothRoot
+          setStage(on + (viaToothRoot
             ? `AI 分牙中（ToothRoot → 咬合檢查${elapsed}）…`
-            : `AI 分牙中（25 視角 YOLO → FDI 排序 → 邊界修整 → 咬合檢查${elapsed}）…`);
+            : `AI 分牙中（25 視角 YOLO → FDI 排序 → 邊界修整 → 咬合檢查${elapsed}）…`));
           setProgress(null);
         } else if (update.state === 'generating') {
           const p = update.progress;
-          setStage(`生成牙根中（${viaToothRoot ? 'ToothRoot' : 'DeepSDF'}${p ? `，${p.teeth_done} / ${p.teeth_total} 顆` : ''}${elapsed}）…`);
+          setStage(`${on}生成牙根中（${viaToothRoot ? 'ToothRoot' : 'DeepSDF'}${p ? `，${p.teeth_done} / ${p.teeth_total} 顆` : ''}${elapsed}）…`);
           setProgress(p && p.teeth_total ? Math.round((100 * p.teeth_done) / p.teeth_total) : null);
         } else if (update.state === 'aligning') {
-          setStage(`排牙中（地標 → diffusion 50 步 → 套回整顆牙${elapsed}）…`);
+          setStage(`${on}排牙中（地標 → diffusion 50 步 → 套回整顆牙${elapsed}）…`);
           setProgress(null);
         }
       },
@@ -248,7 +270,10 @@ const ToothAlignPanel = () => {
         total: (performance.now() - startedAt) / 1000,
         res: doc.params?.res,
         seg: doc.params?.seg,
-        box: TOOTHSSM_TARGETS[target].box,
+        box: TOOTHSSM_TARGETS[target].box + (ranOn(doc) ? ` → ${ranOn(doc)}` : ''),
+        // through the dispatcher: its queue (a cloud container's boot included) and its whole time
+        queued: doc.dispatcher?.timings?.queued_s,
+        dispatched: doc.dispatcher?.timings?.total_s,
       });
       setStage('');
       ToothAlignScene.fitView();
@@ -272,17 +297,22 @@ const ToothAlignPanel = () => {
     setRunning(step);
     setError(null);
     const startedAt = performance.now();
+    // Through the dispatcher a rerun is a new job on the finished one's zip: the old one is kept
+    // until the new one is done (it is the new one's input), and comes back if the new one fails.
+    const earlier = jobRef.current;
     try {
       // `root` and `crown` only for generate: an align rerun keeps the job's own (root=none has no align at all).
       // A generate rerun stops where 「流程」 says; the service's own default would go on to align.
-      await rerunToothSsmStep(jobRef.current.target, jobRef.current.id, {
+      const made = await rerunToothSsmStep(jobRef.current.target, jobRef.current.id, {
         step, res, until: step === 'generate' ? (noAlign ? 'generate' : 'align') : null,
         root: step === 'generate' ? root : null, crown: step === 'generate' ? crown : null,
         fastRoots: step === 'generate' && rootChoice ? fastRoots : null,
       });
+      if (made?.jobId) jobRef.current = { ...earlier, id: made.jobId };
       const doc = await follow();
       const download = await loadResults(doc, step);
       setJob(doc);
+      if (made?.jobId) deleteToothSsmJob(earlier.target, earlier.id);
       setTiming(previous => ({
         ...(previous ?? {}),
         upload: null,
@@ -291,12 +321,21 @@ const ToothAlignPanel = () => {
         total: (performance.now() - startedAt) / 1000,
         res: doc.params?.res,
         rerun: step,
+        ...(isDispatched(earlier.target) ? {
+          box: TOOTHSSM_TARGETS[earlier.target].box + (ranOn(doc) ? ` → ${ranOn(doc)}` : ''),
+          queued: doc.dispatcher?.timings?.queued_s,
+          dispatched: doc.dispatcher?.timings?.total_s,
+        } : {}),
       }));
       setStage('');
     } catch (e) {
       setError(e.message);
       setStage('');
-      if (e.job) {
+      if (isDispatched(earlier.target)) {
+        // the failed job made nothing to show; the earlier one is still there to try again from
+        if (jobRef.current.id !== earlier.id) deleteToothSsmJob(earlier.target, jobRef.current.id);
+        jobRef.current = earlier;
+      } else if (e.job) {
         setJob(e.job);
         await loadResults(e.job, step).catch(() => {});
         setStage('');
@@ -311,6 +350,10 @@ const ToothAlignPanel = () => {
     setHealth({ type: 'info', text: '檢查中…' });
     try {
       const h = await getToothSsmHealth(target);
+      if (h.summary) {
+        setHealth({ type: h.status === 'ok' ? 'success' : 'error', text: h.summary });
+        return;
+      }
       const gpu = h.gpu?.name ? `${h.gpu.name}（已用 ${(h.gpu.memory_used_mb / 1024).toFixed(1)} / ${(h.gpu.memory_total_mb / 1024).toFixed(1)} GB）` : `GPU 無法使用：${h.gpu?.error ?? '?'}`;
       setHealth({
         type: h.status === 'ok' ? 'success' : 'error',
@@ -371,6 +414,8 @@ const ToothAlignPanel = () => {
       上下顎都要。上下顎朝同一方向時，服務會把上顎轉成估計的咬合位置再分一次。結果在服務端保留 2 小時。
       2026-11-02 起兩台的預設是 AI 生成的牙齒擬合到口掃上（網格均勻、沒有縫線）、和鄰牙不干涉，接矯正式虛擬牙根；要之前的結果，牙冠選「整顆 AI 重新生成」、牙根選「AI 生成牙根」。
       「流程」選「只分牙＋生成牙齒（不排牙）」時，做到整顆牙（含牙根、牙軸）就結束，之後要排牙再按「接著排牙」。
+      主機選「分派器」或「modal雲端」時經 AI 分派器測試站：分派器自己決定給嘉義、台中或 Modal 雲端；「modal雲端」只用雲端（沒有 ToothRoot 分牙）。
+      口掃經這台主機放上 S3，結果整包放在 S3，畫面要的檔案從裡面讀；「重新生成」「接著排牙」會用上一筆的結果開一筆新工作。
     </p>
 
     <ToothSsmDocs />
@@ -403,7 +448,7 @@ const ToothAlignPanel = () => {
       <div className='field-row'>
         <label>
           主機
-          <Select size='small' value={target} onChange={setTarget} disabled={busy} options={Object.entries(TOOTHSSM_TARGETS).map(([key, value]) => ({
+          <Select size='small' value={target} onChange={chooseTarget} disabled={busy} options={Object.entries(TOOTHSSM_TARGETS).map(([key, value]) => ({
             value: key, label: value.label + (reach[key] === 'down' ? '（目前無法使用）' : reach[key] === 'ok' ? '' : '（檢查中）'),
           }))} />
         </label>
@@ -415,7 +460,7 @@ const ToothAlignPanel = () => {
         </label>
         <label title='誰負責分牙和生成牙根；排牙一律是 tooth_ssm 的排牙模型。矯正專案檔裡的口掃是減過面的（約 1.2 萬面），tooth_ssm 自己的分牙在這種檔上會漏掉大部分的牙'>
           分牙＋牙根
-          <Select size='small' value={seg} onChange={setSeg} options={TOOTHSSM_SEG_OPTIONS} disabled={busy} />
+          <Select size='small' value={seg} onChange={setSeg} options={segOptions} disabled={busy} />
         </label>
         {rootChoice && <label
           title='AI 牙齒擬合口掃＝AI 生成的牙重新網格化、牙冠拉到口掃上、推開鄰牙，網格均勻沒有縫線；口掃牙冠原樣＝分牙切下來的口掃網格（鄰接面凹口用三角形帶補起，會有細長三角形）；整顆 AI 重新生成＝原作者流程（牙冠會離開口掃、和鄰牙穿插），配虛擬牙根或不接牙根時當成口掃牙冠原樣'>
@@ -472,6 +517,9 @@ const ToothAlignPanel = () => {
           生成牙根：{job.results.fast_roots ? '加速版' : '加速前'}
         </Tag>}
         {timing.upload != null && <Tag>上傳 {fmtSeconds(timing.upload)}（{timing.sentMb.toFixed(1)} MB，原檔 {timing.rawMb.toFixed(1)} MB）</Tag>}
+        {timing.queued != null && <Tooltip title={`分派器收到到開始做：主機有空的話接近 0；雲端要等容器開機。分派器從收單到結果放上 S3 共 ${fmtSeconds(timing.dispatched)}`}>
+          <Tag color='geekblue'>分派器排隊 {fmtSeconds(timing.queued)}</Tag>
+        </Tooltip>}
         {/* a generate rerun with no arrangement leaves the service's align_s of an earlier align run in timings */}
         {['segment', 'generate', 'align'].map(step => t[`${step}_s`] != null && (step !== 'align' || hasAligned) && <Tooltip key={step} title={
           Object.entries(t.detail ?? {}).filter(([name]) => ({
@@ -487,7 +535,7 @@ const ToothAlignPanel = () => {
         <Tag>下載 {fmtSeconds(timing.download)}</Tag>
         <Tag color='green'>總共 {fmtSeconds(timing.total)}</Tag>
       </div>}
-      {job?.job_id && <div className='health-line'>Job {job.job_id}{jobRef.current ? ` · ${TOOTHSSM_TARGETS[jobRef.current.target].box}` : ''}</div>}
+      {job?.job_id && <div className='health-line'>Job {job.job_id}{jobRef.current ? ` · ${TOOTHSSM_TARGETS[jobRef.current.target].box}` : ''}{ranOn(job) ? ` → ${ranOn(job)}${job.dispatcher.attempts > 1 ? `（第 ${job.dispatcher.attempts} 次）` : ''}` : ''}</div>}
       {job?.issues?.length > 0 && <Alert className='section-alert' showIcon
         type={job.issues.some(i => i.level === 'error') ? 'error' : 'warning'}
         message={<>

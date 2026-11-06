@@ -5,6 +5,7 @@ import fs from 'fs'
 import http from 'http'
 import https from 'https'
 import path from 'path'
+import zlib from 'zlib'
 
 const TRAINING_DATA_ROOT = '/trainingData'
 // ezai-pipeline: the entry point production actually calls. It runs jaw, margin and crown
@@ -213,6 +214,196 @@ const FUSSEN_MAX_UPLOAD = 99 * 1000 * 1000
 // browser whatever this says; it only bounds how long the upstream socket is held.
 const FUSSEN_TIMEOUT_MS = 180 * 1000
 const FUSSEN_PREFIX = '/api/v2/airdesign/externalProject/'
+
+// The AI dispatcher (added 2026-11-06), for the 「分派器」 and 「modal雲端」 hosts of the 牙冠設計 and
+// AI排牙 tabs (src/utils/function/DispatcherApi.js): ai-dispatcher v2's TEST site on the 226 box,
+// which queues each job and hands it to whichever box (95, 101) or Modal cloud container will
+// finish it first, or to the cloud alone (route=cloud).
+//
+// It takes inputs as S3 URLs only and never holds a file itself. So a scan goes browser -> this
+// server -> S3 (dispatcher-upload below asks the dispatcher where, and streams the body there),
+// and a result S3 -> this server -> browser (dispatcher-result streams the job's zip;
+// dispatcher-zip reads one member of it with byte ranges, which is what the AI排牙 tab needs from
+// a 60-130 MB archive). The bucket needs no CORS rule for this origin, and the browser never holds
+// a credential: it sees presigned URLs only, for its own files.
+//
+// Behind Cloudflare Access like ezai2, with its own service token. Read from .env like the Fussen
+// keys -- deploy/put-secret.py eztest writes DISPATCHER_CF_CLIENT_ID / _SECRET there, and Vite
+// restarts by itself when .env changes -- and only ever sent to DISPATCHER_URL. The three Access
+// fixes of the ezai2 routes apply to its proxy route for the same reasons.
+const DISPATCHER_DOTENV = loadEnv('development', process.cwd(), 'DISPATCHER_')
+const dispatcherSetting = (name, fallback = '') => (process.env[name] || DISPATCHER_DOTENV[name] || fallback).trim()
+const DISPATCHER_URL = dispatcherSetting('DISPATCHER_URL', 'https://test-ai.inteware.com.tw').replace(/\/+$/, '')
+const DISPATCHER_CF_CLIENT_ID = dispatcherSetting('DISPATCHER_CF_CLIENT_ID')
+const DISPATCHER_CF_CLIENT_SECRET = dispatcherSetting('DISPATCHER_CF_CLIENT_SECRET')
+// A dispatcher reached without Access (an SSH tunnel to the test site, for testing this file)
+// needs no token: DISPATCHER_NO_ACCESS=1.
+const DISPATCHER_NO_ACCESS = dispatcherSetting('DISPATCHER_NO_ACCESS') === '1'
+const DISPATCHER_CONFIGURED = DISPATCHER_NO_ACCESS || Boolean(DISPATCHER_CF_CLIENT_ID && DISPATCHER_CF_CLIENT_SECRET)
+const DISPATCHER_HEADERS = DISPATCHER_NO_ACCESS ? {} : {
+  'CF-Access-Client-Id': DISPATCHER_CF_CLIENT_ID,
+  'CF-Access-Client-Secret': DISPATCHER_CF_CLIENT_SECRET,
+}
+// One file per request, through Cloudflare (100 MB at most); the scans arrive gzipped.
+const DISPATCHER_MAX_UPLOAD = 99 * 1000 * 1000
+
+/** A same-origin request from an eztest page, not one another site's page makes with eztest's Access cookie. */
+const sameOrigin = (req) => {
+  const origin = req.headers.origin
+  if (origin) {
+    try {
+      if (new URL(origin).host !== req.headers.host) return false
+    } catch {
+      return false
+    }
+  }
+  return !['cross-site', 'same-site'].includes(req.headers['sec-fetch-site'])
+}
+
+/** One JSON request to the dispatcher, with the token. Resolves { status, data (null if not JSON) }. */
+const dispatcherJson = (method, apiPath, body) => new Promise((resolve, reject) => {
+  const url = new URL(DISPATCHER_URL + apiPath)
+  const payload = body == null ? null : Buffer.from(JSON.stringify(body))
+  const request = (url.protocol === 'https:' ? https : http).request(url, {
+    method,
+    headers: {
+      ...DISPATCHER_HEADERS,
+      Accept: 'application/json',
+      'User-Agent': 'eztest-dispatcher',
+      ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': payload.length } : {}),
+    },
+    timeout: 30000,
+  }, (response) => {
+    const chunks = []
+    response.on('data', c => chunks.push(c))
+    response.on('end', () => {
+      let data = null
+      try { data = JSON.parse(Buffer.concat(chunks).toString()) } catch { /* an Access page, a proxy error */ }
+      resolve({ status: response.statusCode, data })
+    })
+    response.on('error', reject)
+  })
+  request.on('timeout', () => request.destroy(new Error('分派器沒有回應（30 秒）')))
+  request.on('error', reject)
+  request.end(payload ?? undefined)
+})
+
+/** What the dispatcher said, for an error message (never a URL: presigned ones are credentials). */
+const dispatcherWords = (got) => {
+  if (got.status === 403) return 'Cloudflare Access 拒絕（403）：eztest 的分派器 Service Token 失效，或還沒加進測試站的 Access policy'
+  const message = got.data?.error?.message
+  return message ? `${got.status} ${got.data.error.code ?? ''}：${message}` : `分派器回應 ${got.status}`
+}
+
+/** A request to a presigned S3 URL. Resolves { status, headers, body (Buffer) }; `send` pipes a body in. */
+const s3Call = (presigned, { method = 'GET', headers = {}, send = null, timeoutMs = 120000 } = {}) =>
+  new Promise((resolve, reject) => {
+    const request = https.request(new URL(presigned), { method, headers, timeout: timeoutMs }, (response) => {
+      const chunks = []
+      response.on('data', c => chunks.push(c))
+      response.on('end', () => resolve({ status: response.statusCode, headers: response.headers, body: Buffer.concat(chunks) }))
+      response.on('error', reject)
+    })
+    request.on('timeout', () => request.destroy(new Error(`S3 ${method} 沒有回應`)))
+    request.on('error', reject)
+    if (send) send.pipe(request)
+    else request.end()
+  })
+
+/** A finished job's view, or an error with the status to answer. */
+const finishedJob = async (id) => {
+  const got = await dispatcherJson('GET', `/v2/jobs/${encodeURIComponent(id)}`)
+  if (got.status !== 200 || !got.data) {
+    const error = new Error(dispatcherWords(got))
+    error.status = got.status === 404 ? 404 : 502
+    throw error
+  }
+  if (got.data.status !== 'succeeded' || !got.data.result_url) {
+    const error = new Error(`job ${id} 沒有結果可取（${got.data.status}）`)
+    error.status = 409
+    throw error
+  }
+  return got.data
+}
+
+// A result zip's central directory by job id, read from S3 by byte range (the end of central
+// directory record, then the directory if it is not in the same read), kept a few minutes: the
+// result_url it was read with is good for an hour (RESULT_GET_TTL_S) and a new view signs a new one.
+const ZIP_INDEX = new Map()
+const ZIP_INDEX_MS = 5 * 60 * 1000
+const zipIndex = async (id) => {
+  const hit = ZIP_INDEX.get(id)
+  if (hit && Date.now() - hit.at < ZIP_INDEX_MS) return hit
+  for (const [key, entry] of ZIP_INDEX) if (Date.now() - entry.at > ZIP_INDEX_MS) ZIP_INDEX.delete(key)
+  const view = await finishedJob(id)
+  const url = view.result_url
+  // the record is 22 bytes plus a comment of up to 64 KB
+  const tail = await s3Call(url, { headers: { Range: 'bytes=-65558' } })
+  if (tail.status !== 206 && tail.status !== 200) throw new Error(`S3 讀結果尾端回應 ${tail.status}`)
+  const total = tail.status === 206 ? Number(/\/(\d+)$/.exec(tail.headers['content-range'] || '')?.[1]) : tail.body.length
+  const tailStart = total - tail.body.length
+  let eocd = -1
+  for (let at = tail.body.length - 22; at >= 0; at -= 1) {
+    if (tail.body.readUInt32LE(at) === 0x06054b50) { eocd = at; break }
+  }
+  if (eocd < 0) throw new Error('結果不是有效的 zip（找不到 end-of-central-directory）')
+  const count = tail.body.readUInt16LE(eocd + 10)
+  const cdSize = tail.body.readUInt32LE(eocd + 12)
+  const cdOffset = tail.body.readUInt32LE(eocd + 16)
+  if (count === 0xffff || cdOffset === 0xffffffff) throw new Error('結果是 zip64，這裡不支援')
+  let cd
+  if (cdOffset >= tailStart) {
+    cd = tail.body.subarray(cdOffset - tailStart, cdOffset - tailStart + cdSize)
+  } else {
+    const got = await s3Call(url, { headers: { Range: `bytes=${cdOffset}-${cdOffset + cdSize - 1}` } })
+    if (got.status !== 206 && got.status !== 200) throw new Error(`S3 讀結果目錄回應 ${got.status}`)
+    // a 200 is the whole file (the range was ignored)
+    cd = got.status === 200 ? got.body.subarray(cdOffset, cdOffset + cdSize) : got.body
+  }
+  const entries = new Map()
+  for (let at = 0, i = 0; i < count; i += 1) {
+    if (cd.readUInt32LE(at) !== 0x02014b50) throw new Error('結果 zip 的 central directory 損毀')
+    const nameLength = cd.readUInt16LE(at + 28)
+    const extraLength = cd.readUInt16LE(at + 30)
+    const commentLength = cd.readUInt16LE(at + 32)
+    const entry = {
+      method: cd.readUInt16LE(at + 10),
+      crc: cd.readUInt32LE(at + 16),
+      compressedSize: cd.readUInt32LE(at + 20),
+      size: cd.readUInt32LE(at + 24),
+      offset: cd.readUInt32LE(at + 42),
+      nameLength,
+      extraLength,
+    }
+    if ([entry.compressedSize, entry.size, entry.offset].includes(0xffffffff)) {
+      throw new Error('結果裡有 zip64 的檔案，這裡不支援')
+    }
+    entries.set(cd.toString('utf8', at + 46, at + 46 + nameLength), entry)
+    at += 46 + nameLength + extraLength + commentLength
+  }
+  const index = { at: Date.now(), url, total, entries }
+  ZIP_INDEX.set(id, index)
+  return index
+}
+
+/** One member's stored bytes (as compressed in the zip) and its entry, by byte range. */
+const zipMember = async (index, entry) => {
+  // The local header repeats the name and an extra field whose length can differ from the
+  // central one's: read a little more than the central one says, and again if that was short.
+  let span = 30 + entry.nameLength + entry.extraLength + 512 + entry.compressedSize
+  for (let tries = 0; tries < 2; tries += 1) {
+    const got = await s3Call(index.url, { headers: { Range: `bytes=${entry.offset}-${entry.offset + span - 1}` } })
+    if (got.status !== 206 && got.status !== 200) throw new Error(`S3 讀結果回應 ${got.status}`)
+    // a 200 is the whole file (the range was ignored): it has the member, wherever it ends
+    const body = got.status === 200 ? got.body.subarray(entry.offset) : got.body
+    if (body.length < 30 || body.readUInt32LE(0) !== 0x04034b50) throw new Error('結果 zip 的檔頭損毀')
+    const start = 30 + body.readUInt16LE(26) + body.readUInt16LE(28)
+    if (start + entry.compressedSize <= body.length) return body.subarray(start, start + entry.compressedSize)
+    if (got.status === 200) break
+    span = start + entry.compressedSize
+  }
+  throw new Error('結果 zip 的檔頭比預期長')
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -446,6 +637,136 @@ export default defineConfig({
       },
     },
     {
+      // The AI dispatcher's files (see DISPATCHER_URL above). Middlewares added here run before
+      // the proxy, so /api/dispatcher/ (its own API, proxied) is guarded here as well: same-origin
+      // requests only, and only the calls the two tabs make.
+      name: 'dispatcher-api',
+      configureServer(server) {
+        const json = (res, status, body) => {
+          if (res.headersSent) { res.destroy(); return }
+          res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+          res.end(JSON.stringify(body))
+        }
+        const routes = ['/api/dispatcher', '/api/dispatcher-upload', '/api/dispatcher-result', '/api/dispatcher-zip']
+        if (!DISPATCHER_CONFIGURED) {
+          server.config.logger.warn('[dispatcher] DISPATCHER_CF_CLIENT_ID / _SECRET are not set; '
+            + 'the 分派器 and modal雲端 hosts are disabled on this instance')
+          for (const route of routes) {
+            server.middlewares.use(route, (req, res) => json(res, 503, {
+              detail: '這個實例沒有設定分派器的 Service Token：請在筆電執行 deploy/put-secret.py eztest（寫進 .env，Vite 會自己重新載入）。',
+            }))
+          }
+          return
+        }
+        server.config.logger.info(`[dispatcher] ${DISPATCHER_URL}${DISPATCHER_NO_ACCESS ? ' (no Access token: a tunnel)' : ''}`)
+        for (const route of routes) {
+          server.middlewares.use(route, (req, res, next) => {
+            if (!sameOrigin(req)) return json(res, 403, { detail: 'eztest 頁面自己的請求才收' })
+            return next()
+          })
+        }
+
+        // The dispatcher's own API, before the proxy: what the panels call, nothing else.
+        server.middlewares.use('/api/dispatcher', (req, res, next) => {
+          const pathname = new URL(req.url, 'http://eztest').pathname
+          const allowed = (req.method === 'GET' && pathname === '/v2/status')
+            || (req.method === 'POST' && pathname === '/v2/jobs')
+            || (['GET', 'DELETE'].includes(req.method) && /^\/v2\/jobs\/[A-Za-z0-9_.-]{1,64}$/.test(pathname))
+          if (!allowed) return json(res, 403, { detail: `分派器的 ${req.method} ${pathname} 不經 eztest` })
+          return next()
+        })
+
+        // POST /api/dispatcher-upload?name=upper.stl.gz, the file as the body -> { key, get_url, bytes, ms }.
+        // get_url is what the job's inputs take; the box fetches it from S3.
+        server.middlewares.use('/api/dispatcher-upload', async (req, res) => {
+          if (req.method !== 'POST') return json(res, 405, { detail: 'POST only' })
+          const name = new URL(req.url, 'http://eztest').searchParams.get('name') || 'file.bin'
+          const length = Number(req.headers['content-length'])
+          if (!Number.isFinite(length) || length <= 0) return json(res, 411, { detail: '需要 Content-Length' })
+          if (length > DISPATCHER_MAX_UPLOAD) return json(res, 413, { detail: '一個檔案最多約 95 MB（Cloudflare 的單次上限是 100 MB）' })
+          const startedAt = Date.now()
+          try {
+            const signed = await dispatcherJson('POST', '/v2/uploads', { filename: name })
+            if (signed.status !== 200 || !signed.data?.put_url) return json(res, 502, { detail: dispatcherWords(signed) })
+            const put = await s3Call(signed.data.put_url, {
+              method: 'PUT', headers: { 'Content-Length': length }, send: req, timeoutMs: 10 * 60 * 1000,
+            })
+            if (put.status !== 200) return json(res, 502, { detail: `S3 PUT 回應 ${put.status}` })
+            return json(res, 200, { key: signed.data.key, get_url: signed.data.get_url, bytes: length, ms: Date.now() - startedAt })
+          } catch (error) {
+            return json(res, 502, { detail: `上傳失敗：${error.message}` })
+          }
+        })
+
+        // GET /api/dispatcher-result/<job id>: the job's whole result zip, from S3.
+        server.middlewares.use('/api/dispatcher-result', async (req, res) => {
+          if (req.method !== 'GET') return json(res, 405, { detail: 'GET only' })
+          const id = decodeURIComponent(new URL(req.url, 'http://eztest').pathname.slice(1))
+          if (!/^[A-Za-z0-9_.-]{1,64}$/.test(id)) return json(res, 400, { detail: 'job id?' })
+          try {
+            const view = await finishedJob(id)
+            const upstream = https.request(new URL(view.result_url), { method: 'GET', timeout: 10 * 60 * 1000 }, (response) => {
+              if (response.statusCode !== 200) {
+                response.resume()
+                return json(res, 502, { detail: `S3 GET 回應 ${response.statusCode}` })
+              }
+              res.writeHead(200, {
+                'Content-Type': 'application/zip',
+                'Cache-Control': 'no-store',
+                ...(response.headers['content-length'] ? { 'Content-Length': response.headers['content-length'] } : {}),
+              })
+              response.pipe(res)
+            })
+            upstream.on('timeout', () => upstream.destroy(new Error('S3 沒有回應')))
+            upstream.on('error', (error) => json(res, 502, { detail: `取回結果失敗：${error.message}` }))
+            // the browser went away before the end: stop reading S3
+            res.on('close', () => { if (!res.writableFinished) upstream.destroy() })
+            upstream.end()
+          } catch (error) {
+            return json(res, error.status ?? 502, { detail: error.message })
+          }
+        })
+
+        // GET /api/dispatcher-zip/<job id>/<member path>: one file of the job's result zip. A deflated
+        // member goes out as it is stored, wrapped as gzip (its CRC-32 and size are in the zip's
+        // directory), so the browser inflates it and nothing is recompressed here.
+        server.middlewares.use('/api/dispatcher-zip', async (req, res) => {
+          if (req.method !== 'GET') return json(res, 405, { detail: 'GET only' })
+          const [rawId, ...rest] = new URL(req.url, 'http://eztest').pathname.slice(1).split('/')
+          const id = decodeURIComponent(rawId || '')
+          const member = rest.map(decodeURIComponent).join('/')
+          if (!/^[A-Za-z0-9_.-]{1,64}$/.test(id) || !member) return json(res, 400, { detail: 'job id 和檔名？' })
+          try {
+            const index = await zipIndex(id)
+            const entry = index.entries.get(member)
+            if (!entry) return json(res, 404, { detail: `結果裡沒有 ${member}` })
+            const stored = await zipMember(index, entry)
+            let body = stored
+            const headers = { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store' }
+            if (entry.method === 8) {
+              const acceptsGzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '')
+              if (acceptsGzip) {
+                const trailer = Buffer.alloc(8)
+                trailer.writeUInt32LE(entry.crc, 0)
+                trailer.writeUInt32LE(entry.size >>> 0, 4)
+                body = Buffer.concat([Buffer.from([0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]), stored, trailer])
+                headers['Content-Encoding'] = 'gzip'
+              } else {
+                body = zlib.inflateRawSync(stored)
+              }
+            } else if (entry.method !== 0) {
+              return json(res, 500, { detail: `不支援的 zip 壓縮方式 ${entry.method}` })
+            }
+            headers['Content-Length'] = body.length
+            res.writeHead(200, headers)
+            return res.end(body)
+          } catch (error) {
+            return json(res, error.status ?? 502, { detail: error.message })
+          }
+        })
+      },
+    },
+    {
       // What this instance is configured to reach, so the panel can grey out a target
       // before the user picks it instead of after a job fails. Booleans only: never the
       // URLs, and never anything from .env.
@@ -462,6 +783,9 @@ export default defineConfig({
               toothroot: RTX5090_CONFIGURED,
               toothssm_rtx5090: RTX5090_CONFIGURED,
               rtx5090_stump: RTX5090_CONFIGURED,
+              // the AI dispatcher's two hosts, in both tabs
+              dispatcher: DISPATCHER_CONFIGURED,
+              cloud: DISPATCHER_CONFIGURED,
             },
           }))
         })
@@ -786,6 +1110,23 @@ export default defineConfig({
           'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
           'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,
         },
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.removeHeader('cookie')
+          })
+          proxy.on('proxyRes', (proxyRes) => {
+            delete proxyRes.headers['set-cookie']
+          })
+        },
+      },
+      // The AI dispatcher's own API (2026-11-06; guarded by the dispatcher-api plugin above). The
+      // trailing slash keeps '/api/dispatcher-upload' and the other middleware paths out of it.
+      // The same three Access fixes as '/api/pipeline-rtx5090', for the same reasons.
+      '/api/dispatcher/': {
+        target: DISPATCHER_URL,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/dispatcher/, ''),
+        headers: DISPATCHER_HEADERS,
         configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq) => {
             proxyReq.removeHeader('cookie')

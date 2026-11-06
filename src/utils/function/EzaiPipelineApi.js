@@ -2,6 +2,19 @@ import axios from 'axios';
 
 import { convertScan } from '../loader/meshConvert';
 import { getFileExtension } from '../tool/StringProcessing';
+import {
+  boxLabel,
+  createDispatcherJob,
+  deleteDispatcherJob,
+  describeDispatcherFailure,
+  describeDispatcherProgress,
+  fetchDispatcherResult,
+  getDispatcherJob,
+  getDispatcherStatus,
+  gzipBlob,
+  summarizeDispatcher,
+  uploadToDispatcher,
+} from './DispatcherApi';
 
 // The production entry point: one upload of the two raw arch scans, and the service runs
 // jaw → transform → margin → crown itself. Same three models the browser used to call one
@@ -108,6 +121,41 @@ const PIPELINE_TARGETS = {
     hint: '嘉義 · RTX 5090 · 口掃走 S3',
     remote: true,
     viaS3: true,
+    singleArch: true,
+    formats: TRI_FORMATS,
+    noAbutment: true,
+    contralateral: true,
+    crownModels: ['heygears'],
+    occlusalDetail: true,
+  },
+  // The AI dispatcher's test site (2026-11-06; src/utils/function/DispatcherApi.js): the same
+  // production pipelines, reached through ai-dispatcher v2 on the 226 box. 「分派器」 lets it
+  // choose (route=auto: the box or cloud container that finishes first; a HeyGears or
+  // 咬合面細節 job never goes to z790, whose pipeline lacks them); 「modal雲端」 sends the job to a
+  // Modal cloud container only (route=cloud: RTX PRO 6000, built from Chiayi's production
+  // chain). The scans go to S3 gzipped, through this server, and the boxes fetch them from
+  // there; the crown comes back the same way. `dispatcher` is what runPipelineJob reads.
+  dispatcher: {
+    base: '/api/dispatcher',
+    label: '分派器',
+    hint: '測試站 test-ai · 自動分給嘉義、台中或雲端',
+    remote: true,
+    dispatcher: true,
+    route: 'auto',
+    singleArch: true,
+    formats: TRI_FORMATS,
+    noAbutment: true,
+    contralateral: true,
+    crownModels: ['heygears'],
+    occlusalDetail: true,
+  },
+  cloud: {
+    base: '/api/dispatcher',
+    label: 'modal雲端',
+    hint: '測試站 test-ai · 只用 Modal 雲端（RTX PRO 6000）',
+    remote: true,
+    dispatcher: true,
+    route: 'cloud',
     singleArch: true,
     formats: TRI_FORMATS,
     noAbutment: true,
@@ -358,6 +406,167 @@ const singleArchTargets = () => Object.values(PIPELINE_TARGETS)
   .filter(site => site.singleArch).map(site => `「${site.label}」`).join(' 或 ');
 
 /**
+ * The result the panels read, from a finished job's zip and, when the job went to ezai-pipeline
+ * itself, its job document (`job`); through the dispatcher there is only the dispatcher's view of
+ * the job (`dispatched`), and the manifest in the zip says the rest.
+ */
+const readJobArchive = async (archiveData, {
+  jobId, job = null, dispatched = null, mode, fdi, target, site, prepJaw, singleArch, contralateral, crownModel,
+  occlusalDetail, inputs, uploadSeconds,
+}) => {
+  const decoder = new TextDecoder();
+  const hasCrown = mode !== PIPELINE_MODES.marginOnly && mode !== PIPELINE_MODES.stump;
+  const crown = hasCrown ? await extractFromZip(archiveData, 'crown.ply') : null;
+  // The ring the job actually used, in the uploaded frame: the predicted one for full and
+  // margin_only, the caller's own (after the service's rotation round trip) for override.
+  const marginOriginal = parsePts(decoder.decode(await extractFromZip(archiveData, 'margin_original.pts')));
+  const manifest = JSON.parse(decoder.decode(await extractFromZip(archiveData, 'manifest.json')));
+  const marginMeta = JSON.parse(decoder.decode(await extractFromZip(archiveData, 'margin.json')));
+  // Only a no_abutment job carries it; the manifest's contents list says whether it is there.
+  const virtualPrep = manifest.contents?.['virtual_prep.ply']
+    ? await extractFromZip(archiveData, 'virtual_prep.ply') : null;
+  // Only a mode=stump job: the library stump alone, and the scan with it stitched in.
+  const stumpMesh = manifest.contents?.['stump.ply'] ? await extractFromZip(archiveData, 'stump.ply') : null;
+  const stumpScan = manifest.contents?.['scan_with_stump.ply']
+    ? await extractFromZip(archiveData, 'scan_with_stump.ply') : null;
+  // mode=stump with the cutback: the crown the stump was cut back from.
+  const cutbackCrown = manifest.contents?.['cutback_crown.ply']
+    ? await extractFromZip(archiveData, 'cutback_crown.ply') : null;
+  // The rotation the service put the scans through (p_canonical = R p_original): what the
+  // PEEK lower part needs to know which way is occlusal, mesial and buccal.
+  const alignment = manifest.contents?.['alignment.json']
+    ? JSON.parse(decoder.decode(await extractFromZip(archiveData, 'alignment.json'))) : null;
+
+  return {
+    // The service rotates the crown back into the frame the scans arrived in, so this
+    // previews against the raw uploads with no matrix of our own.
+    blob: crown ? new Blob([crown], { type: 'model/ply' }) : null,
+    // The target is in the filename so that two downloads of the same case do not collide
+    // in ~/Downloads as "…(1).ply", which is exactly the moment a comparison stops being
+    // one.
+    fileName: `pipeline_crown_FDI${fdi}_${target}${dispatched?.where ? `-${dispatched.where}` : ''}${crownModel ? `_${crownModel}` : ''}${singleArch ? '_single' : ''}${contralateral ? '_contra' : ''}${occlusalDetail ? '_detail' : ''}.ply`,
+    archive: new Blob([archiveData], { type: 'application/zip' }),
+    archiveName: `ezai-pipeline-${jobId}-FDI${fdi}.zip`,
+    // The virtual stump the crown was built over (original frame), and the service's record
+    // of it: height and how it was chosen, room to the antagonist, tissue inside the ring.
+    virtualPrep: virtualPrep ? new Blob([virtualPrep], { type: 'model/ply' }) : null,
+    virtualPrepName: `virtual_prep_FDI${fdi}.ply`,
+    noAbutment: manifest.no_abutment ?? null,
+    stumpMesh: stumpMesh ? new Blob([stumpMesh], { type: 'model/ply' }) : null,
+    stumpMeshName: `stump_FDI${fdi}.ply`,
+    stumpScan: stumpScan ? new Blob([stumpScan], { type: 'model/ply' }) : null,
+    stumpScanName: `scan_with_stump_FDI${fdi}.ply`,
+    cutbackCrown: cutbackCrown ? new Blob([cutbackCrown], { type: 'model/ply' }) : null,
+    cutbackCrownName: `cutback_crown_FDI${fdi}.ply`,
+    stump: manifest.stump ?? null,
+    rotation: alignment?.rotation_matrix ?? null,
+    jobId,
+    mode,
+    singleArch,
+    prepJaw,
+    marginOriginal,
+    marginMeta,
+    manifest,
+    timings: pipelineTimings(job ? job.timings_ms : manifest.timings_ms),
+    // Through the dispatcher: from the job's creation to its result in S3 (its queue, a cloud
+    // container's boot, the box fetching the scans, the pipeline, the result's upload).
+    serverSeconds: job ? (job.timings_ms?.total_ms ?? 0) / 1000 : dispatched.timings?.total_s ?? 0,
+    // The S3 route only: how long this browser spent putting the scans in the bucket, kept
+    // apart from the pipeline's own time so the targets can be read against each other.
+    uploadSeconds,
+    // What the service says it fetched, and from where -- the URL with its signature
+    // stripped, plus the bytes and the milliseconds it spent on each. This is the number
+    // that says whether the box pulled them quickly; the browser cannot see that leg.
+    sources: job?.sources ?? {},
+    warnings: (job ? job.warnings : dispatched.warnings) ?? [],
+    // The service fixes these itself; the direct-call options in the advanced tab do not
+    // reach it.
+    crownParams: (job ? job.crown_params : manifest.crown_params) ?? {},
+    // The crown model asked for (null: the default), and the one the crown service says it
+    // used -- 'default' for a tooth the model does not cover; null from a pipeline too old to
+    // record it.
+    crownModel,
+    crownModelUsed: manifest.backends?.crown?.model ?? null,
+    // Which box produced this, for the panel to label the result and its timings.
+    target,
+    site,
+    // Through the dispatcher: where it ran, how many tries, its queue and run seconds, and the
+    // pipeline's own total (the rest of the dispatcher's time is fetching and uploading).
+    dispatcher: dispatched ? {
+      id: dispatched.id,
+      route: dispatched.route ?? 'auto',
+      where: dispatched.where,
+      whereLabel: boxLabel(dispatched.where),
+      attempts: dispatched.attempts,
+      timings: dispatched.timings ?? {},
+      pipelineSeconds: (manifest.timings_ms?.total_ms ?? 0) / 1000,
+    } : null,
+    // What each scan arrived as and what it was sent as -- the two differ only when this
+    // browser converted it for a target that cannot read it (a .tri going to 8031).
+    inputs: inputs.map(({ jaw, format, sentAs, file }) => ({ jaw, format, sentAs, bytes: file.size })),
+  };
+};
+
+/**
+ * The same job through the AI dispatcher (a target flagged `dispatcher`): the scans gzipped and put
+ * in S3 through this server, the form's fields and the query's as the job's params (the worker on
+ * the box splits them again), a margin ring inline. Resolves with the dispatcher's final view of
+ * the job and the result zip.
+ */
+const runViaDispatcher = async ({ site, form, query, sent, fdi, onStage, timeoutMs }) => {
+  const params = {};
+  let marginText = null;
+  for (const [name, value] of form.entries()) {
+    if (typeof value === 'string') params[name] = value;
+    else if (name === 'margin_pts') marginText = await value.text();
+  }
+  for (const [name, value] of query.entries()) params[name] = value;
+
+  onStage('正在壓縮口掃（gzip）並經這台主機放上 S3…');
+  const startedAt = performance.now();
+  const uploaded = await Promise.all(sent.map(async ([jaw, file, ext]) => {
+    const packed = await gzipBlob(file);
+    // Each file is its own request through Cloudflare, which refuses a body over 100 MB (this
+    // server's upload route takes 99 MB at most: vite.config.js).
+    if (packed.size > 94 * 1024 * 1024) {
+      throw new Error(`${jaw} 口掃壓縮後仍有 ${(packed.size / 1048576).toFixed(0)} MB，超過 Cloudflare 的 100 MB 上限`);
+    }
+    return [`${jaw}_stl_url`, await uploadToDispatcher(packed, `${jaw}.${ext}.gz`, timeoutMs)];
+  }));
+  const inputs = Object.fromEntries(uploaded.map(([name, got]) => [name, got.get_url]));
+  if (marginText != null) {
+    // The dispatcher takes a ring inline up to 64 KB; a longer one goes to S3 like the scans.
+    if (new Blob([marginText]).size <= 60000) inputs.margin_pts = marginText;
+    else inputs.margin_pts_url = (await uploadToDispatcher(new Blob([marginText]), `margin_${fdi}.pts`, timeoutMs)).get_url;
+  }
+  const uploadSeconds = (performance.now() - startedAt) / 1000;
+
+  onStage(`上傳完成（${uploadSeconds.toFixed(1)} 秒），正在送出 job 給${site.label}…`);
+  let view = await createDispatcherJob({ service: 'crown', route: site.route, inputs, params });
+  const jobId = view.id;
+  const deadline = Date.now() + timeoutMs;
+  let lastReport = '';
+  while (view.status === 'queued' || view.status === 'running') {
+    if (Date.now() > deadline) throw new Error(`分派器 job ${jobId} 超過 ${timeoutMs / 1000} 秒未完成`);
+    const report = describeDispatcherProgress(view, { cloud: site.route === 'cloud' });
+    if (report !== lastReport) {
+      onStage(report);
+      lastReport = report;
+    }
+    // Answers as soon as the status changes, else after 10 s.
+    view = await getDispatcherJob(jobId, 10);
+  }
+  if (view.status !== 'succeeded') throw new Error(describeDispatcherFailure(view));
+
+  onStage(`正在取回結果（${boxLabel(view.where)} 生成）…`);
+  const archiveData = await fetchDispatcherResult(jobId, timeoutMs);
+  // The panel keeps the zip itself (downloads come from it): the copy in S3 is the patient's
+  // crown and scans for nobody, so it goes now rather than with the dispatcher's daily sweep.
+  deleteDispatcherJob(jobId);
+  return { jobId, view, archiveData, uploadSeconds };
+};
+
+/**
  * Submit a case, wait for the job, and return what came back.
  *
  * mode 'full' predicts the margin; 'margin_only' stops after it (no crown); and
@@ -480,8 +689,9 @@ const runPipelineJob = async ({
   // was too big. Catch it here while the sizes are still in hand. The local box has no
   // such limit, which is why this is checked per target rather than always.
   // Not checked for the S3 route: the request body there is a couple of hundred bytes of
-  // URLs, so the edge cap simply does not apply to it.
-  if (site.remote && !site.viaS3) {
+  // URLs, so the edge cap simply does not apply to it. Nor for the dispatcher, whose scans go
+  // up one at a time, gzipped (runViaDispatcher checks each).
+  if (site.remote && !site.viaS3 && !site.dispatcher) {
     const totalMb = sent.reduce((sum, [, file]) => sum + file.size, 0) / 1024 / 1024;
     if (totalMb > 95) {
       throw new Error(
@@ -535,6 +745,22 @@ const runPipelineJob = async ({
     form.append('margin_pts', blob, `margin_${fdi}.pts`);
   }
 
+  // The crown service's own knobs are query parameters of POST /v1/jobs, not form fields: a
+  // crown_model sent in the form would be dropped without a word.
+  const query = new URLSearchParams();
+  if (crownModel) query.set('crown_model', crownModel);
+  if (occlusalClearanceMm != null) query.set('occlusal_clearance', String(occlusalClearanceMm));
+  if (occlusalDetail) query.set('occlusal_detail', '1');
+
+  if (site.dispatcher) {
+    const { jobId, view, archiveData, uploadSeconds } = await runViaDispatcher({
+      site, form, query, sent, fdi, onStage, timeoutMs,
+    });
+    return readJobArchive(archiveData, {
+      jobId, dispatched: view, mode, fdi, target, site, prepJaw, singleArch, contralateral, crownModel, occlusalDetail, inputs, uploadSeconds,
+    });
+  }
+
   let uploadSeconds = 0;
   let s3Keys = [];
   if (site.viaS3) {
@@ -557,12 +783,6 @@ const runPipelineJob = async ({
     onStage(`正在上傳${sent.length === 2 ? '上下顎' : '單顎'}口掃到 ${site.label}（${site.hint}）…`);
   }
 
-  // The crown service's own knobs are query parameters of POST /v1/jobs, not form fields: a
-  // crown_model sent in the form would be dropped without a word.
-  const query = new URLSearchParams();
-  if (crownModel) query.set('crown_model', crownModel);
-  if (occlusalClearanceMm != null) query.set('occlusal_clearance', String(occlusalClearanceMm));
-  if (occlusalDetail) query.set('occlusal_detail', '1');
   const submitUrl = `${base}/v1/jobs${query.toString() ? `?${query}` : ''}`;
 
   let submitted;
@@ -607,89 +827,21 @@ const runPipelineJob = async ({
     responseType: 'arraybuffer',
     timeout: timeoutMs,
   });
-  const decoder = new TextDecoder();
-  const hasCrown = mode !== PIPELINE_MODES.marginOnly && mode !== PIPELINE_MODES.stump;
-  const crown = hasCrown ? await extractFromZip(archive.data, 'crown.ply') : null;
-  // The ring the job actually used, in the uploaded frame: the predicted one for full and
-  // margin_only, the caller's own (after the service's rotation round trip) for override.
-  const marginOriginal = parsePts(decoder.decode(await extractFromZip(archive.data, 'margin_original.pts')));
-  const manifest = JSON.parse(decoder.decode(await extractFromZip(archive.data, 'manifest.json')));
-  const marginMeta = JSON.parse(decoder.decode(await extractFromZip(archive.data, 'margin.json')));
-  // Only a no_abutment job carries it; the manifest's contents list says whether it is there.
-  const virtualPrep = manifest.contents?.['virtual_prep.ply']
-    ? await extractFromZip(archive.data, 'virtual_prep.ply') : null;
-  // Only a mode=stump job: the library stump alone, and the scan with it stitched in.
-  const stumpMesh = manifest.contents?.['stump.ply'] ? await extractFromZip(archive.data, 'stump.ply') : null;
-  const stumpScan = manifest.contents?.['scan_with_stump.ply']
-    ? await extractFromZip(archive.data, 'scan_with_stump.ply') : null;
-  // mode=stump with the cutback: the crown the stump was cut back from.
-  const cutbackCrown = manifest.contents?.['cutback_crown.ply']
-    ? await extractFromZip(archive.data, 'cutback_crown.ply') : null;
-  // The rotation the service put the scans through (p_canonical = R p_original): what the
-  // PEEK lower part needs to know which way is occlusal, mesial and buccal.
-  const alignment = manifest.contents?.['alignment.json']
-    ? JSON.parse(decoder.decode(await extractFromZip(archive.data, 'alignment.json'))) : null;
-
-  return {
-    // The service rotates the crown back into the frame the scans arrived in, so this
-    // previews against the raw uploads with no matrix of our own.
-    blob: crown ? new Blob([crown], { type: 'model/ply' }) : null,
-    // The target is in the filename so that two downloads of the same case do not collide
-    // in ~/Downloads as "…(1).ply", which is exactly the moment a comparison stops being
-    // one.
-    fileName: `pipeline_crown_FDI${fdi}_${target}${crownModel ? `_${crownModel}` : ''}${singleArch ? '_single' : ''}${contralateral ? '_contra' : ''}${occlusalDetail ? '_detail' : ''}.ply`,
-    archive: new Blob([archive.data], { type: 'application/zip' }),
-    archiveName: `ezai-pipeline-${jobId}-FDI${fdi}.zip`,
-    // The virtual stump the crown was built over (original frame), and the service's record
-    // of it: height and how it was chosen, room to the antagonist, tissue inside the ring.
-    virtualPrep: virtualPrep ? new Blob([virtualPrep], { type: 'model/ply' }) : null,
-    virtualPrepName: `virtual_prep_FDI${fdi}.ply`,
-    noAbutment: manifest.no_abutment ?? null,
-    stumpMesh: stumpMesh ? new Blob([stumpMesh], { type: 'model/ply' }) : null,
-    stumpMeshName: `stump_FDI${fdi}.ply`,
-    stumpScan: stumpScan ? new Blob([stumpScan], { type: 'model/ply' }) : null,
-    stumpScanName: `scan_with_stump_FDI${fdi}.ply`,
-    cutbackCrown: cutbackCrown ? new Blob([cutbackCrown], { type: 'model/ply' }) : null,
-    cutbackCrownName: `cutback_crown_FDI${fdi}.ply`,
-    stump: manifest.stump ?? null,
-    rotation: alignment?.rotation_matrix ?? null,
-    jobId,
-    mode,
-    singleArch,
-    prepJaw,
-    marginOriginal,
-    marginMeta,
-    manifest,
-    timings: pipelineTimings(job.timings_ms),
-    serverSeconds: (job.timings_ms?.total_ms ?? 0) / 1000,
-    // The S3 route only: how long this browser spent putting the scans in the bucket, kept
-    // apart from the pipeline's own time so the targets can be read against each other.
-    uploadSeconds,
-    // What the service says it fetched, and from where -- the URL with its signature
-    // stripped, plus the bytes and the milliseconds it spent on each. This is the number
-    // that says whether the box pulled them quickly; the browser cannot see that leg.
-    sources: job.sources ?? {},
-    warnings: job.warnings ?? [],
-    // The service fixes these itself; the direct-call options in the advanced tab do not
-    // reach it.
-    crownParams: job.crown_params ?? {},
-    // The crown model asked for (null: the default), and the one the crown service says it
-    // used -- 'default' for a tooth the model does not cover; null from a pipeline too old to
-    // record it.
-    crownModel,
-    crownModelUsed: manifest.backends?.crown?.model ?? null,
-    // Which box produced this, for the panel to label the result and its timings.
-    target,
-    site,
-    // What each scan arrived as and what it was sent as -- the two differ only when this
-    // browser converted it for a target that cannot read it (a .tri going to 8031).
-    inputs: inputs.map(({ jaw, format, sentAs, file }) => ({ jaw, format, sentAs, bytes: file.size })),
-  };
+  return readJobArchive(archive.data, {
+    jobId, job, mode, fdi, target, site, prepJaw, singleArch, contralateral, crownModel, occlusalDetail, inputs, uploadSeconds,
+  });
 };
 
 /** GET /health through the same proxy a job would use. Never throws. */
 const getPipelineHealth = async (target) => {
   const site = PIPELINE_TARGETS[target];
+  if (site.dispatcher) {
+    try {
+      return summarizeDispatcher(await getDispatcherStatus(), 'crown', site.route);
+    } catch (error) {
+      return { ok: false, text: `${site.label} 無法使用：${error.message}` };
+    }
+  }
   try {
     const { data } = await axios.get(`${site.base}/health`, { timeout: 15000 });
     const backends = Object.entries(data.backends ?? {})

@@ -71,7 +71,28 @@ const crownModelTag = result => {
 const timingBlock = result => {
   const fetchSeconds = Object.values(result.sources ?? {}).map(s => (s.fetch_ms ?? 0) / 1000);
   const boxFetchSeconds = fetchSeconds.length ? Math.max(...fetchSeconds) : 0;
-  const rows = result.site.viaS3
+  // Through the dispatcher: its queue (a cloud container's boot included), the pipeline's stages
+  // on the box, and the rest of the dispatcher's time -- the box fetching the scans from S3 and
+  // putting the result there.
+  const d = result.dispatcher;
+  const queued = d?.timings?.queued_s ?? 0;
+  const rows = d
+    ? [
+      { label: 'S3 上傳', seconds: result.uploadSeconds, note: '瀏覽器 → 這台主機（台中）→ S3 東京，gzip 後' },
+      { label: '分派器排隊', seconds: queued, note: d.where === 'cloud' ? '含雲端容器開機' : '' },
+      ...result.timings,
+      {
+        label: `${d.whereLabel} 取檔與回傳`,
+        seconds: Math.max(0, result.serverSeconds - queued - d.pipelineSeconds),
+        note: '主機從 S3 取口掃、結果放上 S3、回報分派器',
+      },
+      {
+        label: '送出、等待與取回',
+        seconds: Math.max(0, result.totalSeconds - result.serverSeconds - result.uploadSeconds),
+        note: '瀏覽器 ↔ 分派器，結果經這台主機取回',
+      },
+    ]
+    : result.site.viaS3
     ? [
       { label: 'S3 上傳', seconds: result.uploadSeconds, note: '瀏覽器 → 這台主機 → S3' },
       ...result.timings,
@@ -138,6 +159,11 @@ const ResultView = ({ running, progress, error, result, onEditRing }) => {
         description={<div className='result-meta'>
           <div>
             <Tag>{result.mode === 'stump' && cutback ? '自訂 margin → 資料庫支台齒 → 牙冠 → cutback' : MODE_LABEL[result.mode] ?? result.mode}</Tag>
+            {result.dispatcher && <Tooltip title={`分派器 job ${result.dispatcher.id} · route=${result.dispatcher.route}`}>
+              <Tag color='blue'>
+                在 {result.dispatcher.whereLabel} 生成{result.dispatcher.attempts > 1 ? `（第 ${result.dispatcher.attempts} 次）` : ''}
+              </Tag>
+            </Tooltip>}
             {result.singleArch
               ? <Tag color='orange'>單顎 · 對咬為平面替身 {standin?.height_above_margin_mm != null ? `${Number(standin.height_above_margin_mm).toFixed(1)} mm` : ''}</Tag>
               : result.mode !== 'margin_only' && <Tag color='blue'>上下顎</Tag>}
