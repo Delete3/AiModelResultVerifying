@@ -29,15 +29,25 @@ const CLEARANCE_RANGE = [0.5, 3.0];
 const DEFAULT_SHOULDER = 0.6;
 const DEFAULT_CLEARANCE = 1.0;
 // stump_shape=cutback (ezai-pipeline app/cutback_stump.py): the crown built over the library
-// stump, cut back by these. cutback_style=ezcad (the service's default since 2026-11-05): one
-// even cutback above a junction raised onto the crown's wall; ring (2026-10-14): walls and
-// occlusal (along the axis) from the ring.
+// stump, cut back by these. cutback_style=blend (the service's default since 2026-11-09): one
+// even cutback with no junction, the stump standing on the shoulder and eased into the cutback
+// over a blend height; ezcad (2026-11-05): the same cutback above a junction raised onto the
+// crown's wall; ring (2026-10-14): walls and occlusal (along the axis) from the ring. The style
+// is always sent by name, so the labels here stay right whatever the service's default is.
+const CUTBACK_STYLES = [
+  { value: 'blend', name: '平順式', label: '平順式（肩台上平順接到等距內縮，預設）' },
+  { value: 'ezcad', name: 'EZCAD 式', label: 'EZCAD 式（交界提高到外壁、等距內縮）' },
+  { value: 'ring', name: '舊版', label: '舊版（從 margin 內縮、咬合面沿軸）' },
+];
+const STYLE_NAME = Object.fromEntries(CUTBACK_STYLES.map(s => [s.value, s.name]));
 const CUTBACK_RANGE = [0.5, 2.5];
 const OCCLUSAL_RANGE = [0.5, 3.0];
 const JUNCTION_RANGE = [0, 4];
-const DEFAULT_CUTBACK = { ezcad: 1.2, ring: 1.0 };
+const BLEND_RANGE = [0.5, 3.0];
+const DEFAULT_CUTBACK = { blend: 1.2, ezcad: 1.2, ring: 1.0 };
 const DEFAULT_OCCLUSAL = 1.8;
 const DEFAULT_JUNCTION = 1.0;
+const DEFAULT_BLEND = 1.5;
 // Parameters settling before the custom abutment is rebuilt (as the peek tab's lower part).
 const REBUILD_DELAY_MS = 350;
 // A custom abutment as one titanium piece on the implant: a 2-piece Ti-base's chimney seldom
@@ -103,13 +113,16 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
   const [axis, setAxis] = useState([0, 0, 1]);
   const [viewAxis, setViewAxis] = useState(null);
   const [shape, setShape] = useState('library');
-  const [cutbackStyle, setCutbackStyle] = useState('ezcad');
-  const [cutbackMm, setCutbackMm] = useState(DEFAULT_CUTBACK.ezcad);
+  const [cutbackStyle, setCutbackStyle] = useState('blend');
+  const [cutbackMm, setCutbackMm] = useState(DEFAULT_CUTBACK.blend);
   const [occlusalMm, setOcclusalMm] = useState(DEFAULT_OCCLUSAL);
   const [junctionMode, setJunctionMode] = useState('auto');
   const [junction, setJunction] = useState(DEFAULT_JUNCTION);
+  const [blendMm, setBlendMm] = useState(DEFAULT_BLEND);
   const cutback = shape === 'cutback';
   const ezcadStyle = cutbackStyle === 'ezcad';
+  const blendStyle = cutbackStyle === 'blend';
+  const ringStyle = cutbackStyle === 'ring';
   const [abutEnabled, setAbutEnabled] = useState(true);
   const [abutParams, setAbutParams] = useState({ ...PEEK_DEFAULTS });
   const [libraryIndex, setLibraryIndex] = useState(null);
@@ -290,11 +303,13 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
           insertionAxis: sentAxis,
           ...(cutback ? {
             shape: 'cutback',
-            // ezcad is the service's default style; ring is asked for by name
-            cutbackStyle: ezcadStyle ? null : 'ring',
+            // by name, always: a junction is ezcad's alone, and the service's default has changed
+            // before (ezcad until 2026-11-09)
+            cutbackStyle,
             cutbackMm: cutbackMm !== DEFAULT_CUTBACK[cutbackStyle] ? cutbackMm : null,
-            cutbackOcclusalMm: !ezcadStyle && occlusalMm !== DEFAULT_OCCLUSAL ? occlusalMm : null,
+            cutbackOcclusalMm: ringStyle && occlusalMm !== DEFAULT_OCCLUSAL ? occlusalMm : null,
             cutbackJunctionMm: ezcadStyle && junctionMode === 'manual' ? junction : null,
+            cutbackBlendMm: blendStyle && blendMm !== DEFAULT_BLEND ? blendMm : null,
           } : {}),
         },
         target: TARGET,
@@ -419,7 +434,7 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
         value={cutbackStyle}
         onChange={e => { setCutbackStyle(e.target.value); setCutbackMm(DEFAULT_CUTBACK[e.target.value]); setResult(null); }}
         disabled={Boolean(running)}
-        options={[{ label: 'EZCAD 式（交界提高到外壁、等距內縮）', value: 'ezcad' }, { label: '舊版（從 margin 內縮、咬合面沿軸）', value: 'ring' }]}
+        options={CUTBACK_STYLES.map(({ label, value }) => ({ label, value }))}
       />}
       {cutback && ezcadStyle && <Radio.Group
         value={junctionMode}
@@ -439,14 +454,18 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
           <InputNumber min={HEIGHT_RANGE[0]} max={HEIGHT_RANGE[1]} step={0.5} value={height} onChange={v => setHeight(v ?? 4.0)} disabled={Boolean(running)} />
         </label>}
         {cutback && <label>
-          {ezcadStyle ? '等距內縮（mm）' : '軸面內縮（mm）'}
+          {ringStyle ? '軸面內縮（mm）' : '等距內縮（mm）'}
           <InputNumber min={CUTBACK_RANGE[0]} max={CUTBACK_RANGE[1]} step={0.1} value={cutbackMm} onChange={v => setCutbackMm(v ?? DEFAULT_CUTBACK[cutbackStyle])} disabled={Boolean(running)} />
+        </label>}
+        {cutback && blendStyle && <label>
+          平順過渡（mm，肩台以上）
+          <InputNumber min={BLEND_RANGE[0]} max={BLEND_RANGE[1]} step={0.1} value={blendMm} onChange={v => setBlendMm(v ?? DEFAULT_BLEND)} disabled={Boolean(running)} />
         </label>}
         {cutback && ezcadStyle && junctionMode === 'manual' && <label>
           交界高度（mm，margin 以上）
           <InputNumber min={JUNCTION_RANGE[0]} max={JUNCTION_RANGE[1]} step={0.25} value={junction} onChange={v => setJunction(v ?? DEFAULT_JUNCTION)} disabled={Boolean(running)} />
         </label>}
-        {cutback && !ezcadStyle && <label>
+        {cutback && ringStyle && <label>
           咬合面內縮（mm）
           <InputNumber min={OCCLUSAL_RANGE[0]} max={OCCLUSAL_RANGE[1]} step={0.1} value={occlusalMm} onChange={v => setOcclusalMm(v ?? DEFAULT_OCCLUSAL)} disabled={Boolean(running)} />
         </label>}
@@ -459,6 +478,13 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
           <InputNumber min={CLEARANCE_RANGE[0]} max={CLEARANCE_RANGE[1]} step={0.1} value={clearance} onChange={v => setClearance(v ?? DEFAULT_CLEARANCE)} disabled={Boolean(running)} />
         </label>}
       </div>
+      {cutback && blendStyle && <p className='panel-note'>
+        先用資料庫支台齒（自然高度、離對咬 1.0 mm）生成牙冠，再把牙冠沿法向<b>等距</b>內縮 {DEFAULT_CUTBACK.blend} mm（咬合面和軸面一樣厚，EZCAD 預設值）。
+        沒有交界：支台齒站在 margin 往內 {shoulder} mm 的<b>肩台</b>上，從肩台沿插入方向直立，在肩台以上 {blendMm} mm 內平順接到等距內縮；
+        custom abutment 從 margin 沿插入方向往下接。支台齒不超出肩台內緣（沒有倒凹），比上面窄的凹槽沿插入軸填平。
+        牙冠在 margin 外凸得多時（植體常見），支台齒會是沿肩台直立的柱子，那裡的牙冠比 {DEFAULT_CUTBACK.blend} mm 厚（紀錄裡的「防倒凹收進」）。
+        支台齒高度由牙冠決定；牙冠半透明顯示在支台齒外面。空間不夠切不出來時會改回資料庫支台齒並說明。
+      </p>}
       {cutback && ezcadStyle && <p className='panel-note'>
         照 EZCAD 的做法：先用資料庫支台齒（自然高度、離對咬 1.0 mm）生成牙冠，牙冠和支台齒的<b>交界</b>放在牙冠外壁上、margin 上方。
         交界以下支台齒就是牙冠外壁；交界處往內收一個肩台；交界以上把牙冠沿法向<b>等距</b>內縮 {DEFAULT_CUTBACK.ezcad} mm（咬合面和軸面一樣厚，EZCAD 預設值），
@@ -466,7 +492,7 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
         （牙冠在 margin 外凸得越多就越高：植體常在 1.75–3.5 mm，自然牙中位數 1.5 mm）；指定得比較低時，交界以上靠外的部分會被收進去、不再等距。
         支台齒高度由牙冠決定；牙冠半透明顯示在支台齒外面。空間不夠切不出來時會改回資料庫支台齒並說明。
       </p>}
-      {cutback && !ezcadStyle && <p className='panel-note'>
+      {cutback && ringStyle && <p className='panel-note'>
         先用資料庫支台齒（自然高度、離對咬 1.0 mm）生成牙冠，再把牙冠往內縮：軸面 {DEFAULT_CUTBACK.ring} mm（靠近 margin 的 2 mm 內逐漸收到肩台寬）、
         咬合面沿插入方向 {DEFAULT_OCCLUSAL} mm，軸面每邊往內傾 6°，不超出 margin。預設值來自 99 筆技師牙冠量到的厚度。
         這個做法不是等距內縮：margin 比牙冠窄很多時（植體），支台齒大半是錐面、牙尖會被切掉。
@@ -519,7 +545,7 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
       <div className='generate-summary'>
         <Tag>自訂 margin（mode=stump）</Tag>
         {cutback
-          ? <Tag color='gold'>Cutback（{ezcadStyle ? 'EZCAD 式' : '舊版'}）：資料庫支台齒 → 牙冠 → 往內縮</Tag>
+          ? <Tag color='gold'>Cutback（{STYLE_NAME[cutbackStyle]}）：資料庫支台齒 → 牙冠 → 往內縮</Tag>
           : <Tag color='gold'>EZCAD 支台齒資料庫</Tag>}
         {axisMode !== 'natural' && <Tag color='purple'>插入方向：{AXIS_SOURCE[axisMode]}</Tag>}
         {hasPrep && <Tag color={singleArch ? 'orange' : 'blue'}>{singleArch ? '單顎' : '上下顎'}</Tag>}
@@ -548,12 +574,16 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
       {record?.kind === 'cutback' && <pre className='flow-message'>{[
         record.style === 'ezcad'
           ? `Cutback（EZCAD 式）：等距內縮 ${record.cutback_mm} mm · 交界 ${record.junction_mm} mm（${record.junction_source === 'auto' ? '自動' : '指定'}）· 肩台 ${record.shoulder_mm} mm · 交界以上每邊內傾 ${record.taper_deg}°（體素 ${record.voxel_mm} mm）`
-          : `Cutback（舊版）：軸面 ${record.cutback_mm} mm · 咬合面 ${record.occlusal_mm} mm · 肩台 ${record.shoulder_mm} mm · 軸面傾斜 ${record.taper_deg}°（體素 ${record.voxel_mm} mm）`,
+          : record.style === 'blend'
+            ? `Cutback（平順式）：等距內縮 ${record.cutback_mm} mm · 肩台 ${record.shoulder_mm ?? '—'} mm · 肩台以上 ${record.blend_mm} mm 內平順接到等距內縮${record.blend_mm < record.blend_asked_mm ? `（要求 ${record.blend_asked_mm} mm，牙冠太矮而縮短）` : ''}（體素 ${record.voxel_mm} mm）`
+            : `Cutback（舊版）：軸面 ${record.cutback_mm} mm · 咬合面 ${record.occlusal_mm} mm · 肩台 ${record.shoulder_mm} mm · 軸面傾斜 ${record.taper_deg}°（體素 ${record.voxel_mm} mm）`,
         record.style === 'ezcad'
           ? `防倒凹收進：最多 ${record.held_in_mm} mm（${(100 * (record.held_in_share ?? 0)).toFixed(1)}% 的內縮體積）${record.held_in_mm > 0.1 ? '——交界以上不是處處等距，可以把交界調高' : ''}`
-          : '',
-        record.style === 'ezcad' && record.blocked_out_mm != null
-          ? `肩台上方凹槽填平：最深 ${record.blocked_out_mm} mm（${record.blocked_out_mm3} mm³）`
+          : record.style === 'blend'
+            ? `防倒凹收進：最多 ${record.held_in_mm} mm · 過渡以上 ${(100 * (record.held_in_share ?? 0)).toFixed(0)}% 的軸面靠在肩台內緣（牙冠在 margin 外凸，那裡比 ${record.cutback_mm} mm 厚）`
+            : '',
+        (record.style === 'ezcad' || record.style === 'blend') && record.blocked_out_mm != null
+          ? `${record.style === 'ezcad' ? '肩台上方' : ''}凹槽填平：最深 ${record.blocked_out_mm} mm（${record.blocked_out_mm3} mm³）`
           : '',
         `高度 ${record.height_mm} mm · 離對咬 ${record.antagonist_gap_mm ?? '—'} mm · 沒縫合的邊 ${record.open_margin_edges}`,
         `插入方向 ${record.axis_source === 'occlusal' ? '咬合方向（沿原本的方向切不出來）' : record.base?.axis_source === 'caller' ? '指定' : '自然傾斜'}，離咬合方向 ${record.axis_from_occlusal_deg}° · 原座標 [${formatAxis(record.insertion_axis_original ?? [])}]`,

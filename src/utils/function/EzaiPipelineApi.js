@@ -596,12 +596,15 @@ const runViaDispatcher = async ({ site, form, query, sent, fdi, onStage, timeout
  *
  * `stump.shape: 'cutback'` (and `noAbutment.stumpShape: 'cutback'`): the service builds a crown
  * over the library stump and returns that crown cut back as the stump -- ezai-pipeline
- * app/cutback_stump.py. `cutbackStyle` null / 'ezcad' (the service's default since 2026-11-05):
- * EZCAD's structure, the crown and the stump meeting `cutbackJunctionMm` above the ring on the
- * crown's wall (null: the service finds it), the crown taken in by one even `cutbackMm` above
- * it; 'ring' (2026-10-14): from the ring, `cutbackMm` on the walls and `cutbackOcclusalMm` along
- * the axis. mode 'stump' then also carries `cutbackCrown` (cutback_crown.ply, the crown it was
- * cut back from).
+ * app/cutback_stump.py. `cutbackStyle` null / 'blend' (the service's default since 2026-11-09):
+ * no junction, the crown taken in by one even `cutbackMm`, the stump standing on the shoulder
+ * (`shoulderMm` / `stumpShoulderMm`) and eased into the cutback over `cutbackBlendMm`; 'ezcad'
+ * (the default 2026-11-05 to 11-09): EZCAD's structure, the crown and the stump meeting
+ * `cutbackJunctionMm` above the ring on the crown's wall (null: the service finds it), the same
+ * even cutback above it; 'ring' (2026-10-14): from the ring, `cutbackMm` on the walls and
+ * `cutbackOcclusalMm` along the axis. The service answers 422 for an option of another style.
+ * mode 'stump' then also carries `cutbackCrown` (cutback_crown.ply, the crown it was cut back
+ * from).
  *
  * `contralateral` (anterior teeth, a target flagged `contralateral`): the crown is refitted to
  * the mirrored same tooth on the other side; the service may decline, and says why
@@ -722,6 +725,7 @@ const runPipelineJob = async ({
       if (noAbutment.cutbackMm != null) form.append('cutback_mm', String(noAbutment.cutbackMm));
       if (noAbutment.cutbackOcclusalMm != null) form.append('cutback_occlusal_mm', String(noAbutment.cutbackOcclusalMm));
       if (noAbutment.cutbackJunctionMm != null) form.append('cutback_junction_mm', String(noAbutment.cutbackJunctionMm));
+      if (noAbutment.cutbackBlendMm != null) form.append('cutback_blend_mm', String(noAbutment.cutbackBlendMm));
     }
   }
   if (mode === PIPELINE_MODES.stump && stump) {
@@ -735,6 +739,7 @@ const runPipelineJob = async ({
       if (stump.cutbackMm != null) form.append('cutback_mm', String(stump.cutbackMm));
       if (stump.cutbackOcclusalMm != null) form.append('cutback_occlusal_mm', String(stump.cutbackOcclusalMm));
       if (stump.cutbackJunctionMm != null) form.append('cutback_junction_mm', String(stump.cutbackJunctionMm));
+      if (stump.cutbackBlendMm != null) form.append('cutback_blend_mm', String(stump.cutbackBlendMm));
     }
   }
   if (allToothFdi.trim() && !ringMode) {
