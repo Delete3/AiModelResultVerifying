@@ -1,6 +1,6 @@
 # AI排牙 API 串接說明
 
-文件版本：2026-11-05（新參數 `fast_roots`：生成牙根可以每筆選加速版或加速前）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
+文件版本：2026-11-10（新增精簡包 `contents=slim`：處理後的口掃、每個面一個 byte 的分割標記 `.trimp`、每顆牙 `.tri`，約整包 zip 的九分之一；修改過的標記可以送回來重跑）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
 
 上傳一組上下顎口掃，服務會自動分牙、替每顆牙生成牙根、用 AI 排牙，並回傳排牙前後的 ABO 評分；也可以只分牙＋生成牙齒、不排牙。這是非同步 API。嘉義、台中兩台主機提供同一個 API、互為備援，一筆全口在嘉義約 2 分鐘、台中約 3 分鐘。
 
@@ -31,7 +31,7 @@
 
 1. `POST /v1/jobs` 上傳上顎和下顎口掃，立刻回 202 與 `job_id`。
 2. 每 2–5 秒 `GET /v1/jobs/{job_id}`，直到 `state` 是 `done` 或 `failed`。進行中依序是 `queued` → `segmenting`（分牙）→ `generating`（生成牙根）→ `aligning`（排牙）→ `done`；任何一步出錯就是 `failed`，原因在 `error`。
-3. 下載結果：照 `results` 裡的路徑一個一個拿，或 `GET /v1/jobs/{job_id}/archive` 一次拿整包 zip。
+3. 下載結果：`GET /v1/jobs/{job_id}/archive?contents=slim` 拿精簡包（建議，Case 1 約 7 MB，見「精簡包」）；不帶 `contents` 是整包 zip（約 69 MB）；也可以照 `results` 裡的路徑一個一個拿。
 4. `DELETE /v1/jobs/{job_id}`。口掃是病人資料，用完就刪；沒刪的話，job 結束 2 小時後會自動刪除。
 
 - 只要分牙＋生成牙齒、不排牙，建立 job 時帶 `until=generate`，見下一節。只要分牙，帶 `until=segment`。job 會在那一步做完就是 `done`；之後可以用 `POST /v1/jobs/{job_id}/run` 接著跑後面的步驟，或換參數重跑。
@@ -54,7 +54,7 @@ curl -s "${H[@]}" -F upper=@upper.stl.gz -F lower=@lower.stl.gz -F until=generat
 | 排牙後的牙 `results.aligned`、`full_jaw_aligned.ply` | 有 | 沒有（`results.aligned` 是空列表） |
 | 排牙矩陣、`results.align`、`results.transforms_url` | 有 | 沒有（null） |
 | ABO `results.abo` | 排牙前、排牙後 | 沒有（兩項都是 null） |
-| 整包 zip（Case 1） | 約 130 MB | 約 25 MB |
+| 整包 zip（Case 1） | 約 69 MB（精簡包約 7 MB） | 約 25 MB |
 | 時間（嘉義，Case 1，`res=128`，27 顆） | 多排牙這一步（約 10–15 秒） | 120 秒（分牙 18 秒、生成 102 秒；2026-11-02 生成牙根加快前量的） |
 
 - 拿到的牙和完整流程裡「排牙前」的牙相同：都在 `results.teeth`，排牙不會改動它們。
@@ -80,11 +80,11 @@ curl -s "${H[@]}" -F upper=@upper.stl.gz -F lower=@lower.stl.gz -F until=generat
 
 | 方法 | 路徑 | 做什麼 | 成功時回傳 |
 |---|---|---|---|
-| POST | `/v1/jobs` | 建立 job（multipart/form-data）：上傳上下顎口掃，或上傳自己的牙冠／牙齒 zip | 202 `{job_id, state, status_url}` |
+| POST | `/v1/jobs` | 建立 job（multipart/form-data）：上傳上下顎口掃、自己的牙冠／牙齒 zip，或精簡包的口掃＋標記 | 202 `{job_id, state, status_url}` |
 | GET | `/v1/jobs/{job_id}` | 狀態、每步秒數、進度、結果檔案路徑、評分 | 200 JSON |
-| GET | `/v1/jobs/{job_id}/files/{path}` | 下載一個結果檔（path 照 `results` 裡的寫） | 200 檔案 |
-| GET | `/v1/jobs/{job_id}/archive` | 整包結果 zip（job 還在跑時回 409） | 200 zip |
-| POST | `/v1/jobs/{job_id}/run` | 從某一步重跑（`step=generate` 或 `align`） | 202 `{job_id, state, steps}` |
+| GET | `/v1/jobs/{job_id}/files/{path}` | 下載一個結果檔（path 照 `results` 裡的寫）；`.ply`、`.stl` 加 `?format=tri` 拿 `.tri` | 200 檔案 |
+| GET | `/v1/jobs/{job_id}/archive` | 結果 zip：預設整包；`?contents=slim` 是精簡包（見「精簡包」）。job 還在跑時回 409 | 200 zip |
+| POST | `/v1/jobs/{job_id}/run` | 從某一步重跑（`step=generate` 或 `align`）；`step=generate` 可以附修改過的標記 | 202 `{job_id, state, steps}` |
 | DELETE | `/v1/jobs/{job_id}` | 刪除 job 與所有檔案（還在跑時回 409） | 200 `{deleted}` |
 | GET | `/health` | 服務與 GPU 是否可用、排隊數 | 200；GPU 或模型檔有問題時 503 |
 | GET | `/` | 支援的格式、參數選項與預設值、FDI 配色 | 200 JSON |
@@ -106,6 +106,7 @@ curl -s "${H[@]}" -F upper=@upper.stl.gz -F lower=@lower.stl.gz -F until=generat
 | `until` | `segment`、`generate`、`align` | `align` | 做到哪一步為止。`generate`＝只分牙＋生成牙齒、不排牙（見「只分牙＋生成牙齒、不排牙」） |
 
 - `POST /v1/jobs/{job_id}/run` 收 `step`（必填，`generate` 或 `align`）以及 `res`、`until`、`root_fix`、`crown`、`root`、`fast_roots`；沒送的沿用這個 job 原本的值，只有 `until` 例外（沒送就是 `align`）。分牙不能重跑，要換分牙就建新的 job。`root=none` 的 job 沒有排牙，`step=align` 會回 422。
+- `/run` 的 `step=generate` 另外收 `labels_upper`、`labels_lower`（`.trimp`）：照修改過的分割標記重新切牙冠，見「精簡包」的「把修改過的標記送回來」。
 - 口掃上很小的漂浮碎片（每塊小於表面積 0.5%）若會讓分牙誤判，服務會先移掉並在 `warnings` 說明。兩顎沒有對合（咬合方向不平行，或兩顎朝同一邊而被重新擺位）時，也會在 `warnings` 提醒。
 - `seg=toothroot` 另外會自動偵測上下顎檔案送反並對調，同樣寫在 `warnings`；`seg=ssm` 不會，請確認欄位沒放反。
 
@@ -209,6 +210,7 @@ curl -s "${H[@]}" -F upper=@upper.stl.gz -F lower=@lower.stl.gz -F until=generat
 | `segment`（預設） | 分牙 → 牙根 → 排牙，送口掃 `upper`、`lower` | 不用 zip |
 | `generate` | 用你的牙冠生成牙根 → 排牙 | 牙冠、牙齦 |
 | `align` | 用你的牙冠和整顆牙排牙 | 牙冠、整顆牙 |
+| `generate`（精簡包） | 用精簡包的口掃＋標記生成牙根 → 排牙 | 不用 zip：送 `upper`、`lower`（`scan/{jaw}.tri`）與 `labels_upper`、`labels_lower`，見「精簡包」 |
 
 - 只要生成牙根、不排牙，就加 `until=generate`。`res`、`root_fix`、`crown`、`root` 照常可用；這種 job 一律用 tooth_ssm，不能送 `seg=toothroot`。
 - zip 的資料夾結構和我們回傳的 zip 一樣，所以可以拿一個 job 的結果修改後直接送回來：
@@ -275,7 +277,7 @@ curl -s "${H[@]}" -F start=align -F teeth=@crowns_and_teeth.zip $B/v1/jobs      
 | `result/aligned_report.json`、`abo_input.json`、`abo_aligned.json` | 排牙報告與 ABO |
 | `result/viewer/...` | 帶顏色的顯示用版本 |
 
-一筆全口的 zip 約 130 MB（`result/_aligned/` 是排牙模型的中間檔，可以忽略）；只需要幾個檔案時，照 `results` 個別下載比較快。
+一筆全口的 zip 約 69 MB（Case 1 68.8 MB、307 個檔；`result/_aligned/` 是排牙模型的中間檔，可以忽略）。要省傳輸時間請用精簡包（約 7 MB，見「精簡包」）；只需要幾個檔案時，照 `results` 個別下載。
 
 ### 排牙矩陣
 
@@ -331,6 +333,103 @@ x2 = M[0][0]*x + M[0][1]*y + M[0][2]*z + M[0][3];
 y2 = M[1][0]*x + M[1][1]*y + M[1][2]*z + M[1][3];
 z2 = M[2][0]*x + M[2][1]*y + M[2][2]*z + M[2][3];
 ```
+
+## 精簡包：`contents=slim`（2026-11-10 起，建議）
+
+`GET /v1/jobs/{job_id}/archive?contents=slim` 只放「從其他檔案推不出來」的東西，其餘都可以從裡面算回來，而且**無損**：還原出來的牙冠、牙齦、牙齒和整包 zip 裡的逐位元相同。不帶 `contents`（或 `contents=full`）仍是原本的整包 zip，內容不變。
+
+| | 整包 zip（`full`，預設） | 精簡包（`slim`） |
+|---|---|---|
+| Case 1（27 顆，排牙完成） | 68.8 MB、307 個檔 | 7.4 MB、38 個檔 |
+| 其中的分割（牙冠＋牙齦） | 29 個 `.ply` | 兩個標記檔，合計約 15 KB（依口掃不同，一顎約 4–70 KB） |
+| 服務端打包 | 約 1.3 秒 | 嘉義 0.12 秒、台中 0.16 秒 |
+
+精簡包裡的檔案：
+
+| zip 裡的路徑 | 內容 |
+|---|---|
+| `manifest.json` | 格式版本；每顎口掃的面數、頂點數、指紋，以及上下顎對調、上顎移動、移掉的碎片；每顎標記的統計；整顆牙列表；檔案列表 |
+| `scan/{jaw}.tri` | 服務實際使用的口掃（`.tri` V1，見下） |
+| `labels/{jaw}.trimp` | 分割標記：`scan/{jaw}.tri` 的每個面屬於哪顆牙或牙齦（TRIMP v1，見下） |
+| `result/{jaw}/teeth/tooth_{FDI}.tri` | 排牙前、含牙根的整顆牙；頂點與面和整包 zip 的 `.ply` 完全相同 |
+| `result/*.json` | `aligned_transforms_world.json`（排牙矩陣）、`aligned_report.json`、`abo_input.json`、`abo_aligned.json`、`articulation.json`、`tooth_axes.json`（`root=virtual`、`none`） |
+
+整包 zip 裡其他的東西，從精簡包這樣得到：
+
+| 整包 zip 裡的 | 從精簡包怎麼得到 |
+|---|---|
+| `segmentation/{jaw}/tooth_{FDI}.ply`、`gum.ply` | 口掃裡標記等於那個 FDI（牙齦是 0）的面 |
+| `result/{jaw}/aligned/tooth_{FDI}.ply` | 排牙矩陣 × 整顆牙（見「排牙矩陣」；沒有那一筆就是沒動），差 0.000002 mm 以下 |
+| `result/{jaw}/full_jaw*.ply`、`both_jaws*.ply` | 把整顆牙合在一起 |
+| `result/viewer/...`、`result/_aligned/...` | 顯示用的上色版本與排牙模型的中間檔，不需要 |
+
+### 口掃：服務實際使用的那一份
+
+`scan/{jaw}.tri` 不是上傳的原檔，而是服務分牙時用的口掃，標記、牙齒、排牙矩陣、牙軸都以它為準、在它的座標系。和上傳檔不同的地方寫在 `manifest.json` 的 `scan.{jaw}`：
+
+| 欄位 | 意思 |
+|---|---|
+| `uploaded_as` | 這一顎來自哪個上傳欄位（`upper` 或 `lower`）。`seg=toothroot` 偵測到上下顎送反而對調時，`upper` 會寫 `lower`，而且 `manifest.json` 的 `swapped` 是 true |
+| `moved`、`pose` | 上顎是否被重新擺位（即 `results.articulation.articulated`），以及 4×4 矩陣（第一層是列）：p回傳 = pose · [x, y, z, 1]ᵀ，[x, y, z] 是上傳檔的座標。沒移動時是單位矩陣 |
+| `debris_faces_removed` | 移掉的漂浮碎片面數（見 `warnings`） |
+| `faces`、`vertices`、`fingerprint` | 面數、頂點數、指紋（和標記檔檔頭裡的相同） |
+
+- 上傳 STL 的每個三角形都原樣保留：座標逐位元相同、面的順序相同、每個面的第一個角點相同，只把座標完全相同的頂點合併。
+- 用牙冠 zip 建的 job（`start=generate`、`align`）沒有口掃：精簡包裡沒有 `scan/`、`labels/`，`manifest.json` 的 `scan.{jaw}` 是 null。
+
+### `.tri` V1
+
+little-endian：`uint32` 頂點數 V、`uint32` 面數 F、`float32[V][3]` 頂點座標（mm）、`uint32[F][3]` 每個面的三個頂點索引（從 0 開始）。上傳口掃時也收這個格式。
+
+### 分割標記檔 `.trimp`（TRIMP v1，TRI Mark Per-face）
+
+每個面一個 byte，依 `scan/{jaw}.tri` 的面順序：`0`＝牙齦、`11`–`48`＝那顆牙的 FDI、`254`＝不屬於任何部分。檔案是 32 byte 的檔頭、標記資料、（選用的）延伸區塊，little-endian：
+
+| 位移 | 大小 | 欄位 | 內容 |
+|---|---|---|---|
+| 0 | 4 | magic | `TRMP` |
+| 4 | 1 | version | `1`；不認得的版本要拒絕 |
+| 5 | 1 | element | `0`＝每個面一個標記（精簡包都是 0）、`1`＝每個頂點一個 |
+| 6 | 1 | jaw | `0`＝未指定、`1`＝上顎、`2`＝下顎 |
+| 7 | 1 | codec | `0`＝不壓縮、`1`＝zlib（RFC 1950，zlib 的 `uncompress` 直接解） |
+| 8 | 4 | count | `uint32`，標記數＝口掃的面數 |
+| 12 | 8 | fingerprint | 口掃的指紋（見下） |
+| 20 | 4 | payload_len | `uint32`，標記資料（壓縮後）的 byte 數 |
+| 24 | 4 | crc32 | `uint32`，解壓後 `count` 個標記的 CRC-32（zlib 的 `crc32`） |
+| 28 | 4 | reserved | `0` |
+| 32 | payload_len | payload | 標記資料 |
+| … | | chunks | 到檔尾為止：4 個 ASCII 字元的 tag、`uint32` 長度、資料。v1 沒有定義任何區塊；讀取時跳過不認得的 |
+
+- **指紋**：把口掃每個面的三個角點座標（`float32`，依面的順序，角點照面裡存的順序，每個面 36 byte）接起來算 SHA-256，取前 8 byte。`-0.0` 當成 `+0.0`（服務寫出的 `.tri` 裡沒有 `-0.0`）。讀取時用手上的口掃算一次，面數或指紋對不上就不要用：表示標記屬於另一份口掃，或口掃被重新匯出、面的順序變了。
+- 口掃被移動、減面、重新排序後指紋就會變：標記只屬於產生它的那一份口掃。
+- 改標記後寫回：改標記資料裡的值，重算 CRC-32、重新 zlib 壓縮、更新 `payload_len`；`count` 和 `fingerprint` 不變（同一份口掃）。
+- C++ 讀取範例：[trimp_read.cpp](/docs/toothssm/trimp_read.cpp)（全文在本文件最後的附錄），只需要 zlib。讀 `.tri` 和 `.trimp`、檢查面數和指紋、印出每個標記有幾個面，也可以把一顆牙的面輸出成 OBJ：
+
+```bash
+g++ -std=c++17 -O2 trimp_read.cpp -lz -o trimp_read
+./trimp_read scan/upper.tri labels/upper.trimp tooth_11.obj 11
+```
+
+### 把修改過的標記送回來
+
+分牙不對時，改標記比改網格簡單；送回來就從生成牙根重跑：
+
+| 情況 | 怎麼送 | 說明 |
+|---|---|---|
+| job 還在（結束後 2 小時內） | `POST /v1/jobs/{job_id}/run`：`step=generate`，加 `labels_upper` 和／或 `labels_lower`（`.trimp` 檔） | 用這筆 job 自己的口掃照標記切出牙冠與牙齦，再生成牙根、排牙（不排牙就加 `until=generate`）。只送一顎就只換那一顎；那一顎上次生成的牙會先清掉。只限 `seg=ssm` 的 job |
+| job 已經不在 | `POST /v1/jobs`：`start=generate`，`upper`、`lower`＝精簡包的 `scan/{jaw}.tri`（可加 `.gz`），`labels_upper`、`labels_lower`＝標記 | 口掃照原樣使用：不再對調、不再擺位、不再移碎片。兩顎都要 |
+
+```bash
+# job 還在：只改上顎的標記
+curl -s "${H[@]}" -F step=generate -F labels_upper=@upper.trimp $B/v1/jobs/<job_id>/run
+# job 已經不在：用精簡包的口掃和標記建新的 job
+curl -s "${H[@]}" -F start=generate -F upper=@scan/upper.tri -F lower=@scan/lower.tri \
+     -F labels_upper=@labels/upper.trimp -F labels_lower=@labels/lower.trimp $B/v1/jobs
+```
+
+- 回 422 的情況：標記和口掃的面數、指紋或顎對不上；值不是牙齦、254 或那一顎的 FDI；某一顎沒有牙齦或沒有任何牙；帶標記但 `step` 不是 `generate`。`seg=toothroot` 的 job、用牙冠 zip 建的 job（沒有口掃）回 409。
+- 同一份標記，從標記建 job 和從牙冠 zip 建 job，生成的牙逐位元相同；排牙本身每次跑都有極小的差異（實測最多 0.007 mm、0.03°）。
+- 單一檔案也能拿 `.tri`：`GET /v1/jobs/{job_id}/files/{path}?format=tri`（只限 `.ply`、`.stl`，其他回 422）。
 
 ## 問題回報：`issues`
 
@@ -421,9 +520,9 @@ AI 最常見的錯，是有牙拔掉或缺牙時沒有跳號：例如拔掉 15�
 |---|---|---|
 | 403 | Cloudflare：沒帶或帶錯 Service Token，或用了預設 User-Agent（error code: 1010） | 檢查三個 header |
 | 404 | job 不存在：已刪除、已過 2 小時，或服務重新啟動過 | 重新上傳 |
-| 409 | job 還在跑（不能下載 zip、刪除或重跑），或重跑的前一步還沒有結果 | 等 job 結束再做 |
+| 409 | job 還在跑（不能下載 zip、刪除或重跑），或重跑的前一步還沒有結果；送標記給 `seg=toothroot` 或沒有口掃的 job | 等 job 結束再做 |
 | 413 | 上傳太大（Cloudflare 上限 100 MB） | 先 gzip |
-| 422 | 參數或檔案不對：缺一顎、不支援的副檔名、讀不出檔案、`res`／`seg`／`until`／`root_fix`／`crown`／`root` 的值不對、`root=none` 搭配 `start=align` 或 `step=align` | 看 `detail` |
+| 422 | 參數或檔案不對：缺一顎、不支援的副檔名、讀不出檔案、`res`／`seg`／`until`／`root_fix`／`crown`／`root` 的值不對、`root=none` 搭配 `start=align` 或 `step=align`、`contents`／`format` 的值不對、標記和口掃對不上（見「精簡包」） | 看 `detail` |
 | 429 | 已經有 4 個 job 在跑或排隊 | 稍後再送，或改送另一台 |
 | 500 | 服務內部錯誤 | 把 `job_id` 與時間告訴我們 |
 | 503 | `/health`：GPU 或模型檔不可用 | 改送另一台 |
@@ -437,7 +536,7 @@ job 本身失敗（`state` 是 `failed`）仍然回 200，原因在 `error` 與 
 - 口掃要是原始解析度的上下顎口掃；只有約 1.2 萬面的減面檔用 `seg=ssm` 只會分到幾顆牙，要改用 `seg=toothroot`。
 - 檔名會記在 job 裡（`inputs`），請用不含病人姓名的檔名。
 
-速度（一筆 27–28 顆牙的全口，服務端時間；經 Cloudflare 再加上傳與輪詢約 5–10 秒，整包 zip 約 130 MB 另計）：
+速度（一筆 27–28 顆牙的全口，服務端時間；經 Cloudflare 再加上傳與輪詢約 5–10 秒；下載另計：整包 zip 約 69 MB、精簡包約 7 MB）：
 
 | 設定 | 嘉義 RTX 5090 | 台中 RTX 5080 |
 |---|---|---|
@@ -507,10 +606,10 @@ print(s["state"], s["error"], s["timings"])
 for i in s.get("issues", []):           # 分牙與生成的問題（見「問題回報」）
     print(i["level"], i["code"], i["jaw"], i["teeth"], i["message"])
 
-# 3. 下載：整包 zip，或照 results 裡的路徑一個一個拿
+# 3. 下載：精簡包（約 7 MB；整包 zip 就不帶 params），或照 results 裡的路徑一個一個拿
 if s["state"] == "done":
-    z = requests.get(f"{BASE}/v1/jobs/{job}/archive", headers=H, timeout=600)
-    open(f"toothssm-{job}.zip", "wb").write(z.content)
+    z = requests.get(f"{BASE}/v1/jobs/{job}/archive", params={"contents": "slim"}, headers=H, timeout=600)
+    open(f"toothssm-{job}-slim.zip", "wb").write(z.content)
     for t in s["results"]["aligned"]:          # 排牙後的每顆牙（until=generate、root=none 沒有排牙：改用 results["teeth"]）
         url = f"{BASE}/v1/jobs/{job}/{t['url']}"   # t['url'] 是 files/... 開頭的相對路徑
         open(f"aligned_{t['jaw']}_{t['fdi']}.ply", "wb").write(
@@ -535,7 +634,211 @@ curl -s "${H[@]}" -F step=align $B/v1/jobs/<job_id>/run                         
 curl -s "${H[@]}" -F upper=@upper.stl.gz -F lower=@lower.stl.gz -F root=none $B/v1/jobs   # 只回牙冠＋牙軸，不排牙（牙冠預設 crown=fit；要口掃原樣加 -F crown=exact）
 curl -s "${H[@]}" $B/v1/jobs/<job_id>
 curl -s "${H[@]}" -o result.zip $B/v1/jobs/<job_id>/archive
+curl -s "${H[@]}" -o result-slim.zip "$B/v1/jobs/<job_id>/archive?contents=slim"           # 精簡包
 curl -s "${H[@]}" -X DELETE $B/v1/jobs/<job_id>
 ```
 
 requests 會自動解開服務端的 gzip 回應；用 curl 下載單一檔案時加 `--compressed` 會比較快。
+
+## 附錄：C++ 讀取精簡包（trimp_read.cpp）
+
+「精簡包」一節的讀取範例全文（也可以從 eztest 下載 [trimp_read.cpp](/docs/toothssm/trimp_read.cpp)）。只需要 zlib；`.tri` 與 `.trimp` 都是 little-endian。
+
+```cpp
+// Reading tooth_ssm's slim archive in C++: scan/<jaw>.tri + labels/<jaw>.trimp -> which tooth each face is.
+//
+//     g++ -std=c++17 -O2 trimp_read.cpp -lz -o trimp_read
+//     ./trimp_read scan/upper.tri labels/upper.trimp [tooth_11.obj 11]
+//
+// Prints the label counts after checking that the labels belong to this scan (face count and
+// fingerprint), and optionally writes the faces of one label (an FDI, or 0 for the gum) as an OBJ.
+// Needs only zlib. The formats are specified in deploy/trimp.py (TRIMP v1) and deploy/slim.py (.tri V1);
+// both are little-endian, as is every machine this is likely to run on.
+#include <zlib.h>
+
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <fstream>
+#include <map>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+static std::vector<uint8_t> read_file(const char* path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) throw std::runtime_error(std::string("cannot open ") + path);
+    return std::vector<uint8_t>((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+}
+
+template <class T> static T get(const std::vector<uint8_t>& b, size_t at) {
+    if (at + sizeof(T) > b.size()) throw std::runtime_error("file is truncated");
+    T v;
+    std::memcpy(&v, b.data() + at, sizeof(T));
+    return v;
+}
+
+// ---------------------------------------------------------------- .tri V1
+struct Mesh {
+    std::vector<float> v;      // 3 per vertex
+    std::vector<uint32_t> f;   // 3 per face
+};
+
+static Mesh read_tri(const std::vector<uint8_t>& b) {
+    uint32_t nv = get<uint32_t>(b, 0), nf = get<uint32_t>(b, 4);
+    if (8 + 12ull * nv + 12ull * nf > b.size()) throw std::runtime_error("not a .tri V1 file, or truncated");
+    Mesh m;
+    m.v.resize(3ull * nv);
+    m.f.resize(3ull * nf);
+    std::memcpy(m.v.data(), b.data() + 8, 12ull * nv);
+    std::memcpy(m.f.data(), b.data() + 8 + 12ull * nv, 12ull * nf);
+    for (uint32_t i : m.f)
+        if (i >= nv) throw std::runtime_error("a face uses a vertex the file does not have");
+    return m;
+}
+
+// ---------------------------------------------------------------- SHA-256 (for the fingerprint)
+struct Sha256 {
+    uint32_t h[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
+    uint8_t buf[64];
+    size_t used = 0;
+    uint64_t total = 0;
+    static uint32_t ror(uint32_t x, int n) { return (x >> n) | (x << (32 - n)); }
+    void block(const uint8_t* p) {
+        static const uint32_t k[64] = {
+            0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+            0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+            0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+            0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+            0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+            0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+            0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+            0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
+        uint32_t w[64];
+        for (int i = 0; i < 16; ++i) w[i] = uint32_t(p[4 * i]) << 24 | uint32_t(p[4 * i + 1]) << 16 | uint32_t(p[4 * i + 2]) << 8 | p[4 * i + 3];
+        for (int i = 16; i < 64; ++i) {
+            uint32_t s0 = ror(w[i - 15], 7) ^ ror(w[i - 15], 18) ^ (w[i - 15] >> 3);
+            uint32_t s1 = ror(w[i - 2], 17) ^ ror(w[i - 2], 19) ^ (w[i - 2] >> 10);
+            w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+        }
+        uint32_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], hh = h[7];
+        for (int i = 0; i < 64; ++i) {
+            uint32_t t1 = hh + (ror(e, 6) ^ ror(e, 11) ^ ror(e, 25)) + ((e & f) ^ (~e & g)) + k[i] + w[i];
+            uint32_t t2 = (ror(a, 2) ^ ror(a, 13) ^ ror(a, 22)) + ((a & b) ^ (a & c) ^ (b & c));
+            hh = g; g = f; f = e; e = d + t1; d = c; c = b; b = a; a = t1 + t2;
+        }
+        h[0] += a; h[1] += b; h[2] += c; h[3] += d; h[4] += e; h[5] += f; h[6] += g; h[7] += hh;
+    }
+    void add(const void* data, size_t n) {
+        const uint8_t* p = static_cast<const uint8_t*>(data);
+        total += n;
+        while (n) {
+            size_t take = std::min(n, sizeof(buf) - used);
+            std::memcpy(buf + used, p, take);
+            used += take; p += take; n -= take;
+            if (used == 64) { block(buf); used = 0; }
+        }
+    }
+    std::array<uint8_t, 32> done() {
+        uint64_t bits = total * 8;
+        uint8_t pad = 0x80, zero = 0;
+        add(&pad, 1);
+        while (used != 56) add(&zero, 1);
+        uint8_t len[8];
+        for (int i = 0; i < 8; ++i) len[i] = uint8_t(bits >> (56 - 8 * i));
+        add(len, 8);
+        std::array<uint8_t, 32> out;
+        for (int i = 0; i < 8; ++i)
+            for (int j = 0; j < 4; ++j) out[4 * i + j] = uint8_t(h[i] >> (24 - 8 * j));
+        return out;
+    }
+};
+
+// The scan's fingerprint: SHA-256 over its triangle corners as float32, face by face, corners in
+// stored order (36 bytes a face), first 8 bytes. -0.0 counts as +0.0 (the server writes +0.0).
+static std::array<uint8_t, 8> fingerprint(const Mesh& m) {
+    Sha256 s;
+    for (size_t i = 0; i < m.f.size(); ++i) {     // every corner of every face, in order
+        float c[3];
+        for (int k = 0; k < 3; ++k) c[k] = m.v[3ull * m.f[i] + k] + 0.0f;
+        s.add(c, sizeof c);
+    }
+    auto full = s.done();
+    std::array<uint8_t, 8> fp;
+    std::memcpy(fp.data(), full.data(), 8);
+    return fp;
+}
+
+// ---------------------------------------------------------------- TRIMP v1
+static std::vector<uint8_t> read_trimp(const std::vector<uint8_t>& b, const Mesh& scan) {
+    if (b.size() < 32 || std::memcmp(b.data(), "TRMP", 4) != 0) throw std::runtime_error("not a TRIMP file");
+    uint8_t version = b[4], element = b[5], codec = b[7];
+    uint32_t count = get<uint32_t>(b, 8), plen = get<uint32_t>(b, 20), crc = get<uint32_t>(b, 24);
+    if (version != 1) throw std::runtime_error("TRIMP version " + std::to_string(version) + "; this reader knows 1");
+    if (element != 0) throw std::runtime_error("labels are per vertex; this example reads per-face labels");
+    if (count != scan.f.size() / 3)
+        throw std::runtime_error("labels are for a scan of " + std::to_string(count) + " faces, this one has " +
+                                 std::to_string(scan.f.size() / 3));
+    if (std::memcmp(b.data() + 12, fingerprint(scan).data(), 8) != 0)
+        throw std::runtime_error("labels are for another scan (fingerprint differs)");
+    if (32ull + plen > b.size()) throw std::runtime_error("TRIMP payload is truncated");
+    std::vector<uint8_t> labels(count);
+    if (codec == 1) {
+        uLongf n = count;
+        if (uncompress(labels.data(), &n, b.data() + 32, plen) != Z_OK || n != count)
+            throw std::runtime_error("TRIMP payload does not inflate to the declared count");
+    } else if (codec == 0) {
+        if (plen != count) throw std::runtime_error("TRIMP stored payload has the wrong length");
+        std::memcpy(labels.data(), b.data() + 32, count);
+    } else {
+        throw std::runtime_error("unknown TRIMP codec");
+    }
+    if (crc32(0L, labels.data(), count) != crc) throw std::runtime_error("TRIMP labels fail their CRC-32");
+    // Chunks after the payload (tag, uint32 length, data) are optional; skipping them is always allowed.
+    return labels;
+}
+
+int main(int argc, char** argv) {
+    if (argc != 3 && argc != 5) {
+        std::fprintf(stderr, "usage: %s scan.tri labels.trimp [out.obj LABEL]\n", argv[0]);
+        return 2;
+    }
+    try {
+        Mesh scan = read_tri(read_file(argv[1]));
+        std::vector<uint8_t> labels = read_trimp(read_file(argv[2]), scan);
+        std::map<int, size_t> n;
+        for (uint8_t l : labels) ++n[l];
+        std::printf("%zu faces, fingerprint checked\n", labels.size());
+        for (auto& [l, c] : n)
+            std::printf("  %s %d: %zu faces\n", l == 0 ? "gum" : l == 254 ? "none" : "tooth", l, c);
+        if (argc == 5) {
+            int want = std::stoi(argv[4]);
+            std::vector<int64_t> remap(scan.v.size() / 3, -1);
+            std::vector<uint32_t> verts;
+            std::string faces;
+            for (size_t i = 0; i < labels.size(); ++i) {
+                if (labels[i] != want) continue;
+                faces += "f";
+                for (int k = 0; k < 3; ++k) {
+                    uint32_t v = scan.f[3 * i + k];
+                    if (remap[v] < 0) { remap[v] = int64_t(verts.size()); verts.push_back(v); }
+                    faces += " " + std::to_string(remap[v] + 1);
+                }
+                faces += "\n";
+            }
+            std::FILE* o = std::fopen(argv[3], "w");
+            if (!o) throw std::runtime_error("cannot write the OBJ");
+            for (uint32_t v : verts) std::fprintf(o, "v %.9g %.9g %.9g\n", scan.v[3ull * v], scan.v[3ull * v + 1], scan.v[3ull * v + 2]);
+            std::fputs(faces.c_str(), o);
+            std::fclose(o);
+            std::printf("label %d: %zu vertices -> %s\n", want, verts.size(), argv[3]);
+        }
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "error: %s\n", e.what());
+        return 1;
+    }
+    return 0;
+}
+```

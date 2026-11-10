@@ -371,10 +371,20 @@ const fetchToothSsmFile = async (target, jobId, url) => {
   }
 };
 
-const fetchToothSsmArchive = async (target, jobId) => {
+/**
+ * The job's zip. `contents`: 'full' (the default, everything) or 'slim' (since 2026-11-10 on both
+ * boxes: the processed scans as .tri, the segmentation as one label byte per scan face (.trimp), the
+ * whole teeth as .tri, the JSON -- ~1/9 of full, lossless; ssm_project deploy/slim.py). The
+ * dispatcher hands back the box's full zip only, so there is no slim archive through it.
+ */
+const hasSlimArchive = target => !isDispatched(target);
+
+const fetchToothSsmArchive = async (target, jobId, contents = 'full') => {
+  if (contents === 'slim' && !hasSlimArchive(target)) throw new Error(`${TOOTHSSM_TARGETS[target]?.label ?? target}沒有精簡包，請下載全部結果`);
   if (isDispatched(target)) return new Blob([await fetchDispatcherResult(jobId)], { type: 'application/zip' });
   try {
-    const response = await axios.get(`${baseOf(target)}/v1/jobs/${jobId}/archive`, {
+    const query = contents === 'slim' ? '?contents=slim' : '';
+    const response = await axios.get(`${baseOf(target)}/v1/jobs/${jobId}/archive${query}`, {
       responseType: 'arraybuffer',
       timeout: 10 * 60 * 1000,
     });
@@ -412,6 +422,7 @@ export {
   fetchToothSsmFile,
   getToothSsmHealth,
   getToothSsmInfo,
+  hasSlimArchive,
   isDispatched,
   rerunToothSsmStep,
   submitToothSsmJob,

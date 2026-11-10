@@ -18,6 +18,7 @@ import {
   fetchToothSsmFile,
   getToothSsmHealth,
   getToothSsmInfo,
+  hasSlimArchive,
   isDispatched,
   rerunToothSsmStep,
   submitToothSsmJob,
@@ -365,11 +366,15 @@ const ToothAlignPanel = () => {
     }
   };
 
-  const downloadArchive = async () => {
+  // contents: 'full' = everything; 'slim' = the processed scans (.tri), the segmentation as labels
+  // (.trimp), the whole teeth (.tri) and the JSON, ~1/9 of full (public/docs/toothssm/api.md 精簡包).
+  const downloadArchive = async (contents = 'full') => {
     if (!jobRef.current) return;
-    setStage('正在打包下載…');
+    setStage(contents === 'slim' ? '正在下載精簡包…' : '正在打包下載…');
     try {
-      downloadBlob(await fetchToothSsmArchive(jobRef.current.target, jobRef.current.id), `toothssm-${jobRef.current.id}.zip`);
+      const { target, id } = jobRef.current;
+      downloadBlob(await fetchToothSsmArchive(target, id, contents),
+        contents === 'slim' ? `toothssm-${id}-slim.zip` : `toothssm-${id}.zip`);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -653,7 +658,10 @@ const ToothAlignPanel = () => {
         這筆沒有排牙（{crownsOnly ? '不接牙根的模式一律不排牙' : '只分牙＋生成牙齒；要排牙按「接著排牙」'}）
       </div>}
       {jobRef.current && <div className='button-row'>
-        <Button size='small' disabled={busy} onClick={downloadArchive}>下載全部結果（zip）</Button>
+        <Button size='small' disabled={busy} onClick={() => downloadArchive('full')}>下載全部結果（zip）</Button>
+        {hasSlimArchive(jobRef.current.target) && <Tooltip title='處理後的口掃（.tri）、分割標記（.trimp，每個面屬於哪顆牙）、每顆牙（.tri）與結果 JSON；無損，約全部結果的九分之一。格式見 API 串接文件「精簡包」。'>
+          <Button size='small' disabled={busy} onClick={() => downloadArchive('slim')}>下載精簡包（zip）</Button>
+        </Tooltip>}
         {r?.axes_url && <Button size='small' disabled={busy} onClick={downloadAxes}>下載牙軸（tooth_axes.json）</Button>}
       </div>}
     </section>}
