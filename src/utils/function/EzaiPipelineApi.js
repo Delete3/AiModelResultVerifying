@@ -205,9 +205,12 @@ const isPosteriorFdi = fdi => [4, 5, 6, 7].includes(Number(fdi) % 10) && [1, 2, 
  * the panel fills in when the model is picked.
  */
 const CROWN_MODELS = {
-  // v3 fine-tuned on HeyGears' exocad crowns, premolars and molars only (2026-11-02 retrain;
-  // 95 /data/crown-heygears-v2-20261030/). HeyGears' designers leave ~0.2 mm to the antagonist,
-  // which the model does not learn by itself.
+  // Since 2026-11-11 (Chiayi): "full1ed", the 8x1024 decoder retrained on all crowns with a style
+  // label and fine-tuned on HeyGears' exocad crowns, premolars and molars only; with
+  // occlusal_detail the crown service gives it the HeyGears occlusal texture (cw25f + groove
+  // sharpening) instead of the carve. It ranked first in blind check round 3. Until then it was
+  // v3 fine-tuned on the same crowns (2026-11-02), still served as heygears_v1 but not offered
+  // here. HeyGears' designers leave ~0.2 mm to the antagonist, which the model does not learn.
   heygears: {
     label: 'HeyGears 風格',
     hint: '只有小臼齒、大臼齒；其他牙位用 v3',
@@ -250,7 +253,8 @@ const contralateralOutcome = manifest => {
 /**
  * What the crown service did with occlusal_detail=1, from the job's manifest: null when it was
  * not asked, else { applied, reason (Chinese, for the tag), raw (the service's words), info
- * (vertices moved, deepest_mm, mean_mm, seconds, ...) }.
+ * (vertices moved, deepest_mm, mean_mm, seconds, ...; method 'texture' for HeyGears style since
+ * 2026-11-11, with dz_max / dz_min / dz_mean_abs in mm instead) }.
  */
 const occlusalDetailOutcome = manifest => {
   const crown = manifest?.backends?.crown;
@@ -259,8 +263,10 @@ const occlusalDetailOutcome = manifest => {
   const info = crown?.occlusal_detail_info ?? null;
   if (!status) return { applied: false, reason: '服務不支援這個選項', raw: '', info: null };
   if (status === 'applied') return { applied: true, reason: '', raw: status, info };
-  const reason = status.startsWith('skipped') ? '不是小臼齒或大臼齒'
-    : status.startsWith('failed') ? '處理失敗，回傳模型原本的牙冠' : status;
+  // HeyGears style (2026-11-11) applies its texture per tooth type; L4 has too few crowns for one.
+  const reason = status.includes('no template') ? `HeyGears 紋路還沒有這個牙位的範本（${status.split(' ').pop()}）`
+    : status.startsWith('skipped') ? '不是小臼齒或大臼齒'
+      : status.startsWith('failed') ? '處理失敗，回傳模型原本的牙冠' : status;
   return { applied: false, reason, raw: status, info };
 };
 

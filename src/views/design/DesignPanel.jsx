@@ -346,7 +346,7 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
 
       <div className='field-row'>
         <label>
-          <Tooltip title='生成牙冠用的模型。「HeyGears 風格」是用 HeyGears 技師的 exocad 牙冠再訓練的 v3，只學過小臼齒、大臼齒，其他牙位會自動改用 v3（結果會註明）。只有 pipeline 選嘉義、分派器或 modal雲端時才能選（分派器不會把它派給台中）；換到其他 pipeline 會自動改回 v3。選它時會自動填咬合間隙 0.2、勾選「咬合面細節」，改回 v3 時清空、取消勾選；都可以再手動改。'>
+          <Tooltip title='生成牙冠用的模型。「HeyGears 風格」（2026-11-11 換成新版）是用全部牙冠重新訓練、再用 HeyGears 技師的 exocad 牙冠微調的模型，只學過小臼齒、大臼齒，其他牙位會自動改用 v3（結果會註明）；勾「咬合面細節」時加上 HeyGears 咬合面紋路。盲評大多排第一。每顆比舊版多約 0.5 秒。只有 pipeline 選嘉義、分派器或 modal雲端時才能選（分派器不會把它派給台中）；換到其他 pipeline 會自動改回 v3。選它時會自動填咬合間隙 0.2、勾選「咬合面細節」，改回 v3 時清空、取消勾選；都可以再手動改。'>
             牙冠模型
           </Tooltip>
           <Select value={crownModel} onChange={chooseCrownModel} options={crownModelOptions} disabled={Boolean(running)}
@@ -375,7 +375,7 @@ const DesignPanel = ({ fdi, setFdi, allToothFdi, setAllToothFdi, prepJaw, scene 
         </Checkbox>
       </Tooltip>
       <Tooltip title={posterior
-        ? '生成後沿窩溝、窩往下挖深，補回模型磨平的咬合面細節。只往下挖：牙尖、接觸點、外壁和邊緣不動，不會更靠近對咬牙，咬合間隙照樣保留。75 例測試起伏多約 12%、形態不變，每顆約多 0.1 秒。v3、HeyGears 都能用；目前嘉義、分派器、modal雲端有（分派器不會把它派給台中）。'
+        ? 'v3：生成後沿窩溝、窩往下挖深，補回模型磨平的咬合面細節；只往下挖，牙尖、接觸點、外壁和邊緣不動，每顆約多 0.1 秒。HeyGears 風格：改成 HeyGears 咬合面紋路（窩溝更細、更利，可升可降，升高的地方不碰到對咬牙），外壁和邊緣不動，每顆約多 0.4 秒；下顎第一小臼齒（34、44）還沒有紋路範本，不加。目前嘉義、分派器、modal雲端有（分派器不會把它派給台中）。'
         : '只適用小臼齒、大臼齒（FDI x4–x7）'}>
         <Checkbox checked={occlusalDetail} onChange={e => toggleOcclusalDetail(e.target.checked)} disabled={Boolean(running) || !posterior}>
           咬合面細節（後牙）

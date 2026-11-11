@@ -196,7 +196,8 @@ const ResultView = ({ running, progress, error, result, onEditRing }) => {
             </Tooltip>}
             {detail && <Tooltip title={[detail.raw, detailInfo].filter(Boolean).join(' · ')}>
               {detail.applied
-                ? <Tag color='cyan'>咬合面細節{detail.info?.deepest_mm != null ? ` · 最深 ${detail.info.deepest_mm} mm` : ''}</Tag>
+                ? <Tag color='cyan'>咬合面細節{detail.info?.method === 'texture' ? ' · HeyGears 紋路'
+                  : detail.info?.deepest_mm != null ? ` · 最深 ${detail.info.deepest_mm} mm` : ''}</Tag>
                 : <Tag color='default'>未補咬合面細節：{detail.reason}</Tag>}
             </Tooltip>}
             {formatTags(result.inputs)}

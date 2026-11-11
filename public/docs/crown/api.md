@@ -1,6 +1,6 @@
 # 牙冠設計 API 串接說明
 
-文件版本：2026-11-04（貼合鄰牙不再在牙冠側面留下折痕，兩台；新增咬合面細節 `occlusal_detail=1`，目前只有嘉義；2026-11-03 新增 HeyGears 牙冠模型 `crown_model=heygears`，也只有嘉義）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
+文件版本：2026-11-11（嘉義的 `crown_model=heygears` 換成新版模型，加 `occlusal_detail=1` 時改上 HeyGears 咬合面紋路；舊版暫時保留為 `heygears_v1`）。之前：2026-11-04 貼合鄰牙不再留下折痕（兩台）、新增 `occlusal_detail`（嘉義）；2026-11-03 新增 `crown_model=heygears`（嘉義）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
 
 上傳一組上下顎口掃和要做牙冠的牙位（FDI），服務會自動擺正口掃、預測 margin（也可以用你畫好的 margin）、生成牙冠，最後回傳一個 zip。這是非同步 API：上傳後立刻拿到 `job_id`，再輪詢結果。嘉義、台中兩台主機提供同一個 API、互為備援；一個 job 在服務端約 3–8 秒。
 
@@ -8,7 +8,7 @@
 
 | 端點 | 基底網址 | `crown_model=heygears` | `occlusal_detail` |
 |---|---|---|---|
-| 嘉義（RTX 5090） | `https://ezai2.inteware.com.tw/pipeline` | 有（2026-11-03 起） | 有（2026-11-04 起） |
+| 嘉義（RTX 5090） | `https://ezai2.inteware.com.tw/pipeline` | 有（2026-11-03 起；2026-11-11 換新版） | 有（2026-11-04 起） |
 | 台中（RTX 5080） | `https://ezai.inteware.com.tw/pipeline` | **還沒有**：送了不會報錯，拿到的是 v3 牙冠（見「牙冠模型」） | **還沒有**：送了不會報錯，牙冠沒有補細節（見「咬合面細節」） |
 
 兩台各用一組 Service Token（兩個 Cloudflare Access 應用）。每個請求都要帶下面三個 header，缺一個就會被 Cloudflare 擋下。
@@ -72,9 +72,9 @@
 
 | 參數 | 值 | 預設 | 說明 |
 |---|---|---|---|
-| `crown_model` | `heygears` | 不帶＝v3 | 用哪個牙冠模型，見下一節。**目前只有嘉義認得** |
+| `crown_model` | `heygears`（`heygears_v1`：舊版，暫時保留） | 不帶＝v3 | 用哪個牙冠模型，見下一節。**目前只有嘉義認得** |
 | `occlusal_clearance` | −0.3–1.0（mm） | 不帶＝不另外留 | 牙冠咬合面和對咬牙之間至少留這個距離，由牙冠服務在生成後調整。HeyGears 建議 `0.2`。兩台都有 |
-| `occlusal_detail` | 0–2 | 不帶＝不補 | 生成後沿窩溝往下挖深，補回模型磨平的咬合面細節；`1` 是建議值。只對小臼齒、大臼齒，見「咬合面細節」。**目前只有嘉義認得** |
+| `occlusal_detail` | 0–2 | 不帶＝不補 | 生成後補回模型磨平的咬合面細節：v3 沿窩溝往下挖深，`heygears` 改上 HeyGears 咬合面紋路；`1` 是建議值。只對小臼齒、大臼齒，見「咬合面細節」。**目前只有嘉義認得** |
 | `job_id` | 英數字、`_`、`.`、`-`，最多 64 字 | 服務產生 | 自訂 job id，方便追蹤。**要保證不重複**：重複的 id 會蓋掉同名的 job |
 
 其他網址參數（`res`、`steps`、`guide`、`frame`、`chamfer`、`shell`、`contact_clearance`、`jaw_samples`）是模型的內部設定，請維持預設；改了以後，結果就和其他客戶的不一樣。
@@ -83,24 +83,39 @@
 
 | | 不帶（`default`，v3） | `heygears` |
 |---|---|---|
-| 是什麼 | 所有客戶目前用的模型 | v3 再用 HeyGears 技師的 exocad 牙冠訓練（186 例，加上 v3 原本的訓練資料），學 HeyGears 的牙冠風格 |
+| 是什麼 | 所有客戶目前用的模型 | 2026-11-11 起：用全部訓練牙冠重新訓練的較大模型，再用 HeyGears 技師的 exocad 牙冠微調，學 HeyGears 的牙冠風格。之前（11-03 到 11-10）是 v3 再訓練的版本，現在叫 `heygears_v1` |
 | 牙位 | 全部 | **只有小臼齒、大臼齒**（牙位第二碼 4–7）。前牙、犬齒、智齒帶了 `heygears` 也會用 v3 生成，並在 `warnings` 註明 |
-| 建議一起送 | — | `occlusal_clearance=0.2`：HeyGears 的牙冠和對咬牙通常留約 0.2 mm，模型自己學不到 |
-| 哪台有 | 兩台 | 嘉義（2026-11-03 起）；台中之後再上 |
+| 建議一起送 | — | `occlusal_clearance=0.2`：HeyGears 的牙冠和對咬牙通常留約 0.2 mm，模型自己學不到。`occlusal_detail=1`：HeyGears 咬合面紋路（見「咬合面細節」） |
+| 哪台有 | 兩台 | 嘉義（2026-11-03 起，2026-11-11 換新版）；台中之後再上 |
+
+- `heygears_v1` 是 11-10 以前的 `heygears`，只為了比對暫時保留，之後會拿掉；新的串接請用 `heygears`。
 
 HeyGears 的呼叫要像這樣（網址參數）：
 
 ```
-POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusal_clearance=0.2
+POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusal_clearance=0.2&occlusal_detail=1
 ```
 
 **怎麼確認真的用了 HeyGears 模型**：
 
 - 結果 zip 裡 `manifest.json` 的 `backends.crown.model` 是 `heygears`。前牙等沒學過的牙位是 `default`，同時 `warnings` 有一則 `crown_model: asked for 'heygears', the crown service used 'default'`。
-- 名稱打錯（例如 `heygear`）時 job 會失敗（`status` 是 `failed`），`error` 是 `crown generation failed: unknown model 'heygear'; this server has default, heygears`。
+- 名稱打錯（例如 `heygear`）時 job 會失敗（`status` 是 `failed`），`error` 是 `crown generation failed: unknown model 'heygear'; this server has default, heygears, heygears_v1`。
 - **台中還不認得這個參數：不會報錯、沒有警告，`manifest.json` 也沒有 `backends.crown.model`，拿到的是 v3 牙冠。** 所以 HeyGears 的 job 請先只送嘉義；要寫成兩台通用，就先看 `GET /` 回傳的 `options` 有沒有 `crown_model`，並在結果裡檢查 `backends.crown.model`。
 
-**效果**（第二批 75 例 HeyGears 病例，沒有參與訓練，和 HeyGears 技師的牙冠比；一次一個請求）：
+**2026-11-11 新版和舊版比**（第二批 75 例 HeyGears 病例，沒有參與訓練，和 HeyGears 技師的牙冠比；兩版都帶 `occlusal_clearance=0.2&occlusal_detail=1`，同一個病例前後接著送；中位數）：
+
+| | 舊版（`heygears_v1`） | 新版（`heygears`） |
+|---|---|---|
+| 形態誤差（去掉大小差異，mm） | 0.182 | 0.180（47/75 例更接近技師） |
+| 咬合面的形態誤差（mm） | 0.218 | 0.214 |
+| 和對咬牙的最近距離（mm） | 0.132 | 0.136 |
+| 咬進對咬牙超過 0.02 mm 的病例 | 11 / 75 | 12 / 75 |
+| 牙冠服務每顆秒數 | — | 比舊版多約 0.5 秒（同一病例相比的中位數） |
+
+- 數字上的差別小；差在看起來：新版的窩溝比較細、比較利，比較像技師的牙冠。我們內部的目視盲評（20 例，看不出是哪一版）新版大多排第一。
+- 新版的咬合面紋路只在帶 `occlusal_detail=1` 時才有（見下一節）；不帶時只換了模型。
+
+**11-03 那一版（現在的 `heygears_v1`）的效果**（同一批 75 例；一次一個請求）：
 
 | | v3 | HeyGears | HeyGears＋0.2 mm |
 |---|---|---|---|
@@ -113,17 +128,18 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 
 ## 咬合面細節：`occlusal_detail`
 
-模型生成的牙冠，咬合面最細的起伏（例如窩溝底的 V 形）比技師設計的平滑。`occlusal_detail=1` 讓牙冠服務在生成後把它補回來。
+模型生成的牙冠，咬合面最細的起伏（例如窩溝底的 V 形）比技師設計的平滑。`occlusal_detail=1` 讓牙冠服務在生成後把它補回來。做法看牙冠模型：
 
-| | |
-|---|---|
-| 做什麼 | 沿窩溝、窩往下挖深；挖多少，依技師牙冠量出的「模型平均磨掉多少」 |
-| 不動的地方 | 牙尖、接觸點、外壁、邊緣。只往下挖，所以不會更靠近對咬牙，`occlusal_clearance` 照樣有效 |
-| 牙位 | 只有小臼齒、大臼齒（牙位第二碼 4–7）；其他牙位照常生成、不補，`warnings` 會註明 |
-| 值 | `1`＝量出來的強度；可給 0–2（`0.5` 挖一半深、`2` 挖兩倍深）；`0` 或不帶＝不補；超出範圍或不是數字回 422 |
-| 模型 | v3、`heygears` 都可以 |
-| 哪台有 | 嘉義（2026-11-04 起）；台中之後再上 |
-| 時間 | 每顆約多 0.1 秒 |
+| | v3、`heygears_v1` | `heygears`（2026-11-11 起） |
+|---|---|---|
+| 做什麼 | 沿窩溝、窩往下挖深；挖多少，依技師牙冠量出的「模型平均磨掉多少」 | 換上 HeyGears 咬合面紋路：從 HeyGears 技師的牙冠學來，窩溝更細、更利；可升可降 |
+| 不動的地方 | 牙尖、接觸點、外壁、邊緣。只往下挖，所以不會更靠近對咬牙 | 外壁、邊緣。升高的地方不會碰到對咬牙（但可能吃掉一點 `occlusal_clearance` 留的間隙），往下離支台齒至少留 0.5 mm |
+| 牙位 | 小臼齒、大臼齒（牙位第二碼 4–7） | 同左，但**下顎第一小臼齒（34、44）還沒有紋路範本，不加**，`warnings` 會註明 |
+| 值 | `1`＝量出來的強度；可給 0–2（`0.5` 挖一半深、`2` 挖兩倍深） | 大於 0 就加上同樣的紋路，數值不影響強度 |
+| 時間 | 每顆約多 0.1 秒 | 每顆約多 0.4 秒（只用 CPU） |
+
+- 不適用的牙位照常生成、不補，`warnings` 會註明。`0` 或不帶＝不補；超出 0–2 或不是數字回 422。
+- 哪台有：嘉義（2026-11-04 起；`heygears` 的紋路 2026-11-11 起）；台中之後再上。
 
 HeyGears 的呼叫要像這樣（網址參數）：
 
@@ -133,13 +149,21 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 
 **怎麼確認有補**：
 
-- 結果 zip 裡 `manifest.json` 的 `backends.crown.occlusal_detail` 是 `applied`；`backends.crown.occlusal_detail_info` 有 `deepest_mm`（最深挖了幾 mm）、`mean_mm`（平均）、`moved`（動了幾個頂點）、`seconds`。
-- 不是 `applied` 時 `warnings` 會有一則 `occlusal_detail: …`：`skipped: FDI 13 (premolars and molars only)` 是牙位不適用；`failed: …` 是處理失敗，回傳模型原本的牙冠，job 仍然成功。
+- 結果 zip 裡 `manifest.json` 的 `backends.crown.occlusal_detail` 是 `applied`。`backends.crown.occlusal_detail_info`：
+  - v3、`heygears_v1`：`deepest_mm`（最深挖了幾 mm）、`mean_mm`（平均）、`moved`（動了幾個頂點）、`seconds`。
+  - `heygears`：`method` 是 `texture`；`dz_max`、`dz_min`（最多升高、降低幾 mm）、`dz_mean_abs`（平均移動）、`seconds`。
+- 不是 `applied` 時 `warnings` 會有一則 `occlusal_detail: …`：`skipped: FDI 13 (premolars and molars only)` 是牙位不適用；`skipped: no template for L4` 是 `heygears` 在下顎第一小臼齒沒有紋路範本；`failed: …` 是處理失敗，回傳模型原本的牙冠，job 仍然成功。
 - **台中還不認得這個參數：不會報錯、沒有警告，也沒有這兩個欄位，牙冠沒有補細節。** 要寫成兩台通用，就先看 `GET /` 回傳的 `options` 有沒有 `occlusal_detail`。
 
-**效果**（第二批 75 例 HeyGears 病例，沒有參與訓練，和 HeyGears 技師的牙冠比；一次一個請求；中位數）：
+**`heygears` 的紋路效果**（第二批 75 例，73 例有範本；除以技師牙冠的值，1＝和技師一樣；中位數）：
 
-| | HeyGears＋0.2 mm | 加 `occlusal_detail=1` | 技師 |
+- 窩溝寬度 1.10 倍、窩溝深度 1.10 倍、銳利度 0.90、窩溝總長 0.75。
+- 咬合面的形態誤差沒有變差；技師那種很細的副溝還是補不齊（窩溝總長只到技師的 75%）。
+- 和對咬牙的距離見上一節的新舊版比較：帶 `occlusal_clearance=0.2` 時，最近距離中位 0.136 mm。
+
+**v3、`heygears_v1` 的挖深效果**（同一批 75 例，和 HeyGears 技師的牙冠比；一次一個請求；中位數）：
+
+| | HeyGears（v1）＋0.2 mm | 加 `occlusal_detail=1` | 技師 |
 |---|---|---|---|
 | 咬合面起伏（mm，越大越銳利） | 0.123 | 0.139（74/75 例變銳利） | 0.157 |
 | 窩溝深度（mm） | 0.986 | 1.078 | 1.107 |
@@ -186,7 +210,7 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 
 `manifest.json` 裡值得讀的欄位：
 
-- `backends.crown.model`：實際用的牙冠模型（`default` 或 `heygears`）。
+- `backends.crown.model`：實際用的牙冠模型（`default`、`heygears` 或 `heygears_v1`）。
 - `crown_params`：送給牙冠服務的參數（含 `model`、`occlusal_clearance`、`occlusal_detail`）。
 - `backends.crown.occlusal_detail`、`occlusal_detail_info`：只有帶了 `occlusal_detail` 才有；有沒有補、挖了多少（見「咬合面細節」）。
 - `backends.crown.antagonist_relief`：大於 0 表示備牙的咬合空間不夠，服務把對咬往外移了這麼多 mm 才做得出牙冠，`warnings` 也會說明；這種牙冠的咬合要另外處理。
@@ -235,7 +259,8 @@ job 本身失敗（`status` 是 `failed`）時 `GET` 仍然回 200，原因在 `
 | `margin_override`（用你的 margin） | 約 3–5 秒 | 不跑 margin 模型 |
 | `margin_only` | 約 4 秒 | 不生成牙冠 |
 
-- `crown_model=heygears` 和 v3 差不多快；`occlusal_clearance=0.2` 每顆約多 0.3–0.4 秒；`occlusal_detail=1` 每顆約多 0.1 秒；`contralateral=true` 每顆約多 2 秒。
+- `crown_model=heygears` 每顆比 v3 多約 0.2 秒（`heygears_v1` 和 v3 差不多快）；`occlusal_clearance=0.2` 每顆約多 0.3–0.4 秒；`occlusal_detail=1` 每顆約多 0.1 秒（`heygears` 的紋路約 0.4 秒）；`contralateral=true` 每顆約多 2 秒。
+- HeyGears 建議的組合（`heygears`＋0.2＋`occlusal_detail=1`）牙冠服務每顆約 2.5–3 秒，比 11-10 以前多約 0.5 秒。
 - 經 Cloudflare 還要加上傳與輪詢的時間，主要看口掃大小與你的網路。
 
 ## 範例程式
@@ -281,7 +306,7 @@ if s["status"] == "succeeded":
     zf = zipfile.ZipFile(io.BytesIO(z.content))
     crown = json.loads(zf.read("manifest.json"))["backends"]["crown"]
     print("crown model:", crown.get("model"))       # 後牙應該是 heygears；前牙等是 default
-    print("occlusal detail:", crown.get("occlusal_detail"))   # 後牙應該是 applied
+    print("occlusal detail:", crown.get("occlusal_detail"))   # 後牙應該是 applied（34、44 是 skipped: no template for L4）
     open(f"crown_{job}.ply", "wb").write(zf.read("crown.ply"))
 
 # 4. 刪除

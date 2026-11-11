@@ -2,6 +2,27 @@
 
 最新的一版在最上面。每次 API 更新都會在這裡加一節，並同步更新「API 串接文件」。這裡的 API 是牙冠生成 pipeline（網址結尾 `/pipeline`）：上傳口掃與牙位，回傳牙冠。
 
+## 2026-11-11　HeyGears 模型換新版，咬合面細節改成 HeyGears 紋路（嘉義）
+
+嘉義（`https://ezai2.inteware.com.tw/pipeline`）11:21 換版：牙冠服務約 15 秒不能用，pipeline 沒有動，當時沒有 job 在跑。台中還沒有 HeyGears 模型。
+
+- **`crown_model=heygears` 換成新版模型**：用全部訓練牙冠重新訓練的較大模型，再用 HeyGears 技師的 exocad 牙冠微調。參數名稱不變，照舊只對小臼齒、大臼齒，其他牙位用 v3 並在 `warnings` 註明。
+- **舊版改名 `heygears_v1`**，只為了比對暫時保留，之後會拿掉。
+- **`heygears` 加 `occlusal_detail=1` 時改上 HeyGears 咬合面紋路**（從 HeyGears 技師的牙冠學來，窩溝更細、更利），不再是沿窩溝往下挖：
+  - 可升可降；升高的地方不會碰到對咬牙，往下離支台齒至少留 0.5 mm；外壁、邊緣不動。
+  - 大於 0 就加同樣的紋路，數值不影響強度。
+  - **下顎第一小臼齒（34、44）還沒有紋路範本**，不加；`occlusal_detail` 是 `skipped: no template for L4`，`warnings` 有一則。
+  - `occlusal_detail_info` 的欄位不同：`method` 是 `texture`，加上 `dz_max`、`dz_min`、`dz_mean_abs`、`seconds`。
+  - v3、`heygears_v1` 的 `occlusal_detail` 照舊是往下挖。
+- **效果**（第二批 75 例 HeyGears 病例，沒有參與訓練，和技師的牙冠比；兩版都帶 `occlusal_clearance=0.2&occlusal_detail=1`；中位數）：
+  - 形態誤差 0.182 → 0.180 mm（47/75 例更接近技師），咬合面 0.218 → 0.214 mm。
+  - 和對咬牙的最近距離 0.132 → 0.136 mm；咬進超過 0.02 mm 的病例 11 → 12。
+  - 窩溝（除以技師的值）：寬度 1.10 倍、銳利度 0.90、窩溝總長 0.75。
+  - 數字上差別小，差在看起來：窩溝比較細、比較利。我們內部的目視盲評（20 例）新版大多排第一。
+- **速度**：HeyGears 建議的組合每顆比之前多約 0.5 秒（同一病例相比的中位數；紋路約 0.4 秒，只用 CPU），牙冠服務每顆約 2.5–3 秒。
+- **其他呼叫完全不變**：換版前後用 13 個病例、單顎 FDI 13、5 個無支台齒病例比對（不帶 `crown_model`），輸出逐位元組相同（只有 `manifest.json` 的時間不同）。
+- 打錯模型名稱時的 `error` 現在列出 `default, heygears, heygears_v1`。
+
 ## 2026-11-04　貼合鄰牙不再在牙冠側面留下折痕（兩台）
 
 嘉義 10:55、台中 11:01 換版：pipeline 各約 1 秒不能用，當時沒有 job 在跑。牙冠服務沒有動。
