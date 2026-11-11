@@ -24,6 +24,10 @@ import {
 // frame of the scans as uploaded and the labels follow their face order -- so this tab draws a
 // result on the very files it sent.
 //
+// Or, for 排牙 (c) alone, `crowns` (2026-11-11): a zip of crowns already apart, one mesh per tooth
+// named by its FDI. The service merges each jaw into one mesh and labels its faces by FDI; that
+// merged scan comes back in the bundle (scan/<jaw>.stl), so a crowns result is drawn on it.
+//
 // Two ways in, both reached through this server (vite.config.js, credentials server-side):
 //   dispatcher  the AI dispatcher's test site, the address the orthodontic team integrates
 //               against: scans to S3 first, inputs as URLs, it picks the box (Chiayi has v2)
@@ -140,11 +144,11 @@ const getV2Health = async target => {
 };
 
 /**
- * Queue one job. `scans` {upper: File, lower: File} when it segments (or wants the scans), or
- * `ref` (an earlier job's id, same target) for its bundle. `params` holds steps and the rest.
- * Resolves { id, uploadSeconds, sentBytes }.
+ * Queue one job. `scans` {upper: File, lower: File} when it segments (or wants the scans), `ref`
+ * (an earlier job's id, same target) for its bundle, or `crowns` (a zip File, steps ['align']).
+ * `params` holds steps and the rest. Resolves { id, uploadSeconds, sentBytes }.
  */
-const submitV2Job = async ({ target, steps, params = {}, scans = null, ref = null, onStage = () => {} }) => {
+const submitV2Job = async ({ target, steps, params = {}, scans = null, ref = null, crowns = null, onStage = () => {} }) => {
   const body = { params: { steps, ...params } };
   if (ref) body.inputs = { bundle: `job:${ref}` };
   const files = [];
@@ -159,6 +163,8 @@ const submitV2Job = async ({ target, steps, params = {}, scans = null, ref = nul
     onStage('正在壓縮口掃（gzip）…');
     for (const f of files) f.blob = await gzip(f.raw);
   }
+  // a zip is compressed already: sent as it is
+  if (crowns) files.push({ name: 'crowns', file: 'crowns.zip', blob: crowns });
   const sentBytes = files.reduce((sum, f) => sum + f.blob.size, 0);
   const startedAt = performance.now();
 
@@ -174,7 +180,7 @@ const submitV2Job = async ({ target, steps, params = {}, scans = null, ref = nul
     return { id: view.id, uploadSeconds, sentBytes };
   }
 
-  onStage(files.length ? `正在上傳 ${(sentBytes / 1048576).toFixed(1)} MB 到${V2_TARGETS[target].label}…` : '正在送出 job…');
+  onStage(files.length ? `正在上傳 ${(sentBytes / 1048576).toFixed(2)} MB 到${V2_TARGETS[target].label}…` : '正在送出 job…');
   try {
     let response;
     if (files.length) {
@@ -233,20 +239,20 @@ const deleteV2Job = (target, id) => (isV2Dispatched(target)
 // --- reading a bundle ---------------------------------------------------------------------------
 
 /** A zip's members by name, read from its central directory: { name -> Promise<Uint8Array> }. */
-const readZip = buffer => {
+const readZip = (buffer, label = '結果包') => {
   const bytes = new Uint8Array(buffer);
   const view = new DataView(buffer);
   let eocd = -1;
   for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
     if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
   }
-  if (eocd < 0) throw new Error('結果包不是 zip');
+  if (eocd < 0) throw new Error(`${label}不是 zip`);
   const count = view.getUint16(eocd + 10, true);
   let p = view.getUint32(eocd + 16, true);
   const members = new Map();
   const decoder = new TextDecoder();
   for (let n = 0; n < count; n++) {
-    if (view.getUint32(p, true) !== 0x02014b50) throw new Error('結果包的目錄壞了');
+    if (view.getUint32(p, true) !== 0x02014b50) throw new Error(`${label}的目錄壞了（或是 zip64，請用一般的 zip）`);
     const method = view.getUint16(p + 10, true);
     const size = view.getUint32(p + 20, true);
     const nameLen = view.getUint16(p + 28, true);
@@ -295,6 +301,85 @@ const parseMesh = (name, data) => {
   if (ext === 'ply') return new PLYLoader().parse(buffer);
   if (ext === 'stl') return new STLLoader().parse(buffer);
   throw new Error(`${name}：看不懂的網格格式`);
+};
+
+// --- the crowns input ----------------------------------------------------------------------------
+
+// The service's rules for a crowns zip (ssm_project deploy/ssm_v2/artifacts.read_crowns), checked
+// here before sending so that a wrong name shows at once: a mesh file's name without its suffixes
+// is the FDI (11, tooth_11, tooth-11); an upper/ or lower/ folder must agree with it.
+const CROWN_FILE = /^(.*?)\.(stl|ply|obj|tri)(\.gz)?$/i;
+const CROWN_STEM = /^(?:tooth[_-]?)?(\d{2})$/i;
+const CROWN_FEW = 6;
+const jawOfFdi = fdi => {
+  const quadrant = Math.floor(fdi / 10);
+  if (fdi % 10 < 1 || fdi % 10 > 8) return null;
+  return quadrant === 1 || quadrant === 2 ? 'upper' : quadrant === 3 || quadrant === 4 ? 'lower' : null;
+};
+
+/**
+ * A crowns zip read as the service will read it: { teeth {jaw: [{fdi, name}]}, ignored [names],
+ * problems [what the service would refuse], notes [what it would warn about] }, and
+ * `geometry(name)` for the preview (.stl .ply .tri, + .gz; null for .obj, which only the service reads).
+ */
+const readCrownsZip = async file => {
+  const zip = readZip(await file.arrayBuffer(), '牙冠檔');
+  const teeth = { upper: [], lower: [] };
+  const ignored = [];
+  const problems = [];
+  const seen = new Map();
+  for (const name of zip.names) {
+    const base = name.split('/').pop();
+    if (name.endsWith('/') || name.includes('__MACOSX') || base.startsWith('.')) continue;
+    const hit = base.match(CROWN_FILE);
+    if (!hit) {
+      ignored.push(name);
+      continue;
+    }
+    const stem = hit[1].match(CROWN_STEM);
+    const fdi = stem ? Number(stem[1]) : null;
+    const jaw = fdi ? jawOfFdi(fdi) : null;
+    if (!jaw) {
+      problems.push(`${name}：檔名要是牙位（上顎 11–18、21–28，下顎 31–38、41–48），例如 11.stl、upper/11.stl`);
+      continue;
+    }
+    const folders = name.split('/').slice(0, -1).map(d => d.toLowerCase()).filter(d => d === 'upper' || d === 'lower');
+    if (folders.some(d => d !== jaw)) {
+      problems.push(`${name}：${fdi} 是${jaw === 'upper' ? '上顎' : '下顎'}的牙，卻放在 ${folders.join('、')} 資料夾`);
+      continue;
+    }
+    if (seen.has(fdi)) {
+      problems.push(`${fdi} 有兩個檔：${seen.get(fdi)}、${name}`);
+      continue;
+    }
+    seen.set(fdi, name);
+    teeth[jaw].push({ fdi, name });
+  }
+  const notes = [];
+  for (const jaw of ['upper', 'lower']) {
+    teeth[jaw].sort((a, b) => a.fdi - b.fdi);
+    const word = jaw === 'upper' ? '上顎' : '下顎';
+    if (!teeth[jaw].length) problems.push(`沒有${word}的牙冠：排牙要兩顎都有`);
+    else if (teeth[jaw].length < CROWN_FEW) notes.push(`${word}只有 ${teeth[jaw].length} 顆牙冠（少於 ${CROWN_FEW} 顆，服務會警告 input.few_crowns）`);
+  }
+  const geometry = async name => {
+    const m = name.split('/').pop().match(CROWN_FILE);
+    if (!m || m[2].toLowerCase() === 'obj') return null;
+    let data = await zip.read(name);
+    if (m[3]) {
+      data = new Uint8Array(await new Response(new Blob([data]).stream()
+        .pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+    }
+    return parseMesh(`${m[1]}.${m[2].toLowerCase()}`, data);
+  };
+  return { teeth, ignored, problems, notes, geometry };
+};
+
+/** A bundle's scan of one jaw as a File (setRaw reads it by name), or null. */
+const bundleScanFile = async (bundle, jaw) => {
+  const name = bundle.names.find(n => new RegExp(`^scan/${jaw}\\.(stl|ply|tri)$`).test(n));
+  if (!name) return null;
+  return new File([await bundle.read(name)], name.split('/').pop());
 };
 
 /**
@@ -378,6 +463,7 @@ export {
   V2_TARGETS,
   base64Bytes,
   boxLabel,
+  bundleScanFile,
   combinationOf,
   decodeTrimp,
   deleteV2Job,
@@ -385,6 +471,7 @@ export {
   getV2Health,
   isV2Dispatched,
   planMatrix,
+  readCrownsZip,
   readV2Bundle,
   splitByLabels,
   submitV2Job,

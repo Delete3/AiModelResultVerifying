@@ -1,6 +1,6 @@
 /* eslint-disable react/prop-types -- props are documented at each component; no prop-types dependency here */
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Checkbox, Progress, Select, Tag, Tooltip, Upload } from 'antd';
+import { Alert, Button, Checkbox, Progress, Radio, Select, Tag, Tooltip, Upload } from 'antd';
 
 import CaseScene from '../../utils/function/CaseScene';
 import ToothAlignScene from '../../utils/function/ToothAlignScene';
@@ -11,12 +11,14 @@ import {
   V2_STEPS,
   V2_TARGETS,
   boxLabel,
+  bundleScanFile,
   combinationOf,
   deleteV2Job,
   fetchV2Bundle,
   getV2Health,
   isV2Dispatched,
   planMatrix,
+  readCrownsZip,
   readV2Bundle,
   splitByLabels,
   submitV2Job,
@@ -52,9 +54,13 @@ const fmt = s => (s == null ? '—' : `${s.toFixed(1)} 秒`);
  * c, then b on the same segmentation is three clicks. Every result is drawn from the bundle as the
  * team gets it: the labels cut the scans on screen into crowns, the teeth are its teeth, and the
  * arrangement is plan.json's matrices applied to them (or to the crowns when there are none).
+ * Or, input 「只送牙冠」: a zip of crowns already apart, for 排牙 alone; drawn before the job from
+ * the zip, and after it from the bundle's merged scan (scan/<jaw>.stl) and labels.
  */
 const ToothAlignV2Panel = () => {
   const caseScene = useCaseScene();
+  const [mode, setMode] = useState('scans');      // 'scans' | 'crowns'
+  const [crowns, setCrowns] = useState(null);     // { file, info: readCrownsZip's } | null
   const [files, setFiles] = useState({ upper: null, lower: null });
   const [target, setTarget] = useState('dispatcher');
   const [steps, setSteps] = useState(['segment', 'generate', 'align']);
@@ -70,6 +76,8 @@ const ToothAlignV2Panel = () => {
   // every job this panel made, to delete when it is done with them
   const made = useRef([]);
   const bundleRef = useRef(null);
+  // crowns zips picked, so a slow preview stops drawing once a newer pick (or a clear) replaced it
+  const crownsPick = useRef(0);
 
   useEffect(() => {
     for (const key of Object.keys(V2_TARGETS)) {
@@ -88,12 +96,16 @@ const ToothAlignV2Panel = () => {
     made.current = [];
   };
 
-  const segments = steps.includes('segment');
+  const byCrowns = mode === 'crowns';
+  // crowns go with 排牙 alone (the service refuses the others: input_not_used)
+  const activeSteps = byCrowns ? ['align'] : steps;
+  const segments = activeSteps.includes('segment');
   // b, c, bc take the previous job's bundle: one that has labels, made the same way in
-  const ref = !segments && result?.status.state === 'succeeded' && result.target === target && result.bundle?.labels.upper
+  const ref = !byCrowns && !segments && result?.status.state === 'succeeded' && result.target === target && result.bundle?.labels.upper
     ? result : null;
-  const combination = combinationOf(steps);
-  const conflict = steps.includes('align') && steps.includes('generate') && params.root === 'none';
+  const combination = combinationOf(activeSteps);
+  const conflict = activeSteps.includes('align') && activeSteps.includes('generate') && params.root === 'none';
+  const crownsReady = Boolean(crowns && !crowns.info.problems.length);
 
   const showScans = next => {
     ToothAlignScene.clearResults();
@@ -119,10 +131,48 @@ const ToothAlignV2Panel = () => {
   };
   const clearAll = () => {
     forgetAll();
+    crownsPick.current += 1;
     ToothAlignScene.clearAll();
     setFiles({ upper: null, lower: null });
+    setCrowns(null);
     setResult(null);
     setError(null);
+  };
+
+  const switchMode = next => {
+    clearAll();
+    setMode(next);
+  };
+
+  /** Check a crowns zip as the service will, and draw its crowns (stage 分牙, by FDI colour). */
+  const pickCrowns = file => {
+    const pick = ++crownsPick.current;
+    ToothAlignScene.clearAll();
+    setResult(null);
+    setError(null);
+    setCrowns(null);
+    (async () => {
+      const info = await readCrownsZip(file);
+      if (pick !== crownsPick.current) return;
+      setCrowns({ file, info });
+      const unread = [];
+      for (const jaw of ['upper', 'lower']) {
+        for (const tooth of info.teeth[jaw]) {
+          try {
+            const geometry = await info.geometry(tooth.name);
+            if (pick !== crownsPick.current) return;
+            if (geometry) ToothAlignScene.addGeometry('crowns', jaw, tooth.fdi, geometry);
+            else unread.push(tooth.name);
+          } catch (e) {
+            unread.push(`${tooth.name}（${e.message}）`);
+          }
+        }
+      }
+      if (unread.length) setError(`這些檔畫面上畫不出來（服務照樣會讀；.obj 只有服務讀）：${unread.join('、')}`);
+      ToothAlignScene.setStage('seg');
+      ToothAlignScene.fitView();
+    })().catch(e => setError(e.message));
+    return false;
   };
 
   const toggleStep = key => setSteps(s => (s.includes(key) ? s.filter(k => k !== key) : [...s, key]));
@@ -162,7 +212,12 @@ const ToothAlignV2Panel = () => {
   };
 
   const run = async () => {
+    const steps = activeSteps;
     if (!steps.length) return;
+    if (byCrowns && !crownsReady) {
+      setError(crowns ? '牙冠 zip 有問題，服務會拒絕：見上面的紅字' : '先選牙冠 zip');
+      return;
+    }
     if (segments && (!files.upper || !files.lower)) {
       setError('上下顎口掃都要選');
       return;
@@ -175,7 +230,8 @@ const ToothAlignV2Panel = () => {
       steps.includes(PARAMS[key].step) && value !== DEFAULTS[key]));
     try {
       const submitted = await submitV2Job({
-        target, steps, params: sent, scans: segments ? files : null, ref: ref?.id, onStage: setStage,
+        target, steps, params: sent, scans: segments ? files : null, ref: ref?.id,
+        crowns: byCrowns ? crowns.file : null, onStage: setStage,
       });
       made.current.push({ target, id: submitted.id });
       const status = await waitForV2Job(target, submitted.id, {
@@ -205,6 +261,10 @@ const ToothAlignV2Panel = () => {
       const download = (performance.now() - t1) / 1000;
       bundleRef.current = buffer;
       const bundle = await readV2Bundle(buffer);
+      // crowns: the scan the labels follow is the service's merged one, in the bundle
+      if (byCrowns) {
+        for (const jaw of ['upper', 'lower']) await ToothAlignScene.setRaw(jaw, await bundleScanFile(bundle, jaw));
+      }
       draw(bundle);
       // the job it chained from is no longer needed: this bundle holds all of it
       if (ref) {
@@ -265,12 +325,41 @@ const ToothAlignV2Panel = () => {
       沒勾分牙時，用上一筆的結果（<code>job:&lt;id&gt;</code>）：例如先只分牙，再只排牙（c），用的是同一份分牙。
       「分派器（測試站）」就是矯正團隊串接的網址（經 AI 分派器，口掃經這台主機放上 S3）；「嘉義 5090（直接）」直接打嘉義的 v2 服務。
       畫面上的分牙、牙齒、排牙都是從結果包畫的：標記照面切開畫面上的口掃，排牙＝plan.json 的矩陣套在牙齒（沒有整顆牙時套在牙冠）上。
+      手上已經是分開的牙冠時，輸入選「只送牙冠」：一個 zip、每顆牙一個檔，只排牙（c）。
     </p>
 
     <ToothSsmDocs />
 
     <section className='panel-section'>
-      <div className='section-title'><span className='step'>1</span>上下顎口掃</div>
+      <div className='section-title'><span className='step'>1</span>{byCrowns ? '分開的牙冠' : '上下顎口掃'}</div>
+      <Radio.Group size='small' value={mode} disabled={running} onChange={e => switchMode(e.target.value)}>
+        <Radio.Button value='scans'>口掃</Radio.Button>
+        <Radio.Button value='crowns'>只送牙冠（zip，只排牙）</Radio.Button>
+      </Radio.Group>
+      {byCrowns ? <>
+        <p className='panel-note'>
+          一個 zip，每顆牙一個檔，檔名是牙位：例如 <code>11.stl</code>、<code>upper/11.stl</code>、<code>tooth_11.ply</code>（.stl .ply .obj .tri，可加 .gz）。
+          兩顎都要、單位 mm、兩顎在咬合位置；開口或封閉的牙冠都可以，不要帶牙根。服務把每顎的牙冠合成一個網格、每個面標上牙位，接著排牙（c）。
+        </p>
+        <Upload accept='.zip' showUploadList={false} beforeUpload={pickCrowns} disabled={running}>
+          <Button block size='small' type={crowns ? 'primary' : 'default'} title={crowns?.file.name}>
+            {crowns ? `${crowns.file.name}（${(crowns.file.size / 1048576).toFixed(2)} MB）` : '選擇牙冠 zip'}
+          </Button>
+        </Upload>
+        {crowns && <div className='toothseg-summary'>
+          {['upper', 'lower'].map(jaw => <div key={jaw} className='health-line'>
+            <b>{JAW_NAME[jaw]}</b> {crowns.info.teeth[jaw].length} 顆：{crowns.info.teeth[jaw].map(t => <span key={t.fdi} style={{ marginRight: 6 }}>
+              <span className='fdi-swatch' style={{ background: palette[t.fdi] ?? '#ccc' }} />{t.fdi}
+            </span>)}
+          </div>)}
+          {crowns.info.ignored.length > 0 && <div className='health-line'>略過（不是網格檔）：{crowns.info.ignored.join('、')}</div>}
+          {crowns.info.notes.map(n => <div key={n} className='health-line'>{n}</div>)}
+          {crowns.info.problems.map(p => <div key={p} className='health-line bad'>{p}</div>)}
+        </div>}
+        <div className='button-row'>
+          <Button size='small' disabled={running} onClick={clearAll}>全部清除</Button>
+        </div>
+      </> : <>
       <div className='scan-slots'>
         {['upper', 'lower'].map(jaw => <div key={jaw} className='scan-slot'>
           <div className='scan-slot-head'>{JAW_NAME[jaw]}</div>
@@ -287,6 +376,7 @@ const ToothAlignV2Panel = () => {
         </Tooltip>
         <Button size='small' disabled={running} onClick={clearAll}>全部清除</Button>
       </div>
+      </>}
     </section>
 
     <section className='panel-section'>
@@ -301,19 +391,22 @@ const ToothAlignV2Panel = () => {
       </div>
       <div className='toothseg-switches'>
         <span>步驟</span>
-        {V2_STEPS.map(s => <Checkbox key={s.key} checked={steps.includes(s.key)} disabled={running} onChange={() => toggleStep(s.key)}>
+        {V2_STEPS.map(s => <Checkbox key={s.key} checked={activeSteps.includes(s.key)} disabled={running || byCrowns} onChange={() => toggleStep(s.key)}>
           {s.label}（{s.letter}）
         </Checkbox>)}
         {combination && <Tag>組合 {combination}</Tag>}
       </div>
       <div className='health-line'>
-        輸入：{segments
-          ? '上下顎口掃'
-          : ref ? `上一筆的結果包（job:${ref.id}，組合 ${ref.status.combination ?? combinationOf(ref.steps)}）`
-            : <span className='bad'>沒勾分牙時要用上一筆的結果：先在同一台主機跑一筆有分牙的 job</span>}
+        輸入：{byCrowns
+          ? (crownsReady ? `牙冠 zip（inputs.crowns，上顎 ${crowns.info.teeth.upper.length} 顆、下顎 ${crowns.info.teeth.lower.length} 顆）：只送牙冠時只能排牙`
+            : <span className='bad'>先在上面選一個沒有紅字的牙冠 zip</span>)
+          : segments
+            ? '上下顎口掃'
+            : ref ? `上一筆的結果包（job:${ref.id}，組合 ${ref.status.combination ?? combinationOf(ref.steps)}）`
+              : <span className='bad'>沒勾分牙時要用上一筆的結果：先在同一台主機跑一筆有分牙的 job</span>}
       </div>
       <div className='field-row'>
-        {Object.entries(PARAMS).filter(([, p]) => steps.includes(p.step)).map(([key, p]) => <label key={key}>
+        {Object.entries(PARAMS).filter(([, p]) => activeSteps.includes(p.step)).map(([key, p]) => <label key={key}>
           {p.label}
           <Select size='small' value={params[key]} disabled={running}
             onChange={value => setParams(prev => ({ ...prev, [key]: value }))}
@@ -322,8 +415,8 @@ const ToothAlignV2Panel = () => {
       </div>
       {conflict && <div className='health-line bad'>牙根選「不接牙根」時不能排牙：服務會回 conflicting_params</div>}
       <div className='button-grid'>
-        <Button type='primary' loading={running} disabled={!steps.length || (!segments && !ref)} onClick={run}>
-          執行 {combination ? `${combination}（${V2_STEPS.filter(s => steps.includes(s.key)).map(s => s.label).join('→')}）` : ''}
+        <Button type='primary' loading={running} disabled={!activeSteps.length || (byCrowns ? !crownsReady : !segments && !ref)} onClick={run}>
+          執行 {combination ? `${combination}（${V2_STEPS.filter(s => activeSteps.includes(s.key)).map(s => s.label).join('→')}）` : ''}
         </Button>
         <Button disabled={running} onClick={checkHealth}>檢查排牙 API</Button>
       </div>
@@ -349,6 +442,11 @@ const ToothAlignV2Panel = () => {
         {result.timing.download != null && <Tag>下載結果包 {fmt(result.timing.download)}（{(result.timing.bytes / 1048576).toFixed(1)} MB）</Tag>}
       </div>
       <div className='health-line'>Job {result.id}{result.ref ? `（接著 job:${result.ref}）` : ''}{bundle?.manifest?.version ? ` · ${bundle.manifest.version}` : ''}</div>
+      {bundle?.manifest?.inputs?.crowns && <div className='health-line'>
+        牙冠 zip：{['upper', 'lower'].map(jaw => `${JAW_NAME[jaw]} ${bundle.manifest.inputs.crowns.teeth?.[jaw]?.length ?? 0} 個檔`).join('、')}
+        {bundle.manifest.inputs.crowns.ignored?.length ? `，略過 ${bundle.manifest.inputs.crowns.ignored.length} 個` : ''}
+        ；服務合成的每顎網格在結果包的 scan/，各面的牙位在 labels/（畫面上的牙冠就是從它們切的）
+      </div>}
       {issues.length > 0 && <Alert className='section-alert' showIcon type={issues.some(i => i.level === 'error') ? 'error' : 'warning'}
         message={<>
           <div>服務檢查到的問題（issues）：</div>

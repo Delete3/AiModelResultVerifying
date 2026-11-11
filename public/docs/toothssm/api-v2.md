@@ -1,6 +1,6 @@
 # AI排牙 API v2 串接說明
 
-文件版本：2026-11-11（試接版）。v2 現在在 AI 分派器的**測試站**；正式站換成 v2 的時間另行通知。舊版 v1（各主機的 `/toothssm/v1/...`，見「API v1 串接文件」）照常可用，換成 v2 之後在嘉義保留到約 2026-11-24。每次 API 更新的內容，見同一處的「更新內容」。
+文件版本：2026-11-11 傍晚（試接版；加了只送分開的牙冠 `crowns`）。v2 現在在 AI 分派器的**測試站**；正式站換成 v2 的時間另行通知。舊版 v1（各主機的 `/toothssm/v1/...`，見「API v1 串接文件」）照常可用，換成 v2 之後在嘉義保留到約 2026-11-24。每次 API 更新的內容，見同一處的「更新內容」。
 
 v2 把 AI排牙拆成三個步驟，可以任意組合：
 
@@ -8,12 +8,13 @@ v2 把 AI排牙拆成三個步驟，可以任意組合：
 |---|---|---|---|---|
 | `segment` | a | 分牙：口掃的每個面標上牙位 | 上下顎口掃 | 分牙標記 labels（每個面 1 byte） |
 | `generate` | b | 每顆牙冠下長出整顆牙（含牙根）和牙軸 | 口掃＋labels | 每顆整顆牙、牙軸 |
-| `align` | c | AI 排牙：每顆牙一個 4×4 矩陣，排牙前後的 ABO | 口掃＋labels（整顆牙可以不給） | `plan.json` |
+| `align` | c | AI 排牙：每顆牙一個 4×4 矩陣，排牙前後的 ABO | 口掃＋labels（整顆牙可以不給），或分開的牙冠 | `plan.json` |
 
 - 一筆 job 用 `steps` 說要做哪幾步（一律照 a → b → c 的順序跑），用 `inputs` 給手上已有的檔案。共 7 種組合：a、ab、abc、ac、b、bc、c。
+- 手上已經是一顆一顆分開的牙冠時，可以直接送牙冠排牙（c），不用合成口掃、也不用做標記：見〈只送分開的牙冠（`crowns`）〉。
 - 每筆 job 的結果都是一個**結果包**（zip），格式和輸入包相同：可以直接當下一筆 job 的輸入，不用轉換。
 - 透過 AI 分派器呼叫：檔案一律用網址交換；分派器挑一台有空的主機（嘉義、台中）做，一台出錯會自動換另一台重做一次。
-- **在 eztest 上試**：「AI排牙」分頁上方的「API 版本」切到「v2（試接中）」，勾要做的步驟、主機選「分派器（測試站）」（就是這份文件的網址）。畫面直接畫出結果包裡的分牙、牙齒和排牙前後，結果包、`plan.json`、`axes.json` 都可以下載，和你們程式拿到的對照。
+- **在 eztest 上試**：「AI排牙」分頁上方的「API 版本」切到「v2（試接中）」，勾要做的步驟、主機選「分派器（測試站）」（就是這份文件的網址）。分開的牙冠：輸入選「只送牙冠（zip，只排牙）」。畫面直接畫出結果包裡的分牙、牙齒和排牙前後，結果包、`plan.json`、`axes.json` 都可以下載，和你們程式拿到的對照。
 
 ## 連線與認證
 
@@ -35,9 +36,9 @@ v2 把 AI排牙拆成三個步驟，可以任意組合：
 
 ## 流程
 
-1. **上傳口掃**：每個檔案先 `POST /v2/uploads`，body `{"filename": "upper.stl.gz"}`，拿到 `put_url` 和 `get_url`。用 HTTP `PUT` 把檔案原樣送到 `put_url`（15 分鐘內）。`get_url` 留著建 job 用（1 小時內有效）。**檔名決定格式**：`.stl`、`.ply`、`.obj`、`.tri`，可再加 `.gz`。
+1. **上傳口掃**：每個檔案先 `POST /v2/uploads`，body `{"filename": "upper.stl.gz"}`，拿到 `put_url` 和 `get_url`。用 HTTP `PUT` 把檔案原樣送到 `put_url`（15 分鐘內）。`get_url` 留著建 job 用（1 小時內有效）。**檔名決定格式**：`.stl`、`.ply`、`.obj`、`.tri`，可再加 `.gz`。分開的牙冠打包成一個 `.zip` 上傳，見〈只送分開的牙冠（`crowns`）〉。
 2. **建 job**：`POST /v2/jobs`，立刻回 202，回應的 `id` 就是 job id。
-   - `job_id` 可以不給（由分派器產生）；要給就用不會和別人重複的值（例如加上自己的前綴和亂數），因為 job id 是所有呼叫端共用的。
+   - `job_id` 可以不給（由分派器產生）。job id 是每把 Service Token 自己的：別的 token 建的 job 查不到、取消不了，`job:<id>` 也只找自己的 job。測試站各團隊共用同一把 token，所以在測試站要用不會和別人重複的值（例如加上自己的前綴和亂數）。
    - 同一個 `job_id` 再送一次同樣的內容，拿到的是同一筆 job（網路斷了可以放心重送）；內容不同，就取消舊的、換成新的。
 
    ```json
@@ -64,6 +65,7 @@ v2 把 AI排牙拆成三個步驟，可以任意組合：
 | `["generate"]` | b | 口掃＋labels（或 `bundle`） | 整顆牙、牙軸 | 51 秒 |
 | `["generate", "align"]` | bc | 口掃＋labels（或 `bundle`） | 整顆牙、牙軸、plan | 58 秒 |
 | `["align"]` | c | 口掃＋labels（或 `bundle`）；整顆牙可加 | plan | 7.4 秒 |
+| `["align"]` | c | `crowns`（分開的牙冠，一個 zip） | 合成的口掃、labels、plan | 約 7 秒 |
 
 - 時間是嘉義（RTX 5090）上一次一筆、8 個全口案例的中位數，不含上傳下載。經分派器的全程時間見〈時間〉。
 - 兩顎都要：分牙把上下顎當一對處理，排牙模型也是雙顎。
@@ -76,9 +78,40 @@ v2 把 AI排牙拆成三個步驟，可以任意組合：
 | `upper.scan`、`lower.scan` | 上、下顎口掃，原始解析度 | `.stl` `.ply` `.obj` `.tri`（可加 `.gz`） |
 | `upper.labels`、`lower.labels` | 分牙標記 | TRIMP v1：每個面 1 byte（0 牙齦、FDI 牙位、254 未分），面的順序和同一顎的口掃相同（見 v1 文件〈分割標記檔 `.trimp`〉和 `trimp_read.cpp`） |
 | `bundle` | 結果包，或 `job:<id>` | zip：v2 的結果包；v1 的精簡包（`contents=slim`）也收 |
+| `crowns` | 分開的牙冠，每顆牙一個檔（只能排牙，見下節） | zip：檔名是 FDI 牙位，`.stl` `.ply` `.obj` `.tri`（可加 `.gz`） |
 
 - 單一檔案的輸入會**取代**結果包裡同一顎的同一種資料，從它算出來的東西也一起丟掉。例如 `bundle` 加上改過的 `upper.labels`、`steps` 是 `["generate", "align"]`：上顎用新的標記重新生成，兩顎重新排牙。
 - 用不到的輸入會被拒絕（`input_not_used`）：例如 `steps` 有 `segment` 又給了 `upper.labels`。要用自己的標記，就把 `segment` 從 `steps` 拿掉。
+
+## 只送分開的牙冠（`crowns`）
+
+手上已經是一顆一顆分開的牙冠（例如矯正軟體裡的牙）時，直接送牙冠排牙，不用合成口掃、也不用做標記。
+
+- 一個 zip，每顆牙一個網格檔，**檔名是 FDI 牙位**：`11.stl`、`upper/11.stl`、`tooth_11.ply` 都可以，放在 zip 的哪一層都行。
+  - 格式 `.stl` `.ply` `.obj` `.tri`，可再加 `.gz`。
+  - 有 `upper/`、`lower/` 資料夾時，要和牙位一致。
+  - 不是網格的檔案會略過，列在 `manifest.json` 的 `inputs.crowns.ignored`。
+- 兩顎都要、單位 mm、兩顎在咬合位置、同一個座標系（就是你們軟體裡的位置）。
+- 開口（只有牙冠表面）或封閉（底部補起來）的牙冠都可以，對排牙結果的影響很小。**不要帶牙根**：排牙還沒考慮牙根。帶牙根的整顆牙之後再支援。
+- 只能做排牙：`steps` 要是 `["align"]`，`inputs` 只給 `crowns`。
+
+  ```json
+  {"service": "toothssm",
+   "inputs": {"crowns": "<crowns.zip 的 get_url>"},
+   "params": {"steps": ["align"]}}
+  ```
+- 服務把每一顎的牙冠合成一個網格（依牙位順序，每顆牙的面照原檔的順序），每個面標上它的牙位。接下來和「口掃＋labels 排牙」完全一樣。結果包裡：
+  - `scan/<顎>.stl`：合成的網格。`labels/<顎>.trimp`：每個面的牙位。
+  - `plan.json`：每顆牙的矩陣，在你送來的座標系（服務不移動牙冠）。把矩陣套在你們自己的牙冠上，就是排好的位置。
+  - `manifest.json` 的 `inputs.crowns.teeth`：每個檔的牙位、面數、大小（mm）。
+  - 結果包可以原樣當下一筆的 `bundle`。`arranged=true` 會附上每顆排好的牙冠。
+- 只有牙冠，所以 ABO 的 RA 和 TOTAL 是 null（見〈plan.json〉）。
+- 一顎少於 6 顆時有警告 `input.few_crowns`。
+- 被拒絕時 job 是 `failed`、`error.code` 是 `input_rejected`，`message` 開頭是服務的錯誤碼：
+  - `input_not_used`：`steps` 有 `segment` 或 `generate`。
+  - `duplicate_input`：同時給了口掃、`labels` 或 `bundle`。
+  - `invalid_input`：不是 zip、檔名不是牙位（例如 `19.stl`）、同一顆牙有兩個檔、牙位和資料夾不合、少一顎、牙冠大小的中位數不在 1–100 mm（單位不是 mm）。
+- 時間：嘉義計算約 7 秒，不用先分牙或生成。經分派器的全程見〈時間〉。
 
 ## 參數（`params`）
 
@@ -159,6 +192,7 @@ internal/<顎>.tri         只在服務移動過那一顎時才有，見下
 | HTTP | `error.code` | 原因 |
 |---|---|---|
 | 400、422 | `invalid_request` | JSON 格式、欄位錯；`steps` 不是非空的 list；`job:<id>` 找不到、不是你的、不是 v2、還沒做完 |
+| 409 | `conflict` | 這個 `job_id` 在分派器上剛好不能用（很少見），換一個 `job_id` 再送 |
 | 503 | `no_capacity` | 現在沒有能做的主機（`Retry-After: 30`） |
 
 job 失敗（`status` 是 `failed`）：
@@ -170,24 +204,25 @@ job 失敗（`status` 是 `failed`）：
 | `host_failed` | 主機出錯，已自動換一台重做一次，還是失敗 | 稍後再送 |
 | `deadline_exceeded` | 超過建 job 時給的 `deadline_s` | — |
 
-服務的錯誤碼（出現在 `input_rejected` 的 `message`）：`unknown_input`（沒有這個輸入名稱）、`missing_input`（缺哪些輸入）、`input_not_used`、`param_not_used`、`conflicting_params`（例如 `root=none` 又要排牙）、`invalid_params`、`invalid_input`（檔案讀不了，或標記和口掃對不上）、`step_failed`（某一步算失敗，例如分不出牙）。
+服務的錯誤碼（出現在 `input_rejected` 的 `message`）：`unknown_input`（沒有這個輸入名稱）、`missing_input`（缺哪些輸入）、`input_not_used`、`duplicate_input`（`crowns` 和口掃、labels、`bundle` 一起送）、`param_not_used`、`conflicting_params`（例如 `root=none` 又要排牙）、`invalid_params`、`invalid_input`（檔案讀不了，或標記和口掃對不上）、`step_failed`（某一步算失敗，例如分不出牙）。
 
 ## 時間
 
-測試站實測（2026-11-11）：一個去識別化的全口案例（上顎 1.7 MB、下顎 0.7 MB 的 `.tri.gz`），7 種組合各送一筆、一次一筆，都在嘉義算。
+測試站實測（2026-11-11 下午）：一個去識別化的全口案例（上顎 1.7 MB、下顎 0.7 MB 的 `.tri.gz`），7 種組合各送一筆、一次一筆，都在嘉義算。
 
 | `steps` | 全程（秒） | 其中主機計算 | 結果包 |
 |---|---|---|---|
-| `segment` | 21.8 | 20.6 | 2.5 MB |
-| `generate`（`bundle`＝`job:<a>`） | 57.3 | 56.2 | 6.3 MB |
-| `align`（`bundle`＝`job:<a>`） | 9.7 | 8.5 | 2.5 MB |
-| `generate`＋`align`（`bundle`＝`job:<a>`） | 65.8 | 64.5 | 6.3 MB |
-| `segment`＋`generate` | 77.6 | 75.8 | 6.3 MB |
-| `segment`＋`align` | 29.5 | 27.7 | 2.5 MB |
-| 三步 | 85.2 | 83.6 | 6.3 MB |
+| `segment` | 26.2 | 24.9 | 2.5 MB |
+| `generate`（`bundle`＝`job:<a>`） | 56.8 | 55.7 | 6.2 MB |
+| `align`（`bundle`＝`job:<a>`） | 8.4 | 7.1 | 2.5 MB |
+| `generate`＋`align`（`bundle`＝`job:<a>`） | 62.6 | 61.3 | 6.3 MB |
+| `segment`＋`generate` | 80.3 | 78.9 | 6.3 MB |
+| `segment`＋`align` | 31.1 | 29.8 | 2.5 MB |
+| 三步 | 77.9 | 76.7 | 6.3 MB |
 
 - 全程＝`POST /v2/jobs` 到狀態變成 `succeeded`，不含上傳口掃、下載結果包。
-- 全程比主機計算多 1.1–1.8 秒：主機從 S3 取輸入、把結果包放上 S3、通知分派器。
+- 只送牙冠（`crowns`；同一個案例的牙冠，兩顎 24 顆、3.2 MB 的 zip；11-11 傍晚經 eztest 送一筆）：全程約 8.6 秒，其中服務計算 6.8 秒；上傳 zip 1.5 秒，結果包 3.3 MB。
+- 全程比主機計算多 1.1–1.3 秒：主機從 S3 取輸入、把結果包放上 S3、通知分派器。
 - 從台灣上傳兩顎（2.5 MB）約 2 秒，下載結果包 0.8–1.3 秒；實際看你們的網路。
 - 同時有別的單、或嘉義的卡在忙時要排隊；`predicted_finish_s` 是分派器的預估。
 
@@ -251,5 +286,19 @@ c = run(["align"], {"bundle": "job:" + a["id"]})     # 用分牙結果直接排�
 plan = c["summary"]["plan"]                          # 每顆牙的矩陣、ABO
 urllib.request.urlretrieve(c["result_url"], "result.zip")
 call("DELETE", f"/v2/jobs/{a['id']}")
+call("DELETE", f"/v2/jobs/{c['id']}")
+```
+
+只送分開的牙冠（接上面的 `call`、`upload`、`run`）：
+
+```python
+import zipfile
+
+with zipfile.ZipFile("crowns.zip", "w", zipfile.ZIP_DEFLATED) as z:
+    for fdi, path in my_crowns.items():           # {11: "out/11.stl", ..., 47: "out/47.stl"}：兩顎每顆牙一個檔
+        z.write(path, f"{fdi}.stl")                    # zip 裡的檔名就是牙位
+c = run(["align"], {"crowns": upload("crowns.zip")})
+assert c["status"] == "succeeded", c.get("error")
+plan = c["summary"]["plan"]                            # 矩陣在你們牙冠的座標系
 call("DELETE", f"/v2/jobs/{c['id']}")
 ```
