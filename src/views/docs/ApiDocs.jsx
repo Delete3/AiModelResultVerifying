@@ -11,6 +11,9 @@ import { downloadBlob } from '../../utils/tool/useStores';
 //
 //   api.md        the integration guide -- its 「文件版本：YYYY-MM-DD」 line is the version shown
 //   changelog.md  what changed, newest first -- its first `## <date>　<title>` is "this version"
+//
+// Any number of guides beside the change log (AI排牙 has two since 2026-11-11: API v2 and v1),
+// each with its own button, tab and version.
 
 /** The document as served now: a query string past every cache between here and the file. */
 const fetchDoc = async url => {
@@ -55,13 +58,14 @@ const toHtml = (node, title) => {
  * A line with the latest change, and a dialog with the change log and the integration guide,
  * each downloadable as Markdown or as HTML (printable to PDF).
  *
- * Props: title (the dialog's), docs ({ changelog, api }, each { url, label, file }: where it is
- * served, its tab label, the download's file name), idPrefix (the heading ids, one per tab).
+ * Props: title (the dialog's), docs ({ changelog, <guide>... }, each { url, label, file }: where
+ * it is served, its tab and button label, the download's file name; the guides in the order given),
+ * idPrefix (the heading ids, one per tab).
  */
 const ApiDocs = ({ title, docs, idPrefix }) => {
   const [texts, setTexts] = useState({});
   const [error, setError] = useState(null);
-  const [open, setOpen] = useState(null);           // null | 'changelog' | 'api'
+  const [open, setOpen] = useState(null);           // null | 'changelog' | a guide's key
   const bodyRef = useRef(null);
 
   const load = () => Promise.all(Object.entries(docs).map(async ([key, doc]) => [key, await fetchDoc(doc.url)]))
@@ -76,9 +80,10 @@ const ApiDocs = ({ title, docs, idPrefix }) => {
   };
 
   const latest = texts.changelog ? latestEntry(texts.changelog) : null;
-  const version = texts.api ? docVersion(texts.api) : '';
+  const guides = Object.keys(docs).filter(key => key !== 'changelog');
+  const versionOf = key => (texts[key] ? docVersion(texts[key]) : '');
   const text = open ? texts[open] : '';
-  const stamp = open === 'api' ? version : latest?.date ?? '';
+  const stamp = open && open !== 'changelog' ? versionOf(open) : latest?.date ?? '';
 
   const downloadMarkdown = () => downloadBlob(new Blob([text], { type: 'text/markdown;charset=utf-8' }),
     `${docs[open].file}-${stamp}.md`);
@@ -95,9 +100,9 @@ const ApiDocs = ({ title, docs, idPrefix }) => {
     </div>
     <div className='button-row'>
       <Button size='small' type='primary' ghost disabled={!texts.changelog} onClick={() => show('changelog')}>看更新內容</Button>
-      <Button size='small' disabled={!texts.api} onClick={() => show('api')}>
-        API 串接文件{version ? `（${version} 版）` : ''}
-      </Button>
+      {guides.map(key => <Button key={key} size='small' disabled={!texts[key]} onClick={() => show(key)}>
+        {docs[key].label}{versionOf(key) ? `（${versionOf(key)} 版）` : ''}
+      </Button>)}
     </div>
 
     <Modal

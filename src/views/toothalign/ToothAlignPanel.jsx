@@ -1,9 +1,9 @@
 /* eslint-disable react/prop-types -- props are documented at each component; no prop-types dependency here */
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Progress, Radio, Select, Slider, Tag, Tooltip, Upload, Checkbox } from 'antd';
+import { Alert, Button, Progress, Radio, Select, Tag, Tooltip, Upload } from 'antd';
 
 import CaseScene from '../../utils/function/CaseScene';
-import ToothAlignScene, { CROWN_HEX, ROOT_HEX } from '../../utils/function/ToothAlignScene';
+import ToothAlignScene from '../../utils/function/ToothAlignScene';
 import {
   TOOTHSSM_ACCEPT,
   TOOTHSSM_CROWN_OPTIONS,
@@ -24,7 +24,9 @@ import {
   submitToothSsmJob,
   waitForToothSsmJob,
 } from '../../utils/function/ToothSsmApi';
-import { downloadBlob, useCaseScene, useToothAlignScene } from '../../utils/tool/useStores';
+import { downloadBlob, useCaseScene } from '../../utils/tool/useStores';
+import ToothAlignDisplay from './ToothAlignDisplay';
+import ToothAlignV2Panel from './ToothAlignV2Panel';
 import ToothSsmDocs from './ToothSsmDocs';
 
 const JAW_NAME = { upper: '上顎', lower: '下顎' };
@@ -97,8 +99,7 @@ const pooled = async (tasks, size = 6) => {
  * 「流程」 can stop a job after step 2 (until=generate); step 3 then runs on its teeth later
  * (「接著排牙」). Both arches are required. Its own pair of scans, or the design tab's.
  */
-const ToothAlignPanel = () => {
-  const view = useToothAlignScene();
+const ToothAlignV1Panel = () => {
   const caseScene = useCaseScene();
   const [files, setFiles] = useState({ upper: null, lower: null });
   const [target, setTarget] = useState('z790');
@@ -666,41 +667,32 @@ const ToothAlignPanel = () => {
       </div>}
     </section>}
 
-    <section className='panel-section'>
-      <div className='section-title'>顯示</div>
-      <Radio.Group size='small' value={view.stage} onChange={e => ToothAlignScene.setStage(e.target.value)}>
-        <Radio.Button value='raw' disabled={!view.hasRaw}>原始口掃</Radio.Button>
-        <Radio.Button value='seg' disabled={!view.crownCount}>分牙</Radio.Button>
-        <Radio.Button value='teeth' disabled={!view.teethCount}>排牙前</Radio.Button>
-        <Radio.Button value='aligned' disabled={!view.alignedCount}>排牙後</Radio.Button>
-        <Radio.Button value='compare' disabled={!view.alignedCount}>前後對照</Radio.Button>
-      </Radio.Group>
-      <div className='toothseg-switches'>
-        <Checkbox checked={view.show.upper} onChange={e => ToothAlignScene.setShow('upper', e.target.checked)}>上顎</Checkbox>
-        <Checkbox checked={view.show.lower} onChange={e => ToothAlignScene.setShow('lower', e.target.checked)}>下顎</Checkbox>
-        {view.stage === 'seg' && <Checkbox checked={view.show.gum} onChange={e => ToothAlignScene.setShow('gum', e.target.checked)}>牙齦</Checkbox>}
-        <Button size='small' onClick={() => ToothAlignScene.fitView()}>全部置中</Button>
-      </div>
-      {view.stage === 'compare' && <div className='preview-opacity'>
-        <span>排牙前（灰）透明度</span>
-        <Slider min={0} max={100} value={Math.round(view.ghostOpacity * 100)} onChange={v => ToothAlignScene.setGhostOpacity(v / 100)} />
-        <span className='preview-percent'>{Math.round(view.ghostOpacity * 100)}%</span>
-      </div>}
-      {['teeth', 'aligned', 'compare'].includes(view.stage) && <>
-        <div className='toothseg-switches'>
-          <span>牙齒顏色</span>
-          <Radio.Group size='small' value={view.teethColor} onChange={e => ToothAlignScene.setTeethColor(e.target.value)}>
-            <Radio.Button value='source'>牙冠／牙根</Radio.Button>
-            <Radio.Button value='fdi'>依 FDI</Radio.Button>
-          </Radio.Group>
-        </div>
-        {view.teethColor === 'source' && <div className='panel-note'>
-          <span className='fdi-swatch' style={{ background: CROWN_HEX }} />距掃描牙冠 0.5 mm 內
-          <span className='fdi-swatch' style={{ background: ROOT_HEX, marginLeft: 10 }} />模型生成的牙根
-        </div>}
-      </>}
-    </section>
+    <ToothAlignDisplay />
   </div>;
+};
+
+/**
+ * The AI排牙 tab: tooth_ssm's API v1 (the panel above, what the orthodontic team calls today) or
+ * API v2 (ToothAlignV2Panel: any of segment, generate and align in one job, 2026-11-11). Each
+ * shows the documents (both guides and the change log); switching clears the scene, and each panel
+ * starts afresh.
+ */
+const ToothAlignPanel = () => {
+  const [api, setApi] = useState('v1');
+  const choose = value => {
+    ToothAlignScene.clearAll();
+    setApi(value);
+  };
+  return <>
+    <div className='toothseg-switches' style={{ padding: '8px 12px 0', fontSize: 13 }}>
+      <b>API 版本</b>
+      <Radio.Group size='small' value={api} onChange={e => choose(e.target.value)}>
+        <Radio.Button value='v1'>v1（正式）</Radio.Button>
+        <Radio.Button value='v2'>v2（試接中）</Radio.Button>
+      </Radio.Group>
+    </div>
+    {api === 'v1' ? <ToothAlignV1Panel key='v1' /> : <ToothAlignV2Panel key='v2' />}
+  </>;
 };
 
 export default ToothAlignPanel;

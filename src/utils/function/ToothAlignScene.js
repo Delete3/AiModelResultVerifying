@@ -23,6 +23,9 @@ const TOOTHALIGN_LAYER = 3;
 
 const RAW_COLOR = { upper: 0xdbe9f6, lower: 0xe9e1f7 };
 const GUM_HEX = '#dcbcbc';
+const SPECK_HEX = '#6f6f6f';
+// setRaw calls per jaw, so a slow load can tell that a newer one replaced it
+const rawLoads = { upper: 0, lower: 0 };
 const GHOST_HEX = '#9aa3ad';
 // viewer/colorize.py's two colours for a generated tooth: within 0.5 mm of the scanned crown,
 // and everything else (the root the model made up). Restated here only for the legend; the
@@ -81,7 +84,7 @@ class ToothAlignScene {
     return {
       active: this.active,
       hasRaw: Boolean(this.raw.upper || this.raw.lower),
-      crownCount: [...this.crowns.keys()].filter(key => !key.endsWith(':0')).length,
+      crownCount: [...this.crowns.keys()].filter(key => !key.endsWith(':0') && !key.endsWith(':254')).length,
       teethCount: this.teeth.size,
       alignedCount: this.aligned.size,
       stage: this.stage,
@@ -169,9 +172,17 @@ class ToothAlignScene {
 
   /** A local file (before a job) or the service's copy of the scan (an ArrayBuffer of STL). */
   async setRaw(jaw, source) {
+    // Two calls for one jaw can overlap while a file loads; only the latest may add its mesh,
+    // or the earlier one would stay in the scene with nothing pointing at it. removeRaw (also
+    // from clearing) counts as a newer call.
     this.removeRaw(jaw);
+    const load = rawLoads[jaw];
     if (!source) return;
     const geometry = source instanceof ArrayBuffer ? new STLLoader().parse(source) : await loadGeometry(source);
+    if (load !== rawLoads[jaw]) {
+      geometry?.dispose();
+      return;
+    }
     if (!geometry) throw new Error(`${source.name} 不是可讀的 STL / PLY / TRI`);
     geometry.computeVertexNormals();
     this.raw[jaw] = this.addMesh(geometry, this.material({ color: RAW_COLOR[jaw], roughness: 0.5 }), { jaw });
@@ -179,26 +190,40 @@ class ToothAlignScene {
   }
 
   removeRaw(jaw) {
+    rawLoads[jaw] += 1;
     if (!this.raw[jaw]) return;
     disposeObject(this.raw[jaw]);
     this.root.remove(this.raw[jaw]);
     this.raw[jaw] = null;
   }
 
-  /** One mesh of a step: kind is 'crowns' (fdi 0 = the gum), 'teeth' or 'aligned'. */
+  /** One mesh of a step, from API v1's PLY: kind is 'crowns' (fdi 0 = the gum), 'teeth' or 'aligned'. */
   addPart(kind, jaw, fdi, buffer) {
-    const map = this[kind];
-    const key = `${jaw}:${fdi}`;
-    this.removePart(kind, key);
     const geometry = new PLYLoader().parse(buffer);
     // The segmented crowns carry no colours; the generated teeth carry colorize.py's.
     if (kind === 'crowns') geometry.deleteAttribute('color');
+    this.addGeometry(kind, jaw, fdi, geometry);
+  }
+
+  /**
+   * One mesh of a step from a geometry (API v2 draws its bundle this way): crowns cut from the scan
+   * by its labels (fdi 0 the gum, 254 the floating specks), teeth, or teeth moved by the plan.
+   */
+  addGeometry(kind, jaw, fdi, geometry) {
+    const map = this[kind];
+    const key = `${jaw}:${fdi}`;
+    this.removePart(kind, key);
     geometry.computeVertexNormals();
     const mesh = this.addMesh(geometry, this.material({ color: 0xffffff }), {
       kind, jaw, fdi, hasColor: Boolean(geometry.getAttribute('color')),
     });
     map.set(key, mesh);
     this.applyLook();
+  }
+
+  /** The scan on screen (its face order is what API v2's labels follow), or null. */
+  rawGeometry(jaw) {
+    return this.raw[jaw]?.geometry ?? null;
   }
 
   removePart(kind, key) {
@@ -253,8 +278,10 @@ class ToothAlignScene {
     }
     for (const mesh of this.crowns.values()) {
       const { jaw, fdi } = mesh.userData;
-      mesh.visible = stage === 'seg' && jawOn(jaw) && (fdi !== 0 || this.show.gum);
-      mesh.material.color.set(fdi === 0 ? GUM_HEX : (this.palette[fdi] ?? '#cccccc'));
+      // 254: faces of no part (API v2: the specks removed before segmenting), shown with the gum
+      const gum = fdi === 0 || fdi === 254;
+      mesh.visible = stage === 'seg' && jawOn(jaw) && (!gum || this.show.gum);
+      mesh.material.color.set(fdi === 0 ? GUM_HEX : fdi === 254 ? SPECK_HEX : (this.palette[fdi] ?? '#cccccc'));
       mesh.material.needsUpdate = true;
     }
     const ghost = stage === 'compare';
