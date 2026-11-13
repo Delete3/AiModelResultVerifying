@@ -608,7 +608,10 @@ const runViaDispatcher = async ({ site, form, query, sent, fdi, onStage, timeout
  * (the default 2026-11-05 to 11-09): EZCAD's structure, the crown and the stump meeting
  * `cutbackJunctionMm` above the ring on the crown's wall (null: the service finds it), the same
  * even cutback above it; 'ring' (2026-10-14): from the ring, `cutbackMm` on the walls and
- * `cutbackOcclusalMm` along the axis. The service answers 422 for an option of another style.
+ * `cutbackOcclusalMm` along the axis; 'scaled' (2026-11-13): ring's shoulder, walls and two
+ * numbers, the crown's own occlusal form scaled in plan into the stump's top (the manifest's
+ * stump.occlusal_scale). The service answers 422 for an option of another style. The 產生支台齒
+ * tab offers 'scaled' and 'ring' only since 2026-11-13.
  * mode 'stump' then also carries `cutbackCrown` (cutback_crown.ply, the crown it was cut back
  * from).
  *
