@@ -2,6 +2,14 @@
 
 最新的一版在最上面。每次 API 更新都會在這裡加一節，並同步更新「API 串接文件」。這裡的 API 是牙冠生成 pipeline（網址結尾 `/pipeline`）：上傳口掃與牙位，回傳牙冠。
 
+## 2026-11-17　台中也有 HeyGears 模型和咬合面細節
+
+台中（`https://ezai.inteware.com.tw/pipeline`）19:55 換版：牙冠服務約 20 秒不能用，pipeline 沒有動。
+
+- **台中也認得 `crown_model=heygears`、`heygears_v1`、`occlusal_detail`**，和嘉義同一版（2026-11-11 的新版模型與 HeyGears 咬合面紋路）。HeyGears 的 job 兩台都能送；嘉義不能用時改送台中，拿到的也是 HeyGears 牙冠。
+- **沒帶這些參數的 job 不受影響**：台中的預設牙冠（v3）換版前後逐位元組相同（38 筆回歸測試）。
+- 呼叫方式不用改。
+
 ## 2026-11-11　HeyGears 模型換新版，咬合面細節改成 HeyGears 紋路（嘉義）
 
 嘉義（`https://ezai2.inteware.com.tw/pipeline`）11:21 換版：牙冠服務約 15 秒不能用，pipeline 沒有動，當時沒有 job 在跑。台中還沒有 HeyGears 模型。

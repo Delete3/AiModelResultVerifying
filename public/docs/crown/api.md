@@ -1,6 +1,6 @@
 # 牙冠設計 API 串接說明
 
-文件版本：2026-11-11（嘉義的 `crown_model=heygears` 換成新版模型，加 `occlusal_detail=1` 時改上 HeyGears 咬合面紋路；舊版暫時保留為 `heygears_v1`）。之前：2026-11-04 貼合鄰牙不再留下折痕（兩台）、新增 `occlusal_detail`（嘉義）；2026-11-03 新增 `crown_model=heygears`（嘉義）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
+文件版本：2026-11-17（台中也有 `crown_model=heygears`、`occlusal_detail`，和嘉義相同：兩台都能送 HeyGears 的 job）。之前：2026-11-11 嘉義的 `crown_model=heygears` 換成新版模型，加 `occlusal_detail=1` 時改上 HeyGears 咬合面紋路，舊版暫時保留為 `heygears_v1`；2026-11-04 貼合鄰牙不再留下折痕（兩台）、新增 `occlusal_detail`（嘉義）；2026-11-03 新增 `crown_model=heygears`（嘉義）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
 
 上傳一組上下顎口掃和要做牙冠的牙位（FDI），服務會自動擺正口掃、預測 margin（也可以用你畫好的 margin）、生成牙冠，最後回傳一個 zip。這是非同步 API：上傳後立刻拿到 `job_id`，再輪詢結果。嘉義、台中兩台主機提供同一個 API、互為備援；一個 job 在服務端約 3–8 秒。
 
@@ -9,7 +9,7 @@
 | 端點 | 基底網址 | `crown_model=heygears` | `occlusal_detail` |
 |---|---|---|---|
 | 嘉義（RTX 5090） | `https://ezai2.inteware.com.tw/pipeline` | 有（2026-11-03 起；2026-11-11 換新版） | 有（2026-11-04 起） |
-| 台中（RTX 5080） | `https://ezai.inteware.com.tw/pipeline` | **還沒有**：送了不會報錯，拿到的是 v3 牙冠（見「牙冠模型」） | **還沒有**：送了不會報錯，牙冠沒有補細節（見「咬合面細節」） |
+| 台中（RTX 5080） | `https://ezai.inteware.com.tw/pipeline` | 有（2026-11-17 起，和嘉義同一版） | 有（2026-11-17 起） |
 
 兩台各用一組 Service Token（兩個 Cloudflare Access 應用）。每個請求都要帶下面三個 header，缺一個就會被 Cloudflare 擋下。
 
@@ -86,7 +86,7 @@
 | 是什麼 | 所有客戶目前用的模型 | 2026-11-11 起：用全部訓練牙冠重新訓練的較大模型，再用 HeyGears 技師的 exocad 牙冠微調，學 HeyGears 的牙冠風格。之前（11-03 到 11-10）是 v3 再訓練的版本，現在叫 `heygears_v1` |
 | 牙位 | 全部 | **只有小臼齒、大臼齒**（牙位第二碼 4–7）。前牙、犬齒、智齒帶了 `heygears` 也會用 v3 生成，並在 `warnings` 註明 |
 | 建議一起送 | — | `occlusal_clearance=0.2`：HeyGears 的牙冠和對咬牙通常留約 0.2 mm，模型自己學不到。`occlusal_detail=1`：HeyGears 咬合面紋路（見「咬合面細節」） |
-| 哪台有 | 兩台 | 嘉義（2026-11-03 起，2026-11-11 換新版）；台中之後再上 |
+| 哪台有 | 兩台 | 兩台：嘉義 2026-11-03 起（2026-11-11 換新版），台中 2026-11-17 起 |
 
 - `heygears_v1` 是 11-10 以前的 `heygears`，只為了比對暫時保留，之後會拿掉；新的串接請用 `heygears`。
 
@@ -100,7 +100,7 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 
 - 結果 zip 裡 `manifest.json` 的 `backends.crown.model` 是 `heygears`。前牙等沒學過的牙位是 `default`，同時 `warnings` 有一則 `crown_model: asked for 'heygears', the crown service used 'default'`。
 - 名稱打錯（例如 `heygear`）時 job 會失敗（`status` 是 `failed`），`error` 是 `crown generation failed: unknown model 'heygear'; this server has default, heygears, heygears_v1`。
-- **台中還不認得這個參數：不會報錯、沒有警告，`manifest.json` 也沒有 `backends.crown.model`，拿到的是 v3 牙冠。** 所以 HeyGears 的 job 請先只送嘉義；要寫成兩台通用，就先看 `GET /` 回傳的 `options` 有沒有 `crown_model`，並在結果裡檢查 `backends.crown.model`。
+- 兩台都認得這個參數（台中 2026-11-17 起）。要確認拿到的是哪個模型，看結果裡的 `backends.crown.model`。
 
 **2026-11-11 新版和舊版比**（第二批 75 例 HeyGears 病例，沒有參與訓練，和 HeyGears 技師的牙冠比；兩版都帶 `occlusal_clearance=0.2&occlusal_detail=1`，同一個病例前後接著送；中位數）：
 
@@ -139,7 +139,7 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 | 時間 | 每顆約多 0.1 秒 | 每顆約多 0.4 秒（只用 CPU） |
 
 - 不適用的牙位照常生成、不補，`warnings` 會註明。`0` 或不帶＝不補；超出 0–2 或不是數字回 422。
-- 哪台有：嘉義（2026-11-04 起；`heygears` 的紋路 2026-11-11 起）；台中之後再上。
+- 哪台有：兩台。嘉義 2026-11-04 起（`heygears` 的紋路 2026-11-11 起），台中 2026-11-17 起。
 
 HeyGears 的呼叫要像這樣（網址參數）：
 
@@ -153,7 +153,6 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
   - v3、`heygears_v1`：`deepest_mm`（最深挖了幾 mm）、`mean_mm`（平均）、`moved`（動了幾個頂點）、`seconds`。
   - `heygears`：`method` 是 `texture`；`dz_max`、`dz_min`（最多升高、降低幾 mm）、`dz_mean_abs`（平均移動）、`seconds`。
 - 不是 `applied` 時 `warnings` 會有一則 `occlusal_detail: …`：`skipped: FDI 13 (premolars and molars only)` 是牙位不適用；`skipped: no template for L4` 是 `heygears` 在下顎第一小臼齒沒有紋路範本；`failed: …` 是處理失敗，回傳模型原本的牙冠，job 仍然成功。
-- **台中還不認得這個參數：不會報錯、沒有警告，也沒有這兩個欄位，牙冠沒有補細節。** 要寫成兩台通用，就先看 `GET /` 回傳的 `options` 有沒有 `occlusal_detail`。
 
 **`heygears` 的紋路效果**（第二批 75 例，73 例有範本；除以技師牙冠的值，1＝和技師一樣；中位數）：
 
@@ -223,8 +222,8 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 - 送出前先 `GET /health`：回 200 且 `status` 是 `ok` 才送。回 503、5xx、連不上或逾時，就改用另一台。
 - job 只存在收到它的那一台：輪詢、下載、刪除都要送回同一台。請把 `job_id` 和基底網址一起記下來。
 - 一台在 job 進行中掛掉（輪詢一直失敗或拿到 404），那個 job 不會轉到另一台，要重新上傳到另一台。
-- 兩台的程式、參數預設值、模型權重都一樣（`crown_model`、`occlusal_detail` 例外：台中還沒有）；結果不會逐位元組相同（顯示卡不同），差異只在浮點誤差的等級。
-- **HeyGears 的 job 目前只能送嘉義。** 嘉義不能用時，送台中只會拿到 v3 牙冠；要等嘉義恢復，或明確接受 v3。
+- 兩台的程式、參數預設值、模型權重都一樣（2026-11-17 起 `crown_model`、`occlusal_detail` 也一樣）；結果不會逐位元組相同（顯示卡不同），差異只在浮點誤差的等級。
+- HeyGears 的 job 兩台都能送（台中 2026-11-17 起）：嘉義不能用時改送台中，拿到的也是 HeyGears 牙冠。
 
 ## 錯誤碼與限制
 
@@ -316,7 +315,7 @@ requests.delete(f"{BASE}/v1/jobs/{job}", headers=H, timeout=60)
 curl：
 
 ```bash
-# 嘉義；台中備援時把 B 換成 https://ezai.inteware.com.tw/pipeline，token 換台中那組（台中還沒有 crown_model）
+# 嘉義；台中備援時把 B 換成 https://ezai.inteware.com.tw/pipeline，token 換台中那組
 H=(-H "CF-Access-Client-Id: $CF_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_CLIENT_SECRET" -A "heygears-integration/1.0")
 B=https://ezai2.inteware.com.tw/pipeline
 

@@ -75,6 +75,10 @@ const PIPELINE_TARGETS = {
     formats: TRI_FORMATS,
     noAbutment: true,
     contralateral: true,
+    // crown_model=heygears (full1ed + its occlusal texture) and occlusal_detail since 2026-11-17,
+    // the same crown service as Chiayi's (FlowToothSDF 03491f5).
+    crownModels: ['heygears'],
+    occlusalDetail: true,
   },
   // A second ezai-pipeline container on the same box and the same GPU services, for a build
   // that has not been promoted to 8031. Kept apart so trying one can never change what the
@@ -101,10 +105,10 @@ const PIPELINE_TARGETS = {
     // service; before that only the test endpoint /pipeline-contra/ had it).
     contralateral: true,
     // crown_model=heygears since 2026-11-03 (FlowToothSDF train/exocad f4c6d16 + ezai-pipeline
-    // 83927a3 on this box); z790 not yet.
+    // 83927a3 on this box); z790 since 2026-11-17.
     crownModels: ['heygears'],
     // occlusal_detail=1 since 2026-11-04 (FlowToothSDF train/exocad 98c1d73 + ezai-pipeline
-    // 6b96617 on this box); z790 not yet.
+    // 6b96617 on this box); z790 since 2026-11-17.
     occlusalDetail: true,
     // mode=stump and stump_shape=library|cutback since 2026-11-17 (ezai-pipeline f01a7a7 on both
     // boxes); the 「產生支台齒」 tab sends here. Before that only the test endpoint /pipeline-stump/ had
@@ -134,8 +138,7 @@ const PIPELINE_TARGETS = {
   },
   // The AI dispatcher's test site (2026-11-06; src/utils/function/DispatcherApi.js): the same
   // production pipelines, reached through ai-dispatcher v2 on the 226 box. 「分派器」 lets it
-  // choose (route=auto: the box or cloud container that finishes first; a HeyGears or
-  // 咬合面細節 job never goes to z790, whose pipeline lacks them); 「modal雲端」 sends the job to a
+  // choose (route=auto: the box or cloud container that finishes first); 「modal雲端」 sends the job to a
   // Modal cloud container only (route=cloud: RTX PRO 6000, built from Chiayi's production
   // chain). The scans go to S3 gzipped, through this server, and the boxes fetch them from
   // there; the crown comes back the same way. `dispatcher` is what runPipelineJob reads.
