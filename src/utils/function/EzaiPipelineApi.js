@@ -107,7 +107,8 @@ const PIPELINE_TARGETS = {
     // 6b96617 on this box); z790 not yet.
     occlusalDetail: true,
     // mode=stump and stump_shape=library|cutback since 2026-11-17 (ezai-pipeline f01a7a7 on both
-    // boxes); the 「產生支台齒」 tab sends here. Before that only the test endpoint below had them.
+    // boxes); the 「產生支台齒」 tab sends here. Before that only the test endpoint /pipeline-stump/ had
+    // them (see the end of this list).
     libraryStump: true,
   },
   // The same box and the same proxy as above -- only how the meshes get there differs. The
@@ -166,25 +167,6 @@ const PIPELINE_TARGETS = {
     crownModels: ['heygears'],
     occlusalDetail: true,
   },
-  // The library-stump test pipeline on the Chiayi box (/pipeline-stump/, 2026-10-14; since
-  // 2026-11-17 the 「產生支台齒」 tab uses 'rtx5090', production, and this endpoint is coming down):
-  // production main plus mode=stump (a stump from EZCAD's abutment library grown on the margin
-  // and stitched into the scan, no crown) and stump_shape=library for no_abutment jobs; since
-  // the afternoon also stump_shape=cutback for both (the crown built over that stump, cut back).
-  // Used by the 「產生支台齒」 tab, and by the peek abut tab when its stump is set to the library
-  // one or the cutback; `panel` keeps it out of the design tab's list.
-  rtx5090_stump: {
-    base: '/api/pipeline-stump',
-    label: '5090 資料庫支台齒（測試）',
-    hint: '嘉義 · RTX 5090 · /pipeline-stump · 經 Cloudflare tunnel',
-    remote: true,
-    singleArch: true,
-    formats: TRI_FORMATS,
-    noAbutment: true,
-    libraryStump: true,
-    contralateral: true,
-    panel: 'stump',
-  },
   // There was a no-abutment test endpoint here, 'rtx5090_noabut' (/pipeline-noabut/ on the
   // Chiayi box, 2026-09-21 to 2026-10-07). It came down once that box's production pipeline
   // took no_abutment; the peek abut tab calls "5090 ezai2" instead. vite.config.js still
@@ -193,6 +175,9 @@ const PIPELINE_TARGETS = {
   // keeps it out of the design tab's list.
   // 'rtx5090_contra' (/pipeline-contra/, 2026-10-07 to 2026-10-08) was the contralateral test
   // endpoint; the option moved into 'rtx5090' and the endpoint came down.
+  // 'rtx5090_stump' (/pipeline-stump/, 2026-10-14 to 2026-11-17) was the library-stump test
+  // endpoint (mode=stump, stump_shape); both boxes' production pipelines took it
+  // (ezai-pipeline f01a7a7) and the 「產生支台齒」 tab moved to 'rtx5090'.
 };
 
 /** FDI x1-x3: the teeth the contralateral option is for. */

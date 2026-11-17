@@ -69,11 +69,6 @@ const TOOTHSSM_RTX5090_API_URL = process.env.TOOTHSSM_RTX5090_API_URL
 // and token as the line above; it comes down when crown=exact reaches production.
 const TOOTHSSM_FIT_API_URL = process.env.TOOTHSSM_FIT_API_URL
   || 'https://ezai2.inteware.com.tw/toothssm-fit'
-// The library-stump test pipeline on the Chiayi box (added 2026-10-14): ezai-pipeline with
-// mode=stump and stump_shape=library, for the 「AI支台齒」 tab and the peek tab's library-stump
-// option. Same Access application and token as /pipeline.
-const PIPELINE_STUMP_RTX5090_API_URL = process.env.PIPELINE_STUMP_RTX5090_API_URL
-  || 'https://ezai2.inteware.com.tw/pipeline-stump'
 const RTX5090_CF_CLIENT_ID = process.env.RTX5090_CF_CLIENT_ID || ''
 const RTX5090_CF_CLIENT_SECRET = process.env.RTX5090_CF_CLIENT_SECRET || ''
 const RTX5090_CONFIGURED = Boolean(RTX5090_CF_CLIENT_ID && RTX5090_CF_CLIENT_SECRET)
@@ -536,7 +531,6 @@ export default defineConfig({
         server.middlewares.use('/api/toothroot-rtx5090', unconfigured)
         server.middlewares.use('/api/toothssm-rtx5090', unconfigured)
         server.middlewares.use('/api/toothssm-fit', unconfigured)
-        server.middlewares.use('/api/pipeline-stump', unconfigured)
       },
     },
     {
@@ -782,7 +776,6 @@ export default defineConfig({
               rtx5090_s3: RTX5090_CONFIGURED && S3_CONFIGURED,
               toothroot: RTX5090_CONFIGURED,
               toothssm_rtx5090: RTX5090_CONFIGURED,
-              rtx5090_stump: RTX5090_CONFIGURED,
               // the AI dispatcher's two hosts, in both tabs
               dispatcher: DISPATCHER_CONFIGURED,
               cloud: DISPATCHER_CONFIGURED,
@@ -1086,26 +1079,6 @@ export default defineConfig({
         target: TOOTHSSM_FIT_API_URL,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/toothssm-fit/, ''),
-        headers: {
-          'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
-          'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,
-        },
-        configure: (proxy) => {
-          proxy.on('proxyReq', (proxyReq) => {
-            proxyReq.removeHeader('cookie')
-          })
-          proxy.on('proxyRes', (proxyRes) => {
-            delete proxyRes.headers['set-cookie']
-          })
-        },
-      },
-      // Before '/api/pipeline' (prefix order, as above). The library-stump test pipeline on the
-      // Chiayi box, with the same three Access fixes as '/api/pipeline-rtx5090' for the same
-      // reasons; do not simplify any of them away.
-      '/api/pipeline-stump': {
-        target: PIPELINE_STUMP_RTX5090_API_URL,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/pipeline-stump/, ''),
         headers: {
           'CF-Access-Client-Id': RTX5090_CF_CLIENT_ID,
           'CF-Access-Client-Secret': RTX5090_CF_CLIENT_SECRET,
