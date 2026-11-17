@@ -106,6 +106,9 @@ const PIPELINE_TARGETS = {
     // occlusal_detail=1 since 2026-11-04 (FlowToothSDF train/exocad 98c1d73 + ezai-pipeline
     // 6b96617 on this box); z790 not yet.
     occlusalDetail: true,
+    // mode=stump and stump_shape=library|cutback since 2026-11-17 (ezai-pipeline f01a7a7 on both
+    // boxes); the 「產生支台齒」 tab sends here. Before that only the test endpoint below had them.
+    libraryStump: true,
   },
   // The same box and the same proxy as above -- only how the meshes get there differs. The
   // scans go to object storage and the POST carries two URLs instead of 30 MB of body, so
@@ -163,7 +166,8 @@ const PIPELINE_TARGETS = {
     crownModels: ['heygears'],
     occlusalDetail: true,
   },
-  // The library-stump test pipeline on the Chiayi box (/pipeline-stump/, 2026-10-14):
+  // The library-stump test pipeline on the Chiayi box (/pipeline-stump/, 2026-10-14; since
+  // 2026-11-17 the 「產生支台齒」 tab uses 'rtx5090', production, and this endpoint is coming down):
   // production main plus mode=stump (a stump from EZCAD's abutment library grown on the margin
   // and stitched into the scan, no crown) and stump_shape=library for no_abutment jobs; since
   // the afternoon also stump_shape=cutback for both (the crown built over that stump, cut back).

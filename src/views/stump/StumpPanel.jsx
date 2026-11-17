@@ -18,8 +18,10 @@ import { DEFAULT_LIBRARY_PART, PEEK_DEFAULTS, pickLibraryPart } from '../peek/pe
 import AbutmentBuilder from './abutmentBuilder';
 import AbutmentSection from './AbutmentSection';
 
-// The library-stump test pipeline on the Chiayi box (/pipeline-stump/, 2026-10-14).
-const TARGET = 'rtx5090_stump';
+// The Chiayi box's production pipeline, which has mode=stump and stump_shape since 2026-11-17
+// (ezai-pipeline f01a7a7). Until then the library-stump test pipeline (/pipeline-stump/,
+// 2026-10-14), target 'rtx5090_stump'.
+const TARGET = 'rtx5090';
 const JAW_NAME = { upper: '上顎', lower: '下顎' };
 // The service's own bounds and defaults (ezai-pipeline app/library_stump.py); it answers 422
 // outside them, and only what the user changed is sent.
@@ -32,8 +34,8 @@ const DEFAULT_CLEARANCE = 1.0;
 // stump, cut back by these. Two of the service's styles are offered (the user, 2026-11-13):
 // scaled (2026-11-13) -- ring's shoulder and walls, the crown's own occlusal form scaled in plan
 // into the stump's top -- and ring (2026-10-14): walls and occlusal (along the axis) from the
-// ring. The service's blend and ezcad styles are not offered here any more. The style is always
-// sent by name: the service's own default is another one (blend).
+// ring. The test pipeline's blend and ezcad styles did not go into production (2026-11-17). The
+// style is always sent by name (production's default is scaled; the test pipeline's was blend).
 const CUTBACK_STYLES = [
   { value: 'scaled', name: '等比縮小', label: '等比縮小（舊版的肩台與牆，咬合面等比縮進來，預設）' },
   { value: 'ring', name: '舊版', label: '舊版（從 margin 內縮、咬合面沿軸）' },
@@ -298,7 +300,7 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
           insertionAxis: sentAxis,
           ...(cutback ? {
             shape: 'cutback',
-            // by name, always: the service's own default is another style (blend)
+            // by name, always (production's default is scaled; the test pipeline's was blend)
             cutbackStyle,
             cutbackMm: cutbackMm !== DEFAULT_CUTBACK[cutbackStyle] ? cutbackMm : null,
             cutbackOcclusalMm: occlusalMm !== DEFAULT_OCCLUSAL ? occlusalMm : null,
@@ -371,7 +373,7 @@ const StumpPanel = ({ fdi, setFdi, prepJaw, scene, active }) => {
         沿 margin 把口掃挖開，放進 <b>EZCAD 支台齒資料庫</b>的形狀；高度、傾斜、寬度用同一顆牙的
         <b>真實支台齒中位數</b>，不超出 margin、離對咬至少 {DEFAULT_CLEARANCE} mm，並沿 margin 縫進口掃（沒有縫隙）。
         或選 <b>Cutback</b>：先在資料庫支台齒上生成牙冠，再把牙冠往內縮一層牙冠的厚度，剩下的就是支台齒。
-        送到嘉義 5090 的測試 pipeline（/pipeline-stump，mode=stump）。
+        送到嘉義 5090 的正式 pipeline（/pipeline，mode=stump；2026-11-17 起，之前是測試端點 /pipeline-stump）。
       </>}
     />
 
