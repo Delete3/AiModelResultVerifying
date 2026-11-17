@@ -9,12 +9,11 @@ import { getFileExtension } from '../tool/StringProcessing.js';
 // The Chiayi 5090 box (CADCAM-RTX5090, 192.168.50.95, since 2026-10-07) is reached the same way
 // as FSAbutment: this box has no route into 192.168.50.0/24, so it goes through ezai2's public
 // hostname, and the Cloudflare Access Service Token is attached by the proxy in vite.config.js
-// -- server-side, never in this bundle. This box (z790, RTX 5080) has had a copy since
-// 2026-10-12 as its standby, bound to docker0, which this viewer's container reaches as
-// host.docker.internal with no credential. A job lives only on the box that took it.
+// -- server-side, never in this bundle. This box (z790, RTX 5080) had a copy as its standby from
+// 2026-10-12 until 2026-11-17, when it was stopped to free that card for the HeyGears crown (the
+// user); its image and data are kept on the box.
 const TOOTHROOT_TARGETS = {
   rtx5090: { label: '嘉義 5090', base: '/api/toothroot-rtx5090', box: '嘉義 5090' },
-  z790: { label: '台中 5080', base: '/api/toothroot-z790', box: '台中 5080' },
 };
 
 const baseOf = target => (TOOTHROOT_TARGETS[target] ?? TOOTHROOT_TARGETS.rtx5090).base;

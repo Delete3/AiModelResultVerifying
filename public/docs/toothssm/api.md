@@ -1,17 +1,16 @@
 # AI排牙 API 串接說明
 
-文件版本：2026-11-11（v1 本身沒有變；另有 API v2 開始試接，見「API v2 串接文件」）。2026-11-10 新增精簡包 `contents=slim`（處理後的口掃、每個面一個 byte 的分割標記 `.trimp`、每顆牙 `.tri`，約整包 zip 的九分之一；修改過的標記可以送回來重跑）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
+文件版本：2026-11-17（v1 本身沒有變；**台中主機 2026-11-17 起不再提供 v1**，v1 只剩嘉義，換成 v2 之後保留到約 2026-11-24；台中改提供 API v2，見「API v2 串接文件」）。2026-11-10 新增精簡包 `contents=slim`（處理後的口掃、每個面一個 byte 的分割標記 `.trimp`、每顆牙 `.tri`，約整包 zip 的九分之一；修改過的標記可以送回來重跑）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
 
-上傳一組上下顎口掃，服務會自動分牙、替每顆牙生成牙根、用 AI 排牙，並回傳排牙前後的 ABO 評分；也可以只分牙＋生成牙齒、不排牙。這是非同步 API。嘉義、台中兩台主機提供同一個 API、互為備援，一筆全口在嘉義約 2 分鐘、台中約 3 分鐘。
+上傳一組上下顎口掃，服務會自動分牙、替每顆牙生成牙根、用 AI 排牙，並回傳排牙前後的 ABO 評分；也可以只分牙＋生成牙齒、不排牙。這是非同步 API。2026-11-17 起只有嘉義主機提供 v1，一筆全口約 2 分鐘。
 
 ## 連線與認證
 
-兩個基底網址的 API 完全相同。嘉義和台中各用一組 Service Token（兩個 Cloudflare Access 應用）。
+嘉義用一組 Service Token（一個 Cloudflare Access 應用）。台中的網址（`https://ezai.inteware.com.tw/toothssm`）2026-11-17 起不再提供 v1。
 
 | 端點 | 基底網址 | 建議用途 |
 |---|---|---|
 | 嘉義（RTX 5090） | `https://ezai2.inteware.com.tw/toothssm` | 正式版，平時送這台 |
-| 台中（RTX 5080） | `https://ezai.inteware.com.tw/toothssm` | 正式版，嘉義不能用時改送這台 |
 
 每個請求都要帶下面三個 header，缺一個就會被 Cloudflare 擋下。
 
@@ -63,20 +62,19 @@ curl -s "${H[@]}" -F upper=@upper.stl.gz -F lower=@lower.stl.gz -F until=generat
 - `root=none`（只回開口的牙冠＋牙軸）本來就不排牙，等於自動帶 `until=generate`。
 - 用自己的牙冠只生成牙齒（`start=generate` 加 `until=generate`），見「從中間開始」。
 
-## 兩台備援怎麼用
+## 嘉義不能用時
 
-平時送嘉義；嘉義不能用時，把新的 job 送台中。兩台不共用任何東西，規則如下：
+2026-11-17 起 v1 只剩嘉義一台，沒有另一台 v1 可以備援。規則如下：
 
-- 送出前先 `GET /health`：回 200 且 `status` 是 `ok` 才送。回 503、5xx、連不上或逾時，就改用另一台。
-- job 只存在收到它的那一台：輪詢、下載、重跑、刪除都要送回同一台。請把 `job_id` 和基底網址一起記下來。
-- 一台在 job 進行中掛掉（輪詢一直失敗、拿到 404，或 `state` 是 `failed` 且 `error` 說 GPU 有問題），那個 job 不會轉到另一台，要把口掃重新上傳到另一台。
-- 兩台各自一次跑一個 job、各自最多 4 個在跑或排隊。一台回 429 時可以送另一台。
-- 兩台的程式、參數預設值、模型權重都一樣；結果不會逐位元組相同（顯示卡不同，分牙本身每次跑也有極小的差異）。
-- 嘉義測試版（`https://ezai2.inteware.com.tw/toothssm-fit`）在 2026-11-02 關閉，它的功能已經在兩台正式版上；請改用上面兩個網址。
+- 送出前先 `GET /health`：回 200 且 `status` 是 `ok` 才送。回 503、5xx、連不上或逾時，就改用 API v2（經 AI 分派器，分派器挑一台有空的主機做，見「API v2 串接文件」）。
+- 輪詢、下載、重跑、刪除都送回嘉義。job 只存在嘉義。
+- 嘉義在 job 進行中掛掉（輪詢一直失敗、拿到 404，或 `state` 是 `failed` 且 `error` 說 GPU 有問題），那個 job 救不回來，要重新上傳。
+- 嘉義一次跑一個 job、最多 4 個在跑或排隊。回 429 時稍後再送，或改用 API v2。
+- 嘉義測試版（`https://ezai2.inteware.com.tw/toothssm-fit`）在 2026-11-02 關閉，它的功能已經在正式版上；台中的 v1 在 2026-11-17 停止。
 
 ## 端點一覽
 
-下表的路徑都接在基底網址後面，兩台完全相同。
+下表的路徑都接在基底網址後面。
 
 | 方法 | 路徑 | 做什麼 | 成功時回傳 |
 |---|---|---|---|
@@ -256,7 +254,7 @@ curl -s "${H[@]}" -F start=align -F teeth=@crowns_and_teeth.zip $B/v1/jobs      
 | `results.crown_stats` | AI 生成的牙冠離原口掃多遠（平均、p95，mm）、封閉的顆數、失敗的牙。`crown=exact`、`fit` 時描述的是擬合或換回口掃前的生成牙冠 |
 | `results.exact_crown` | `crown=exact` 或 `fit`，或 `root` 不是 `generated` 時：每顎的 `crown`（`exact` 或 `fit`）、`scan_crown`（用上口掃牙冠或擬合成功的顆數）、`fallback`（沒做成的牙與原因）、`shared_mm3_generated` 與 `shared_mm3_after_parting`（推開前後鄰牙重疊的體積，mm³；`fit` 只有推開後的）、`contact_films_cut`（`exact` 在緊接觸點切掉的薄膜）、`engulfed`（生成的牙佔到鄰牙位置而被切開的牙，請檢查分牙）、`generated_root`（`root=virtual` 時改接 AI 生成牙根的牙）、`triangles`（`fit`：這一顎交出去的牙的面數 `faces`、最小角小於 10° 的 `min_angle_lt10`、一邊超過 1 mm 的 `edge_gt1mm`） |
 | `results.root` | 這個 job 的 `root` |
-| `results.fast_roots` | 這筆的生成牙根是否用加速版（`fast_roots` 參數；沒送時是主機的預設，兩台都是 `true`） |
+| `results.fast_roots` | 這筆的生成牙根是否用加速版（`fast_roots` 參數；沒送時是主機的預設 `true`） |
 | `results.axes`、`results.axes_url` | `root=virtual` 或 `none`：每顆牙的牙軸，與 `tooth_axes.json` 的路徑（見「牙軸」） |
 | `log_tail` | 紀錄檔最後 15 行（除錯用） |
 
@@ -342,7 +340,7 @@ z2 = M[2][0]*x + M[2][1]*y + M[2][2]*z + M[2][3];
 |---|---|---|
 | Case 1（27 顆，排牙完成） | 68.8 MB、307 個檔 | 7.4 MB、38 個檔 |
 | 其中的分割（牙冠＋牙齦） | 29 個 `.ply` | 兩個標記檔，合計約 15 KB（依口掃不同，一顎約 4–70 KB） |
-| 服務端打包 | 約 1.3 秒 | 嘉義 0.12 秒、台中 0.16 秒 |
+| 服務端打包 | 約 1.3 秒 | 0.12 秒 |
 
 精簡包裡的檔案：
 
@@ -433,7 +431,7 @@ curl -s "${H[@]}" -F start=generate -F upper=@scan/upper.tri -F lower=@scan/lowe
 
 ## 問題回報：`issues`
 
-job 狀態有一個 `issues` 列表（2026-11-02 起，兩台都有），列出服務自己檢查到的分牙與生成問題。發現問題時 job 不會停下來，會照常跑完；要怎麼顯示、要不要擋下這筆結果，由呼叫端決定。
+job 狀態有一個 `issues` 列表（2026-11-02 起），列出服務自己檢查到的分牙與生成問題。發現問題時 job 不會停下來，會照常跑完；要怎麼顯示、要不要擋下這筆結果，由呼叫端決定。
 
 - **分牙做完就有分牙的問題**：`state` 變成 `generating` 時，`issues` 裡已經有 `stage: "segment"` 的項目，不必等整筆跑完。要放棄這筆，可以直接 `DELETE`。
 - `start=generate` 用自己的牙冠時，同樣的分牙檢查會在生成前跑一次。
@@ -538,33 +536,32 @@ job 本身失敗（`state` 是 `failed`）仍然回 200，原因在 `error` 與 
 
 速度（一筆 27–28 顆牙的全口，服務端時間；經 Cloudflare 再加上傳與輪詢約 5–10 秒；下載另計：整包 zip 約 69 MB、精簡包約 7 MB）：
 
-| 設定 | 嘉義 RTX 5090 | 台中 RTX 5080 |
-|---|---|---|
-| `seg=ssm`，預設（`crown=fit`、`root=virtual`、`root_fix=1`，含排牙） | Case 1（`res=128`）83 秒（生成牙根加快前 128 秒；`res=192` 加快前 135 秒） | Case 1（`res=128`）127 秒（加快前 187 秒） |
-| `seg=ssm`，預設，`until=generate`（只分牙＋生成牙齒，不排牙） | Case 1（`res=128`）120 秒 | 未量（少掉的排牙這一步約 16 秒） |
-| `seg=ssm`，`crown=fit`，`root=none`（不排牙） | Case 1（`res=192`）115 秒 | 未量 |
-| `seg=ssm`，`crown=exact`，`root=virtual`／`none` | Case 1（`res=192`）`virtual` 145 秒、`none` 116 秒；接牙冠這一步比 `fit` 少約 6–7 秒（每筆時間的差異主要來自生成牙根本身的起伏） | 未量 |
-| `seg=ssm`，`crown=exact`，`root=generated` | 比 `crown=zhu` 每筆多 11–38 秒 | 未量 |
-| `seg=ssm`，`crown=zhu`，`root=generated`（2026-11-01 以前的預設） | 121–138 秒 | 185 秒 |
-| 同上，`root_fix=0` | 87–102 秒 | 約 141 秒 |
-| `seg=toothroot` | 未量 | 約 50–60 秒 |
-| `start=generate`（牙根＋排牙；以下三列是舊預設 `crown=zhu` 量的，新預設多接牙冠這一步約 20–30 秒） | 100 秒 | 約 145 秒 |
-| `start=generate`，`until=generate`（只有牙根） | 約 90 秒 | 132 秒 |
-| `start=align`（只有排牙） | 10–14 秒 | 16 秒 |
+| 設定 | 嘉義 RTX 5090 |
+|---|---|
+| `seg=ssm`，預設（`crown=fit`、`root=virtual`、`root_fix=1`，含排牙） | Case 1（`res=128`）83 秒（生成牙根加快前 128 秒；`res=192` 加快前 135 秒） |
+| `seg=ssm`，預設，`until=generate`（只分牙＋生成牙齒，不排牙） | Case 1（`res=128`）120 秒 |
+| `seg=ssm`，`crown=fit`，`root=none`（不排牙） | Case 1（`res=192`）115 秒 |
+| `seg=ssm`，`crown=exact`，`root=virtual`／`none` | Case 1（`res=192`）`virtual` 145 秒、`none` 116 秒；接牙冠這一步比 `fit` 少約 6–7 秒（每筆時間的差異主要來自生成牙根本身的起伏） |
+| `seg=ssm`，`crown=exact`，`root=generated` | 比 `crown=zhu` 每筆多 11–38 秒 |
+| `seg=ssm`，`crown=zhu`，`root=generated`（2026-11-01 以前的預設） | 121–138 秒 |
+| 同上，`root_fix=0` | 87–102 秒 |
+| `seg=toothroot` | 未量 |
+| `start=generate`（牙根＋排牙；以下三列是舊預設 `crown=zhu` 量的，新預設多接牙冠這一步約 20–30 秒） | 100 秒 |
+| `start=generate`，`until=generate`（只有牙根） | 約 90 秒 |
+| `start=align`（只有排牙） | 10–14 秒 |
 
-2026-11-02 傍晚生成牙根這一步加快後，只重量了第一列（Case 1 的生成牙根：嘉義 74 → 31 秒，台中 113 → 58 秒）；其他列是加快前量的，有生成牙根的設定應該也會變快，但沒有量。
+2026-11-02 傍晚生成牙根這一步加快後，只重量了第一列（Case 1 的生成牙根：74 → 31 秒）；其他列是加快前量的，有生成牙根的設定應該也會變快，但沒有量。
 
 ## 範例程式
 
-Python（先檢查哪一台可用，`pip install requests`），一筆病例從上傳到刪除。Service Token 從環境變數讀，不要寫死在程式裡。
+Python（先檢查嘉義可不可用，`pip install requests`），一筆病例從上傳到刪除。Service Token 從環境變數讀，不要寫死在程式裡。
 
 ```python
 import gzip, os, time, requests
 
-# 兩台主機，各自的 Service Token 從環境變數讀；嘉義優先、台中備援。
+# 2026-11-17 起 v1 只有嘉義；Service Token 從環境變數讀。
 HOSTS = [
     ("https://ezai2.inteware.com.tw/toothssm", "CHIAYI"),
-    ("https://ezai.inteware.com.tw/toothssm", "TAICHUNG"),
 ]
 
 def headers(tag):
@@ -580,13 +577,13 @@ def pick_host():
                 return base, headers(tag)
         except requests.RequestException:
             pass
-    raise RuntimeError("兩台都不能用")
+    raise RuntimeError("嘉義不能用：改用 API v2（分派器）")
 
 def gz(path):
     with open(path, "rb") as f:
         return gzip.compress(f.read(), compresslevel=6)
 
-BASE, H = pick_host()          # job 之後的每個請求都用同一台
+BASE, H = pick_host()          # job 之後的每個請求都送同一個網址
 
 # 1. 上傳（檔名的副檔名決定格式：.stl/.ply/.obj/.tri，可加 .gz）
 r = requests.post(f"{BASE}/v1/jobs", headers=H, timeout=300,
@@ -623,7 +620,7 @@ requests.delete(f"{BASE}/v1/jobs/{job}", headers=H, timeout=60)
 curl：
 
 ```bash
-# 嘉義；台中備援時把 B 換成 https://ezai.inteware.com.tw/toothssm，token 換台中那組
+# 嘉義（2026-11-17 起 v1 只有這一台）
 H=(-H "CF-Access-Client-Id: $CF_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_CLIENT_SECRET" -A "ortho-team-test/1.0")
 B=https://ezai2.inteware.com.tw/toothssm
 

@@ -19,11 +19,10 @@ import {
 // model (a diffusion transformer) that moves every tooth, roots and all. Served by
 // deploy/deploy_api.py, which runs the author's own scripts as viewer/server.py does.
 //
-// Two boxes. This one (z790, RTX 5080) is reached directly: the service is bound to docker0,
-// and this viewer's container sees the host as host.docker.internal, so the proxy needs no
-// credential. The Chiayi 5090 box is reached the way ToothRoot is, through ezai2 and
-// Cloudflare Access, with the Service Token attached by the proxy in vite.config.js --
-// server-side, never in this bundle.
+// One box: the Chiayi 5090 box, reached the way ToothRoot is, through ezai2 and Cloudflare Access,
+// with the Service Token attached by the proxy in vite.config.js -- server-side, never in this
+// bundle. z790 (RTX 5080) had a copy too until 2026-11-17, when its v1 gave way to API v2 (the
+// user; that box is a target of ToothSsmV2Api.js now).
 //
 // The third target (2026-10-29) is the Chiayi box's TEST service, ezai2 /toothssm-fit/: the same
 // API with the crown on the scan by default -- since 2026-10-30 pm crown=fit, the generated tooth
@@ -37,7 +36,6 @@ import {
 // document (ezai/job.json) -- so a rerun is a new job on that zip (start=generate|align), and the
 // files are read out of it here. The cloud has no ToothRoot: `segs` limits 分牙＋牙根 to tooth_ssm.
 const TOOTHSSM_TARGETS = {
-  z790: { label: '台中 5080', base: '/api/toothssm-z790', box: '台中 5080' },
   rtx5090: { label: '嘉義 5090', base: '/api/toothssm-rtx5090', box: '嘉義 5090' },
   dispatcher: { label: '分派器', box: '分派器', dispatcher: true, route: 'auto' },
   cloud: { label: 'modal雲端', box: 'modal雲端', dispatcher: true, route: 'cloud', segs: ['ssm'] },
@@ -62,7 +60,7 @@ const TOOTHSSM_ROOT_OPTIONS = [
   { value: 'generated', label: 'AI 生成牙根' },
   { value: 'none', label: '不接牙根：只回牙冠＋牙軸（不排牙）' },
 ];
-const TOOTHSSM_ROOT_TARGETS = ['z790', 'rtx5090', 'dispatcher', 'cloud'];
+const TOOTHSSM_ROOT_TARGETS = ['rtx5090', 'dispatcher', 'cloud'];
 // How the crown is made (`crown`): `fit` (the default) the generated tooth fitted onto the scan, an
 // even mesh with no seam; `exact` the scan crown as segmented; `zhu` the author's whole regenerated
 // tooth -- with root=generated, what production returned until 2026-11-01.
@@ -86,7 +84,7 @@ const TOOTHSSM_FAST_ROOTS_OPTIONS = [
 const TOOTHSSM_FORMATS = ['stl', 'ply', 'obj', 'tri'];
 const TOOTHSSM_ACCEPT = TOOTHSSM_FORMATS.map(format => `.${format}`).join(',');
 
-const baseOf = target => (TOOTHSSM_TARGETS[target] ?? TOOTHSSM_TARGETS.z790).base;
+const baseOf = target => (TOOTHSSM_TARGETS[target] ?? TOOTHSSM_TARGETS.rtx5090).base;
 
 const describeHttpError = error => {
   const data = error.response?.data;
@@ -206,7 +204,7 @@ const getToothSsmHealth = async target => {
 /** The service's GET / (its tooth colours). The dispatcher has none of its own: a box answers. */
 const getToothSsmInfo = async target => {
   if (!isDispatched(target)) return (await axios.get(`${baseOf(target)}/`, { timeout: 20000 })).data;
-  for (const box of ['z790', 'rtx5090']) {
+  for (const box of ['rtx5090']) {
     try {
       return (await axios.get(`${baseOf(box)}/`, { timeout: 20000 })).data;
     } catch {

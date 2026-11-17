@@ -53,15 +53,13 @@ const FSABUTMENT_RTX5090_API_URL = process.env.FSABUTMENT_RTX5090_API_URL
 // Only the "AI分牙" tab calls it.
 const TOOTHROOT_RTX5090_API_URL = process.env.TOOTHROOT_RTX5090_API_URL
   || 'https://ezai2.inteware.com.tw/toothroot'
-// The same ToothRoot on THIS box since 2026-10-12, as Chiayi's standby: bound to docker0
-// (172.17.0.1:8035), which this container sees as host.docker.internal, so no credential.
-const TOOTHROOT_Z790_API_URL = process.env.TOOTHROOT_Z790_API_URL || 'http://host.docker.internal:8035'
-// tooth_ssm (added 2026-10-13): the orthodontic team's AI tooth arrangement (htyau/ssm_project,
-// served by its deploy/deploy_api.py), for the "AI排牙" tab. On THIS box it is bound to docker0
-// (172.17.0.1:8036) and this container sees the host as host.docker.internal, so it needs no
-// credential. The Chiayi box's copy would be reached like ToothRoot's, through ezai2 and the same
-// Access application and token.
-const TOOTHSSM_Z790_API_URL = process.env.TOOTHSSM_Z790_API_URL || 'http://host.docker.internal:8036'
+// This box's ToothRoot (Chiayi's standby from 2026-10-12) was stopped on 2026-11-17 to free the card.
+// tooth_ssm (added 2026-10-13): the orthodontic team's AI tooth arrangement (htyau/ssm_project),
+// for the "AI排牙" tab. THIS box has served only its API v2 since 2026-11-17 (v1 on 8036 retired, the
+// user), reached through this box's own gateway (8030, /toothssm/v2/ -> 172.17.0.1:8034): the same
+// paths as ezai2's, so one client serves both boxes, and no credential (host.docker.internal).
+// The Chiayi box's copy is reached like ToothRoot's, through ezai2 and the same Access token.
+const TOOTHSSM_Z790_API_URL = process.env.TOOTHSSM_Z790_API_URL || 'http://host.docker.internal:8030/toothssm'
 const TOOTHSSM_RTX5090_API_URL = process.env.TOOTHSSM_RTX5090_API_URL
   || 'https://ezai2.inteware.com.tw/toothssm'
 // The Chiayi box's TEST tooth_ssm (added 2026-10-29): crown=exact by default (the scan's own crown
@@ -1040,16 +1038,10 @@ export default defineConfig({
           })
         },
       },
-      // ToothRoot on this box (2026-10-12), Chiayi's standby. On docker0, like tooth_ssm below:
-      // nothing but the address, and no shorter key matches it.
-      '/api/toothroot-z790': {
-        target: TOOTHROOT_Z790_API_URL,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/toothroot-z790/, ''),
-      },
       // tooth_ssm (2026-10-13), for the "AI排牙" tab. No shorter key matches either route. This
-      // box's copy is on docker0 and needs nothing but the address; the Chiayi one goes through
-      // Access and gets the same three fixes as the routes above, for the same reasons.
+      // box's (API v2 only since 2026-11-17) goes through its own gateway and needs nothing but the
+      // address; the Chiayi one goes through Access and gets the same three fixes as the routes
+      // above, for the same reasons.
       '/api/toothssm-z790': {
         target: TOOTHSSM_Z790_API_URL,
         changeOrigin: true,

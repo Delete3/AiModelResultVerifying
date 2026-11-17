@@ -102,7 +102,7 @@ const pooled = async (tasks, size = 6) => {
 const ToothAlignV1Panel = () => {
   const caseScene = useCaseScene();
   const [files, setFiles] = useState({ upper: null, lower: null });
-  const [target, setTarget] = useState('z790');
+  const [target, setTarget] = useState('rtx5090');
   const [res, setRes] = useState(128);
   const [seg, setSeg] = useState('ssm');
   const [root, setRoot] = useState('virtual');

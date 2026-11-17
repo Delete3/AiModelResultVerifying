@@ -56,9 +56,8 @@ const pooled = async (tasks, size = 6) => {
 };
 
 /**
- * The "AI分牙" tab: ToothRoot (htyau/ToothRoot) on the Chiayi 5090 box, or on this z790 box,
- * its standby since 2026-10-12 (same API and defaults; results agree to well within what a
- * different seed changes, but not to the byte).
+ * The "AI分牙" tab: ToothRoot (htyau/ToothRoot) on the Chiayi 5090 box. This z790 box was its
+ * standby from 2026-10-12 to 2026-11-17 (stopped to free the card; ROOT_SECONDS keeps its numbers).
  *
  *   step 1  AI 分牙    archnorm puts each arch in a canonical pose, a 25-view 2D U-Net labels
  *                      every vertex with its FDI number, and each tooth's crown is cut out
@@ -98,12 +97,6 @@ const ToothSegPanel = () => {
         .catch(() => setReach(previous => ({ ...previous, [key]: 'down' })));
     }
   }, []);
-
-  // Chiayi is the default; when it is down at the moment the tab opens and Taichung answers,
-  // start on Taichung instead -- unless someone already chose, or a job is already out.
-  useEffect(() => {
-    if (!pickedRef.current && !jobRef.current && reach.rtx5090 === 'down' && reach.z790 === 'ok') setTarget('z790');
-  }, [reach]);
 
   useEffect(() => {
     getToothRootInfo(target).then(info => {

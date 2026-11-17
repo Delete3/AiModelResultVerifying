@@ -34,10 +34,13 @@ import {
 //   rtx5090     Chiayi's v2 service itself (ezai2 /toothssm/v2/, production since 2026-11-11),
 //               multipart in, the bundle out; the existing /api/toothssm-rtx5090 route carries
 //               it, since the gateway serves v2 under the same /toothssm/ prefix
+//   z790        this box's v2 service (production since 2026-11-17, in place of v1), through its
+//               own gateway on 8030 (/toothssm/v2/, the same paths as ezai2's), no credential
 // A "job:<id>" names a job of the same way in (the box's ids and the dispatcher's differ).
 const V2_TARGETS = {
   dispatcher: { label: '分派器（測試站）', dispatcher: true },
   rtx5090: { label: '嘉義 5090（直接）', base: '/api/toothssm-rtx5090' },
+  z790: { label: '台中 5080（直接）', base: '/api/toothssm-z790' },
 };
 const isV2Dispatched = target => Boolean(V2_TARGETS[target]?.dispatcher);
 
