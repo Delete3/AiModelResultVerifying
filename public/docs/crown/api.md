@@ -1,83 +1,120 @@
 # 牙冠設計 API 串接說明
 
-文件版本：2026-11-18（補上 2026-11-17 起兩台都有的支台齒 `mode=stump`，以及無支台齒的 `stump_shape`，見「無支台齒與支台齒」）。之前：2026-11-17 台中也有 `crown_model=heygears`、`occlusal_detail`，和嘉義相同：兩台都能送 HeyGears 的 job；2026-11-11 嘉義的 `crown_model=heygears` 換成新版模型，加 `occlusal_detail=1` 時改上 HeyGears 咬合面紋路，舊版暫時保留為 `heygears_v1`；2026-11-04 貼合鄰牙不再留下折痕（兩台）、新增 `occlusal_detail`（嘉義）；2026-11-03 新增 `crown_model=heygears`（嘉義）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
+文件版本：2026-11-18（呼叫方式改以 **AI 分派器**為主：一個網址，嘉義、台中和雲端 GPU 由分派器分派；直連主機的方式移到最後一節「直連主機（舊方式）」）。之前：2026-11-18 補上支台齒 `mode=stump` 與無支台齒的 `stump_shape`；2026-11-17 台中也有 `crown_model=heygears`、`occlusal_detail`；2026-11-11 `crown_model=heygears` 換成新版模型，`occlusal_detail=1` 改上 HeyGears 咬合面紋路，舊版暫時保留為 `heygears_v1`；2026-11-04 貼合鄰牙不再留下折痕、新增 `occlusal_detail`；2026-11-03 新增 `crown_model=heygears`。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
 
-上傳一組上下顎口掃和要做牙冠的牙位（FDI），服務會自動擺正口掃、預測 margin（也可以用你畫好的 margin）、生成牙冠，最後回傳一個 zip。這是非同步 API：上傳後立刻拿到 `job_id`，再輪詢結果。還沒有支台齒的位置（例如植體）也能做牙冠外壁（`no_abutment=true`）或支台齒（`mode=stump`），見「無支台齒與支台齒」。嘉義、台中兩台主機提供同一個 API、互為備援；一個 job 在服務端約 1–8 秒。
+上傳一組上下顎口掃和要做牙冠的牙位（FDI），服務會自動擺正口掃、預測 margin（也可以用你畫好的 margin）、生成牙冠，最後回傳一個 zip。還沒有支台齒的位置（例如植體）也能做牙冠外壁（`no_abutment`）或支台齒（`mode=stump`），見「無支台齒與支台齒」。
+
+**請呼叫 AI 分派器 `https://ai.inteware.com.tw`。** 分派器把每個 job 交給有空的主機：嘉義（RTX 5090）或台中（RTX 5080）；兩台都忙到讓 job 明顯變慢時，再開雲端 GPU（Modal）一起做。你只要記一個網址，排隊、換台、出錯重做都由分派器處理。兩台主機和雲端跑的是同一版程式與模型。
+
+直連主機的網址（`https://ezai2.inteware.com.tw/pipeline`、`https://ezai.inteware.com.tw/pipeline`）在現有呼叫端改接完成以前照常開著、行為不變，但之後只給內部用；**新的串接請不要再用**。
+
+## 經分派器和直連主機的差別
+
+| | 經分派器（請用這個） | 直連主機（舊方式） |
+|---|---|---|
+| 網址 | 一個：`https://ai.inteware.com.tw` | 嘉義、台中各一個，要自己決定送哪台 |
+| 主機忙或壞掉 | 自動交給另一台；兩台都忙時開雲端 | 回 429／503，要自己換台、重新上傳 |
+| 排隊 | 分派器排隊，不會回 429 | 一台最多 100 筆，滿了回 429 |
+| 主機出錯 | 自動換一台重做一次 | job 失敗 |
+| 口掃 | 用網址交：向分派器要上傳網址，或給你自己 S3 的網址 | 可以直接夾帶在表單裡 |
+| 參數 | 全部放在 JSON 的 `params` | 有的是表單欄位、有的是網址參數，放錯會被忽略 |
+| 多花的時間 | 每個 job 約 0.3–0.4 秒（結果放上 S3） | — |
 
 ## 連線與認證
 
-| 端點 | 基底網址 | `crown_model=heygears` | `occlusal_detail` | 支台齒 `mode=stump` |
-|---|---|---|---|---|
-| 嘉義（RTX 5090） | `https://ezai2.inteware.com.tw/pipeline` | 有（2026-11-03 起；2026-11-11 換新版） | 有（2026-11-04 起） | 有（2026-11-17 起） |
-| 台中（RTX 5080） | `https://ezai.inteware.com.tw/pipeline` | 有（2026-11-17 起，和嘉義同一版） | 有（2026-11-17 起） | 有（2026-11-17 起） |
+| 站 | 網址 | 用途 |
+|---|---|---|
+| 正式站 | `https://ai.inteware.com.tw` | 正式流量 |
+| 測試站 | `https://test-ai.inteware.com.tw` | 串接測試。比正式站多一個 `route` 欄位，可以指定嘉義、台中或雲端 |
 
-兩台各用一組 Service Token（兩個 Cloudflare Access 應用）。每個請求都要帶下面三個 header，缺一個就會被 Cloudflare 擋下。
+每個請求都要帶下面三個 header，缺一個就會被 Cloudflare 擋下：
 
 | Header | 值 | 說明 |
 |---|---|---|
-| `CF-Access-Client-Id` | 那台主機 Service Token 的 Client ID | 另外提供，不寫在文件裡 |
-| `CF-Access-Client-Secret` | 那台主機 Service Token 的 Client Secret | 另外提供，不寫在文件裡；只放在伺服器端，不要放進瀏覽器程式 |
+| `CF-Access-Client-Id` | 你們團隊那把分派器 Service Token 的 Client ID | 每個團隊一把，另外提供，不寫在文件裡。**直連主機用的 token 不能用在分派器** |
+| `CF-Access-Client-Secret` | 同一把的 Client Secret | 另外提供；只放在伺服器端，不要放進瀏覽器程式 |
 | `User-Agent` | 自訂字串，例如 `heygears-integration/1.0` | 程式語言預設的 UA（例如 `Python-urllib/3.x`）會被 Cloudflare 直接回 403 error code: 1010 |
 
-- 沒帶憑證和帶錯憑證都回同一個 403 頁面，所以 403 只代表請求有送到 Cloudflare，不代表網址錯。驗證連線請用 `GET /health`，拿到 200 才算通。
-- Cloudflare 的上限：一個請求的 body 最大 100 MB，一個請求最長約 100 秒。所以上傳後要用輪詢等結果，不能開著連線等。
-- 口掃建議先 gzip 再上傳（檔名加 `.gz`），或用公司的 `.tri` 格式：同一份口掃的 `.tri.gz` 約只有 STL 的四分之一大；從台中辦公室經 Cloudflare 上傳，22 MB 的 STL 約 8 秒，`.tri.gz` 約 3 秒。
+- 沒帶憑證和帶錯憑證都回同一個 403 頁面，所以 403 只代表請求有送到 Cloudflare，不代表網址錯。驗證連線請用 `GET /v2/status`，拿到 200 才算通。
+- 上傳網址、`result_url` 是 S3 的簽名網址，**不用**帶上面的 header；網址本身就是憑證，不要寫進 log。
+- 分派器連不上時 Cloudflare 回 **530**：請當成「連不上」處理（和 502／503／504 一樣），稍後再試。
+- Cloudflare 的一個請求最長約 100 秒，所以要用輪詢等結果（`?wait=20` 的長輪詢），不能開著連線等。
 
 ## 使用流程
 
-一顆牙冠就是一個 job，走四步：
+一顆牙冠就是一個 job：
 
-1. `POST /v1/jobs` 上傳上下顎口掃與牙位，立刻回 202 與 `job_id`。
-2. 每 1–2 秒 `GET /v1/jobs/{job_id}`，直到 `status` 是 `succeeded` 或 `failed`。進行中是 `queued`（排隊，`queue_position` 是前面還有幾筆）→ `running`（`stage` 是正在跑的步驟：`jaw` 擺正、`margin` 預測 margin、`crown` 生成牙冠、`packaging` 打包等）。
-3. `GET /v1/jobs/{job_id}/result` 下載結果 zip（見「結果 zip」）。
-4. `DELETE /v1/jobs/{job_id}`。口掃是病人資料，用完就刪；沒刪的話，job 結束 1 小時後自動刪除，做完的 job 超過 200 個時最舊的會先被清掉。
+1. **放口掃**：`POST /v2/uploads`，body `{"filename": "upper.tri.gz"}`，回 `put_url`、`get_url`。15 分鐘內把檔案原樣 `PUT` 到 `put_url`，建 job 時給 `get_url`（1 小時內有效）。上下顎各要一組。
+2. **建 job**：`POST /v2/jobs`，JSON（見「建立 job」），立刻回 202 與 job 狀態，`id` 是 job id。
+3. **等結果**：`GET /v2/jobs/{id}?wait=20`，狀態有變或 20 秒到了就回；一直重複，直到 `status` 是 `succeeded`、`failed` 或 `cancelled`。進行中是 `queued`（排隊）→ `running`。
+4. **拿結果**：`succeeded` 時下載 `result_url`（結果 zip，見「結果 zip」）。網址 1 小時內有效，過期就再 `GET` 一次狀態拿新的。
+5. **刪除**：`DELETE /v2/jobs/{id}`，回 204。口掃是病人資料，用完就刪；沒刪的話，上傳的口掃與結果 24 小時後自動刪除。
 
-- 一顆牙一個 job。同一顎有好幾顆備牙時，每顆各送一個 job，並在 `all_tooth_numbers` 填整顎的備牙牙位（幫助 margin 模型分辨）。
-- 上傳的口掃在 job 做完後就刪除，主機上只留結果 zip 與狀態。
-- 每台同時跑 8 個 job，最多 100 個排隊。呼叫端同時保持大約 8 個 job 在跑，整體最快。
+口掃：
+
+- **檔名決定格式**：`.stl`、`.ply`、`.obj`、`.tri`（公司格式 V1、V2），都可以再加 `.gz`。其他壓縮（`.zip`、`.zst`）不收。檔名請不要含病人姓名。
+- 建議先 gzip（檔名加 `.gz`）或用公司的 `.tri` 格式：同一份口掃的 `.tri.gz` 約只有 STL 的四分之一大。
+- 也可以不用 `/v2/uploads`，給你們自己 S3 的簽名網址（主機名稱在 `amazonaws.com` 底下、路徑要有檔名）；請簽 1 小時以上。
+
+其他：
+
+- 一顆牙一個 job。同一顎有好幾顆備牙時，每顆各送一個 job（可以同時送），並在 `all_tooth_numbers` 填整顎的備牙牙位（幫助 margin 模型分辨）。
+- **重送是安全的**：同一個 `job_id`、同樣的內容（簽名網址的簽名不算內容）再送，拿到的是同一筆；內容不同就取消舊的、換成新的。
+- `job_id` 是每把 Service Token 自己的：別人的 job 查不到（404）。測試站各團隊共用一把 token，`job_id` 請加自己的前綴。
 
 ## 端點一覽
 
-下表的路徑都接在基底網址後面，兩台完全相同。
-
 | 方法 | 路徑 | 做什麼 | 成功時回傳 |
 |---|---|---|---|
-| POST | `/v1/jobs` | 建立 job（multipart/form-data） | 202，job 狀態 JSON（含 `job_id`） |
-| GET | `/v1/jobs/{job_id}` | 狀態、每步耗時、警告、錯誤 | 200 JSON |
-| GET | `/v1/jobs/{job_id}/result` | 結果 zip（job 還沒成功時回 409） | 200 zip |
-| DELETE | `/v1/jobs/{job_id}` | 刪除 job 與結果 | 204 |
-| GET | `/health` | 服務和它後面三個 AI 服務是否都可用、排隊數 | 200；有一個連不上時 503 |
-| GET | `/` | 這台收哪些口掃格式、壓縮格式、認得哪些選項（`options`） | 200 JSON |
+| POST | `/v2/uploads` | 要一組上傳網址，body `{"filename": …}` | 200 `{"key", "put_url", "get_url", "expires_in"}` |
+| POST | `/v2/jobs` | 建立 job（JSON） | 202，job 狀態 |
+| GET | `/v2/jobs/{id}?wait=20` | job 狀態；有變或 `wait` 秒到了才回（最多 25） | 200 |
+| DELETE | `/v2/jobs/{id}` | 取消還在跑的 job、刪除做完的結果 | 204 |
+| GET | `/v2/status` | 連線檢查、各服務的佇列 | 200 |
 
-## 建立 job 的參數
+## 建立 job
 
-`POST /v1/jobs` 是 multipart/form-data。下表是**表單欄位**：
+`POST /v2/jobs` 的 JSON：
 
-| 欄位 | 類型 | 預設 | 說明 |
+| 欄位 | 必填 | 說明 |
+|---|---|---|
+| `service` | 是 | 固定 `crown` |
+| `inputs` | 是 | 口掃與 margin 的網址（下表） |
+| `params` | 是 | 參數，至少要有 `fdi`（下表） |
+| `job_id` | 否 | 你們自己的 id（英數、`_`、`.`、`-`，最多 64 字）；不給就由分派器產生 |
+| `deadline_s` | 否 | 這個 job 最多等幾秒（5–3600，預設 330）；超過就 `failed`（`deadline_exceeded`） |
+| `route` | 否 | 只有測試站：`auto`（預設）、`95`（嘉義）、`101`（台中）、`cloud`。指定的地方現在不能做就馬上回 503 |
+
+`inputs`：
+
+| 名稱 | 說明 |
+|---|---|
+| `upper_stl_url`、`lower_stl_url` | 上、下顎口掃的網址。名稱沿用舊 API：`.tri.gz` 也用這兩個名稱。兩顎都要給，除非 `single_arch=true` |
+| `margin_pts` | margin 檔的**文字內容**（≤64 KB），直接放在 JSON 裡，不用另外上傳。`mode=margin_override` 或 `stump` 時必填，其他模式不能給 |
+| `margin_pts_url` | 同上，改用網址（檔名決定格式：`.pts`、`.json`、`.txt`，可加 `.gz`）。和 `margin_pts` 二選一 |
+
+- margin 要在**你送來的口掃的座標系**（就是結果裡 `margin_original.pts` 的座標）。
+- `.pts` 格式：`BEGIN_<FDI>`、每行 `x y z`、`END_<FDI>`；JSON 可以是 `[[x,y,z], …]`，或之前 job 的 `margin.json`。
+
+`params`（**全部放在 `params` 裡**；值可以是字串、數字或 true／false，`true` 和 `"true"` 一樣）：
+
+| 名稱 | 值 | 不帶時 | 說明 |
 |---|---|---|---|
-| `upper_stl` | 檔案 | — | 上顎口掃。格式看檔名的副檔名：`.stl`、`.ply`、`.obj`、`.tri`（公司格式 V1、V2），都可以再加 `.gz`，例如 `upper.tri.gz`。欄位名稱雖然是 `_stl`，四種格式都收 |
-| `lower_stl` | 檔案 | — | 下顎口掃，格式同上 |
-| `fdi` | 文字（必填） | — | 要做牙冠的牙位，兩位數 FDI（11–48） |
-| `mode` | `full`、`margin_only`、`margin_override`、`stump` | `full` | `full`：預測 margin 再生成牙冠。`margin_only`：只預測 margin，不生成牙冠。`margin_override`：用你上傳的 `margin_pts`，不跑 margin 模型。`stump`（2026-11-17 起）：支台齒，不生成牙冠，見「無支台齒與支台齒」 |
-| `margin_pts` | 檔案 | — | `mode=margin_override` 或 `stump` 時必填，其他模式送了會回 422。`.pts`（`BEGIN_<FDI>`、每行 `x y z`、`END_<FDI>`）、`.json`（`[[x,y,z], …]`，或之前 job 的 `margin.json`）或 `.txt`，可以再加 `.gz`。座標要和一起上傳的口掃同一個座標系 |
-| `all_tooth_numbers` | 文字，例如 `14,15` | 空白 | 同一顎所有備牙的牙位（含這一顆），給 margin 模型參考；單顆可留白。`margin_override` 時沒有作用 |
-| `single_arch` | `true`、`false` | `false` | 只送備牙那一顎（另一顎的欄位要留空，送了會回 422）。對咬用鄰牙高度的平面代替，咬合面不是照真實咬合做的，每顆都會有一則警告 |
-| `contact_fit` | `true`、`false` | `true` | 牙冠穿進鄰牙的那面牆整平、往回推最多 0.3 mm；margin 上方 1 mm 內（牙齦帶）不動，牆從那裡照原本的斜度接上去。推完還重疊的留給編修並發警告。`false` 回傳模型原樣 |
+| `fdi` | 兩位數 FDI（11–48），**必填** | — | 要做牙冠的牙位 |
+| `mode` | `full`、`margin_only`、`margin_override`、`stump` | `full` | `full`：預測 margin 再生成牙冠。`margin_only`：只預測 margin，不生成牙冠。`margin_override`：用你給的 `margin_pts`，不跑 margin 模型。`stump`：支台齒，不生成牙冠，見「無支台齒與支台齒」 |
+| `all_tooth_numbers` | 例如 `"14,15"` | 空白 | 同一顎所有備牙的牙位（含這一顆），給 margin 模型參考；單顆可不送。`margin_override` 時沒有作用 |
+| `single_arch` | `true`、`false` | `false` | 只送備牙那一顎（另一顎不要給）。對咬用鄰牙高度的平面代替，咬合面不是照真實咬合做的，每顆都會有一則警告 |
+| `contact_fit` | `true`、`false` | `true` | 牙冠穿進鄰牙的那面牆整平、往回推最多 0.3 mm；margin 上方 1 mm 內（牙齦帶）不動。推完還重疊的留給編修並發警告。`false` 回傳模型原樣 |
 | `contralateral` | `true`、`false` | `false` | 只對前牙（牙位第二碼 1–3）：形狀擬合另一側的同名牙，每顆約多 2 秒。不適用時不套用，原因寫在 `warnings` |
-| `no_abutment` | `true`、`false` | `false` | 還沒有支台齒的位置（例如植體）：要搭配 `mode=margin_override`。服務放一個虛擬支台齒再生成牙冠，多回傳 `virtual_prep.ply`；**牙冠只用外表面** |
-| `stump_height_mm`、`stump_shoulder_mm`、`stump_shape`、`insertion_axis`、`stump_clearance_mm`、`cutback_style`、`cutback_mm`、`cutback_occlusal_mm` | 見「無支台齒與支台齒」 | 服務決定 | 只能和 `no_abutment=true` 或 `mode=stump` 一起送：支台齒的形狀、高度、肩台寬、插入方向、離對咬、cutback 的內縮 |
-| `upper_stl_url`、`lower_stl_url`、`margin_pts_url` | https 網址 | — | 用網址代替上傳（例如 S3 的 presigned URL），每個欄位只能二選一。格式看網址**路徑**的副檔名（例如 `…/upper.tri.gz?X-Amz-…`）；目前只收 `amazonaws.com` 的網址、每個檔案最大 200 MB，要用別的儲存空間請先跟我們說 |
+| `crown_model` | `heygears`（`heygears_v1`：舊版，暫時保留） | v3 | 用哪個牙冠模型，見「牙冠模型」 |
+| `occlusal_clearance` | −0.3–1.0（mm） | 不另外留 | 牙冠咬合面和對咬牙之間至少留這個距離。HeyGears 建議 `0.2` |
+| `occlusal_detail` | 0–2 | 不補 | 生成後補回模型磨平的咬合面細節；`1` 是建議值。只對小臼齒、大臼齒，見「咬合面細節」 |
+| `no_abutment` | `true`、`false` | `false` | 還沒有支台齒的位置（例如植體）：要搭配 `mode=margin_override`。服務放一個支台齒再生成牙冠，多回傳 `virtual_prep.ply`；**牙冠只用外表面** |
+| `stump_height_mm`、`stump_shoulder_mm`、`stump_shape`、`insertion_axis`、`stump_clearance_mm`、`cutback_style`、`cutback_mm`、`cutback_occlusal_mm` | 見「無支台齒與支台齒」 | 服務決定 | 只能和 `no_abutment=true` 或 `mode=stump` 一起送 |
 
-下表是**網址參數**（接在 `/v1/jobs?` 後面，**不是表單欄位**；放在表單裡會被忽略）：
-
-| 參數 | 值 | 預設 | 說明 |
-|---|---|---|---|
-| `crown_model` | `heygears`（`heygears_v1`：舊版，暫時保留） | 不帶＝v3 | 用哪個牙冠模型，見下一節。兩台都有（台中 2026-11-17 起） |
-| `occlusal_clearance` | −0.3–1.0（mm） | 不帶＝不另外留 | 牙冠咬合面和對咬牙之間至少留這個距離，由牙冠服務在生成後調整。HeyGears 建議 `0.2`。兩台都有 |
-| `occlusal_detail` | 0–2 | 不帶＝不補 | 生成後補回模型磨平的咬合面細節：v3 沿窩溝往下挖深，`heygears` 改上 HeyGears 咬合面紋路；`1` 是建議值。只對小臼齒、大臼齒，見「咬合面細節」。兩台都有（台中 2026-11-17 起） |
-| `job_id` | 英數字、`_`、`.`、`-`，最多 64 字 | 服務產生 | 自訂 job id，方便追蹤。**要保證不重複**：重複的 id 會蓋掉同名的 job |
-
-其他網址參數（`res`、`steps`、`guide`、`frame`、`chamfer`、`shell`、`contact_clearance`、`jaw_samples`）是模型的內部設定，請維持預設；改了以後，結果就和其他客戶的不一樣。
+- **名稱打錯**（例如 `no_abutement`）時，建 job 就回 422 `invalid_request`，`message` 列出不認得的名稱和 `crown` 收的所有名稱；不會被默默忽略。
+- 值不對（例如 `occlusal_detail` 不是 0–2、`mode` 和 `margin_pts` 不搭）由主機檢查：job 會 `failed`，`error.code` 是 `input_rejected`，`message` 是主機的原話。
+- 其他名稱（`res`、`steps`、`guide`、`frame`、`chamfer`、`shell`、`contact_clearance`、`jaw_samples`）是模型的內部設定，照收但不承諾以後不變，請維持預設；改了以後，結果就和其他客戶的不一樣。
 
 ## 牙冠模型：`crown_model`
 
@@ -86,21 +123,22 @@
 | 是什麼 | 所有客戶目前用的模型 | 2026-11-11 起：用全部訓練牙冠重新訓練的較大模型，再用 HeyGears 技師的 exocad 牙冠微調，學 HeyGears 的牙冠風格。之前（11-03 到 11-10）是 v3 再訓練的版本，現在叫 `heygears_v1` |
 | 牙位 | 全部 | **只有小臼齒、大臼齒**（牙位第二碼 4–7）。前牙、犬齒、智齒帶了 `heygears` 也會用 v3 生成，並在 `warnings` 註明 |
 | 建議一起送 | — | `occlusal_clearance=0.2`：HeyGears 的牙冠和對咬牙通常留約 0.2 mm，模型自己學不到。`occlusal_detail=1`：HeyGears 咬合面紋路（見「咬合面細節」） |
-| 哪台有 | 兩台 | 兩台：嘉義 2026-11-03 起（2026-11-11 換新版），台中 2026-11-17 起 |
 
+- 嘉義、台中、雲端都有（台中 2026-11-17 起）。分派器交給哪裡做，拿到的都是同一版 HeyGears 模型。
 - `heygears_v1` 是 11-10 以前的 `heygears`，只為了比對暫時保留，之後會拿掉；新的串接請用 `heygears`。
 
-HeyGears 的呼叫要像這樣（網址參數）：
+HeyGears 的 job 像這樣：
 
-```
-POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusal_clearance=0.2&occlusal_detail=1
+```json
+{"service": "crown",
+ "inputs": {"upper_stl_url": "<get_url>", "lower_stl_url": "<get_url>"},
+ "params": {"fdi": "36", "crown_model": "heygears", "occlusal_clearance": 0.2, "occlusal_detail": 1}}
 ```
 
 **怎麼確認真的用了 HeyGears 模型**：
 
 - 結果 zip 裡 `manifest.json` 的 `backends.crown.model` 是 `heygears`。前牙等沒學過的牙位是 `default`，同時 `warnings` 有一則 `crown_model: asked for 'heygears', the crown service used 'default'`。
-- 名稱打錯（例如 `heygear`）時 job 會失敗（`status` 是 `failed`），`error` 是 `crown generation failed: unknown model 'heygear'; this server has default, heygears, heygears_v1`。
-- 兩台都認得這個參數（台中 2026-11-17 起）。要確認拿到的是哪個模型，看結果裡的 `backends.crown.model`。
+- 值打錯（例如 `heygear`）時 job 會 `failed`（`input_rejected`），`message` 有 `unknown model 'heygear'; this server has default, heygears, heygears_v1`。
 
 **2026-11-11 新版和舊版比**（第二批 75 例 HeyGears 病例，沒有參與訓練，和 HeyGears 技師的牙冠比；兩版都帶 `occlusal_clearance=0.2&occlusal_detail=1`，同一個病例前後接著送；中位數）：
 
@@ -138,14 +176,8 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 | 值 | `1`＝量出來的強度；可給 0–2（`0.5` 挖一半深、`2` 挖兩倍深） | 大於 0 就加上同樣的紋路，數值不影響強度 |
 | 時間 | 每顆約多 0.1 秒 | 每顆約多 0.4 秒（只用 CPU） |
 
-- 不適用的牙位照常生成、不補，`warnings` 會註明。`0` 或不帶＝不補；超出 0–2 或不是數字回 422。
-- 哪台有：兩台。嘉義 2026-11-04 起（`heygears` 的紋路 2026-11-11 起），台中 2026-11-17 起。
-
-HeyGears 的呼叫要像這樣（網址參數）：
-
-```
-POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusal_clearance=0.2&occlusal_detail=1
-```
+- 不適用的牙位照常生成、不補，`warnings` 會註明。`0` 或不帶＝不補；超出 0–2 或不是數字，job 會 `failed`（`input_rejected`）。
+- 嘉義、台中、雲端都有（台中 2026-11-17 起）。
 
 **怎麼確認有補**：
 
@@ -193,45 +225,44 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 | `library` | 形狀取自 EZCAD 支台齒資料庫；高度、傾斜、寬度取同牙位真實支台齒的中位數，不會比 margin 寬；對咬太近時自動降低（最低 2.0 mm），`warnings` 會說明 |
 | `cutback` | 先在 `library` 支台齒上生成牙冠，再把牙冠往內縮一層牙冠的厚度，剩下的就是支台齒。`scaled`（預設）：肩台與牆照 `ring`，咬合面用牙冠自己的咬合面等比縮進來，植體牙冠比 margin 寬很多時咬合面的起伏留得比較多；`ring`：牆和咬合面分開內縮。空間不夠切不出來時改回 `library` 支台齒並在 `warnings` 說明 |
 
-支台齒的參數（表單欄位；不帶＝服務決定）：
+支台齒的參數（放在 `params`；不帶＝服務決定）：
 
-| 欄位 | 能配什麼 | 值 | 說明 |
+| 名稱 | 能配什麼 | 值 | 說明 |
 |---|---|---|---|
 | `stump_height_mm` | `no_abutment` 或 `mode=stump` | 虛擬支台齒 1.0–6.0；`library` 1.5–8.0 | 支台齒高度（從 margin 平均高度量到頂端） |
 | `stump_shoulder_mm` | 同上 | 0.3–1.5（虛擬支台齒不帶＝0.8，`library`／`cutback` 不帶＝0.6） | 肩台寬（從 margin 往內） |
 | `stump_shape` | 同上 | `library`、`cutback` | 見上表 |
-| `insertion_axis` | `library`、`cutback` | `"x,y,z"`（原始口掃的座標，正負都可） | 支台齒立起的方向，例如掃描桿的軸。不帶＝牙位自然的傾斜。離咬合方向超過 60° 回 422，超過 30° 加警告 |
+| `insertion_axis` | `library`、`cutback` | `"x,y,z"`（原始口掃的座標，正負都可） | 支台齒立起的方向，例如掃描桿的軸。不帶＝牙位自然的傾斜。離咬合方向超過 60° 時 job 會 `failed`（`input_rejected`），超過 30° 加警告 |
 | `stump_clearance_mm` | `library`、`cutback` | 0.5–3.0（不帶＝1.0） | 和對咬牙至少保留的距離 |
-| `cutback_style` | `cutback` | `scaled`（預設）、`ring` | 其他值回 422 |
+| `cutback_style` | `cutback` | `scaled`（預設）、`ring` | 其他值 `input_rejected` |
 | `cutback_mm`、`cutback_occlusal_mm` | `cutback` | 0.5–2.5（不帶＝1.0）、0.5–3.0（不帶＝1.8） | 牆內縮多少、咬合面沿插入方向往下降多少（mm） |
 
 - `manifest.json` 的 `stump`（`mode=stump`）或 `no_abutment`（無支台齒）記錄這顆支台齒：形狀、高度與怎麼決定的、離對咬、插入方向（`insertion_axis_original`，原始座標）等。
-- 範例（支台齒，cutback）：`-F mode=stump -F margin_pts=@margin.pts -F stump_shape=cutback`；（PEEK abut，資料庫支台齒）：`-F mode=margin_override -F no_abutment=true -F stump_shape=library -F margin_pts=@margin.pts`。
+- 範例 `params`：支台齒（cutback）`{"fdi": "21", "mode": "stump", "stump_shape": "cutback"}`；PEEK abut（資料庫支台齒）`{"fdi": "21", "mode": "margin_override", "no_abutment": true, "stump_shape": "library"}`。兩個都要在 `inputs` 給 `margin_pts`。
 
-## 狀態回應
+## job 狀態
 
-`GET /v1/jobs/{job_id}`（以及 `POST` 的 202 回應）是 JSON，主要欄位：
+`GET /v2/jobs/{id}`（以及 `POST /v2/jobs` 的 202 回應）是 JSON：
 
 | 欄位 | 說明 |
 |---|---|
-| `job_id` | job 的 id |
-| `status` | `queued`、`running`、`succeeded`、`failed` |
-| `stage` | `running` 時正在跑的步驟；其他時候是 null |
-| `queue_position` | `queued` 時前面還有幾筆 |
-| `fdi`、`mode`、`arches` | 這個 job 的牙位、模式，以及收到哪幾顎（`scan` 或 `absent`） |
-| `crown_params` | 送給牙冠服務的參數，包括 `model`（有帶 `crown_model` 時）、`occlusal_clearance`、`occlusal_detail` |
-| `timings_ms` | 每一步的毫秒數，`total_ms` 是總計 |
-| `warnings` | 警告（英文），例如單顎、margin 離口掃太遠、牙冠還和鄰牙重疊、模型改用 v3。請顯示給使用者或記錄下來 |
-| `error`、`error_stage` | 失敗時的原因與哪一步 |
-| `created_at`、`started_at`、`finished_at` | Unix 時間（秒） |
-| `links.result` | 成功時的結果下載網址 |
+| `id`、`service` | job id、`crown` |
+| `status` | `queued` → `running` → `succeeded`／`failed`／`cancelled` |
+| `where` | 在哪做：`95`（嘉義）、`101`（台中）、`cloud`（雲端） |
+| `attempts` | 做了幾次。主機出錯會自動換一台重做一次，這時是 2 |
+| `predicted_finish_s` | 還沒做完時，預估還要幾秒 |
+| `timings` | `queued_s`（排隊）、`run_s`（主機上的計算）、`total_s`（建 job 到做完） |
+| `result_url`、`result_bytes`、`result_sha256` | 成功時的結果 zip（S3 簽名網址，1 小時內有效） |
+| `meta` | 主機回的摘要：`fdi`、`mode`、`has_crown`（`1`／`0`）、`output_frame`、`warnings`（警告的筆數） |
+| `warnings` | 警告（英文），例如單顎、margin 離口掃太遠、牙冠還和鄰牙重疊、模型改用 v3。有警告不等於失敗，結果還是可以用；請顯示給使用者或記錄下來 |
+| `error` | 失敗時：`code`、`message`、`retryable`（見「錯誤與限制」） |
 
 ## 結果 zip
 
 | 檔案 | 座標系 | 內容 |
 |---|---|---|
 | `crown.ply` | **原始口掃** | 牙冠外壁（`margin_only`、`stump` 沒有）：一片開口在 margin 的外表面，不含內側的黏著面 |
-| `margin_original.pts` | **原始口掃** | 這次用的 margin（預測的或你上傳的） |
+| `margin_original.pts` | **原始口掃** | 這次用的 margin（預測的或你給的） |
 | `margin_canonical.pts` | 擺正後 | 同一條 margin，擺正座標 |
 | `margin.json` | 兩者 | 兩條 margin 的 JSON，加上 margin 是否有效；`margin_override` 時另有你的 margin 離口掃多遠（`surface_check`，超過 0.3 mm 會警告） |
 | `alignment.json` | — | 擺正用的旋轉矩陣：`p_canonical = rotation_matrix @ p_original` |
@@ -239,9 +270,9 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 | `virtual_prep.ply` | **原始口掃** | 只有 `no_abutment=true`：牙冠底下的支台齒（帶 `stump_shape` 時是那種支台齒） |
 | `stump.ply` | **原始口掃** | 只有 `mode=stump`：支台齒本身（肩台＋支台齒），開口的邊就是 margin。這種 job 沒有 `crown.ply` |
 | `scan_with_stump.ply` | **原始口掃** | 只有 `mode=stump`：口掃沿 margin 切開、縫上支台齒（共用頂點，沒有縫隙、沒有重疊） |
-| `cutback_crown.ply` | **原始口掃** | 只有 `mode=stump&stump_shape=cutback`：內縮之前的那顆牙冠（中間產物，不是給這顆支台齒用的牙冠） |
+| `cutback_crown.ply` | **原始口掃** | 只有 `mode=stump` 且 `stump_shape=cutback`：內縮之前的那顆牙冠（中間產物，不是給這顆支台齒用的牙冠） |
 
-回傳的牙冠和 margin 都在**你上傳的口掃的座標系**，不必另外轉換。
+回傳的牙冠和 margin 都在**你送來的口掃的座標系**，不必另外轉換。
 
 外壁偶爾分離不出來（第二批 75 例 HeyGears 病例：v3 2 例、HeyGears 1 例，不同病例）。這時 `crown.ply` 是**封閉的整顆牙冠**，`warnings` 有一則 `requested shell=outer but received shell=full; …`，貼合鄰牙（`contact_fit`）也會跳過並另有一則警告。請用這兩則警告判斷，不要假設 `crown.ply` 一定有開口。
 
@@ -249,47 +280,46 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 
 - `backends.crown.model`：實際用的牙冠模型（`default`、`heygears` 或 `heygears_v1`）。
 - `crown_params`：送給牙冠服務的參數（含 `model`、`occlusal_clearance`、`occlusal_detail`）。
-- `backends.crown.occlusal_detail`、`occlusal_detail_info`：只有帶了 `occlusal_detail` 才有；有沒有補、挖了多少（見「咬合面細節」）。
+- `backends.crown.occlusal_detail`、`occlusal_detail_info`：只有帶了 `occlusal_detail` 才有；有沒有補、補了多少（見「咬合面細節」）。
 - `backends.crown.antagonist_relief`：大於 0 表示備牙的咬合空間不夠，服務把對咬往外移了這麼多 mm 才做得出牙冠，`warnings` 也會說明；這種牙冠的咬合要另外處理。
 - `backends.crown.antagonist`：單顎時用的對咬替身。
 - `contact_fit`：和鄰牙的重疊處理前後的數字。
 - `stump`、`no_abutment`：支台齒的紀錄（見「無支台齒與支台齒」）。
-- `warnings`、`timings_ms`：同狀態回應。
+- `request`：收到哪些參數（`sent`）、每個選項實際用的值，含預設（`applied`）、這個 `mode` 下沒有作用的參數（`no_effect`）。
+- `warnings`、`timings_ms`：警告與每一步的毫秒數（`jaw_ms`、`margin_ms`、`crown_ms`、`contact_fit_ms`、`total_ms`…）。
+- 同一份輸入在同一台得到逐位元組相同的牙冠。嘉義和台中之間只有浮點誤差等級的差異（牙冠中位數 ≤0.02 mm）。雲端的顯示卡不同，而 AI 預測的 margin（`full`、`margin_only`）對極小的數值差很敏感：少數病例和主機的 margin 差 0.5 mm 以上（13 例中 4–5 例），牙冠也跟著不同；哪一邊比較好沒有比過。在哪裡做的看 job 的 `where`。
 
-## 兩台備援怎麼用
+## 錯誤與限制
 
-- 送出前先 `GET /health`：回 200 且 `status` 是 `ok` 才送。回 503、5xx、連不上或逾時，就改用另一台。
-- job 只存在收到它的那一台：輪詢、下載、刪除都要送回同一台。請把 `job_id` 和基底網址一起記下來。
-- 一台在 job 進行中掛掉（輪詢一直失敗或拿到 404），那個 job 不會轉到另一台，要重新上傳到另一台。
-- 兩台的程式、參數預設值、模型權重都一樣（2026-11-17 起 `crown_model`、`occlusal_detail` 也一樣）；結果不會逐位元組相同（顯示卡不同），差異只在浮點誤差的等級。
-- HeyGears 的 job 兩台都能送（台中 2026-11-17 起）：嘉義不能用時改送台中，拿到的也是 HeyGears 牙冠。
+建 job 時（HTTP 回應，body `{"error": {"code", "message", "retryable"}}`；Cloudflare 擋下的是 HTML 頁面）：
 
-## 錯誤碼與限制
+| 狀態碼 | `code` | 原因 | 怎麼處理 |
+|---|---|---|---|
+| 403 | — | Cloudflare：沒帶或帶錯 Service Token，或用了預設 User-Agent（error code: 1010） | 檢查三個 header |
+| 400、422 | `invalid_request` | JSON 或欄位錯：不認得的參數名稱、一顎口掃都沒給、網址不是 https／不在 `amazonaws.com`／快過期、`margin_pts` 超過 64 KB | 看 `message`，改了再送 |
+| 409 | `conflict` | 這個 `job_id` 剛好不能用（很少見） | 換一個 `job_id` |
+| 503 | `no_capacity` | 現在沒有能做這種 job 的地方；回 `Retry-After: 30` | 稍後再送 |
+| 404 | `not_found` | 查詢、刪除的 job 不存在、已刪除，或不是你們的 | — |
+| 530 | — | 分派器連不上（Cloudflare） | 當成連不上，稍後再試 |
 
-服務自己的錯誤都回 JSON `{"detail": …}`；Cloudflare 擋下的是 HTML 頁面。
+job 失敗（`status` 是 `failed`，看 `error.code`；`GET` 仍然回 200）：
 
-| 狀態碼 | 代表 | 怎麼處理 |
+| `code` | 原因 | 要不要重送 |
 |---|---|---|
-| 403 | Cloudflare：沒帶或帶錯 Service Token，或用了預設 User-Agent（error code: 1010） | 檢查三個 header |
-| 404 | job 不存在：已刪除，或已超過保留時間 | 重新上傳 |
-| 409 | job 還沒成功就要下載結果 | 等 `status` 是 `succeeded` |
-| 410 | 結果已經被清掉 | 重新上傳 |
-| 413 | 上傳太大（Cloudflare 上限 100 MB） | 先 gzip、用 `.tri`，或改用網址傳檔 |
-| 422 | 參數或檔案不對：缺一顎、不支援的副檔名、讀不出檔案、牙位不對、`margin_pts` 和 `mode` 不搭、`single_arch` 又送了對咬顎、`no_abutment` 沒有搭配 `margin_override`、`occlusal_detail` 不是 0–2 的數字、支台齒參數超出範圍或配錯模式、`mode=stump` 帶了 `contralateral`、`insertion_axis` 離咬合方向超過 60°、`cutback_style` 不是 `scaled` 或 `ring` | 看 `detail` |
-| 429 | 排隊已滿（100 筆） | 等 `Retry-After`（30 秒）再送，或改送另一台 |
-| 503 | `/health`：後面的 AI 服務有一個連不上 | 改送另一台 |
-
-job 本身失敗（`status` 是 `failed`）時 `GET` 仍然回 200，原因在 `error` 與 `error_stage`。
+| `input_rejected` | 主機拒絕輸入或參數，`message` 是主機的原話：沒有 `fdi`、缺一顎或 `single_arch` 又給了對咬顎、不支援的副檔名、讀不出檔案、牙位不對、`margin_pts` 和 `mode` 不搭、`no_abutment` 沒有搭配 `margin_override`、`occlusal_detail` 不是 0–2、支台齒參數超出範圍或配錯模式、`mode=stump` 帶了 `contralateral`、`insertion_axis` 離咬合方向超過 60°、`cutback_style` 不是 `scaled` 或 `ring`、`crown_model` 打錯 | 改了再送；原樣重送一樣會失敗 |
+| `input_fetch_failed` | 主機抓不到口掃網址（多半是過期或 403） | 重新上傳或重新簽網址再送 |
+| `host_failed` | 主機出錯，已自動換一台重做一次，還是失敗 | 稍後再送 |
+| `deadline_exceeded` | 超過 `deadline_s` | 視情況加長 `deadline_s` 再送 |
 
 限制：
 
 - 牙冠模型只學過有支台齒的牙；沒有支台齒的位置請用 `no_abutment=true`（或用 `mode=stump` 先做支台齒）。
 - 每個 job 只做一顆牙冠；牙橋要拆成單顆送。
-- 檔名會記在 job 裡，請用不含病人姓名的檔名。
+- 每個口掃檔最大 200 MB；`margin_pts` 放文字時最大 64 KB。
 
 ## 速度
 
-服務端時間（嘉義，一次一個 job）：
+主機上的時間（嘉義，一次一個 job）：
 
 | 模式 | 一個 job | 說明 |
 |---|---|---|
@@ -300,8 +330,8 @@ job 本身失敗（`status` 是 `failed`）時 `GET` 仍然回 200，原因在 `
 | `stump`（`cutback`） | 3.1–4.0 秒（台中約 4.2） | 多做一顆牙冠再內縮 |
 
 - `crown_model=heygears` 每顆比 v3 多約 0.2 秒（`heygears_v1` 和 v3 差不多快）；`occlusal_clearance=0.2` 每顆約多 0.3–0.4 秒；`occlusal_detail=1` 每顆約多 0.1 秒（`heygears` 的紋路約 0.4 秒）；`contralateral=true` 每顆約多 2 秒。
-- HeyGears 建議的組合（`heygears`＋0.2＋`occlusal_detail=1`）牙冠服務每顆約 2.5–3 秒，比 11-10 以前多約 0.5 秒。
-- 經 Cloudflare 還要加上傳與輪詢的時間，主要看口掃大小與你的網路。
+- 經分派器比直連多約 0.3–0.4 秒（主要是把結果放上 S3）。另外要加上你上傳口掃、輪詢與下載結果的時間，主要看口掃大小與你的網路。
+- 每台主機同時做 8 個 job。兩台都忙到雲端能早 10 秒以上做完時，分派器才開雲端：雲端一個 job 約 7–9 秒，開機後的第一個約 17 秒。所以平常都在主機上做，大量同時送的時候才會用到雲端。
 
 ## 範例程式
 
@@ -310,64 +340,102 @@ Python（`pip install requests`），一顆牙冠從上傳到刪除。Service To
 ```python
 import gzip, io, json, os, time, zipfile, requests
 
-BASE = "https://ezai2.inteware.com.tw/pipeline"     # 嘉義；台中是 https://ezai.inteware.com.tw/pipeline
-H = {"CF-Access-Client-Id": os.environ["CHIAYI_CF_CLIENT_ID"],
-     "CF-Access-Client-Secret": os.environ["CHIAYI_CF_CLIENT_SECRET"],
+BASE = "https://ai.inteware.com.tw"          # 測試站：https://test-ai.inteware.com.tw
+H = {"CF-Access-Client-Id": os.environ["AI_CF_CLIENT_ID"],
+     "CF-Access-Client-Secret": os.environ["AI_CF_CLIENT_SECRET"],
      "User-Agent": "heygears-integration/1.0"}
 
-def gz(path):
+def upload(path, name):
+    """gzip 後放到分派器的 S3，回傳建 job 用的 get_url。"""
     with open(path, "rb") as f:
-        return gzip.compress(f.read(), compresslevel=6)
+        data = gzip.compress(f.read(), compresslevel=6)
+    u = requests.post(f"{BASE}/v2/uploads", headers=H, json={"filename": name}, timeout=30)
+    u.raise_for_status()
+    u = u.json()
+    requests.put(u["put_url"], data=data, timeout=300).raise_for_status()   # S3：不帶 H
+    return u["get_url"]
 
-# 1. 建立 job：crown_model、occlusal_clearance、occlusal_detail 是網址參數；其他是表單欄位
-r = requests.post(f"{BASE}/v1/jobs", headers=H, timeout=300,
-                  params={"crown_model": "heygears", "occlusal_clearance": "0.2",
-                          "occlusal_detail": "1"},              # 不要補咬合面細節就拿掉這行
-                  files={"upper_stl": ("upper.stl.gz", gz("upper.stl")),
-                         "lower_stl": ("lower.stl.gz", gz("lower.stl")),
-                         "margin_pts": ("margin.pts", open("margin.pts", "rb").read())},
-                  data={"fdi": "36", "mode": "margin_override"})   # 沒有 margin：拿掉 margin_pts，mode 用 full
+# 1. 放口掃
+inputs = {"upper_stl_url": upload("upper.stl", "upper.stl.gz"),
+          "lower_stl_url": upload("lower.stl", "lower.stl.gz"),
+          "margin_pts": open("margin.pts").read()}         # 沒有 margin：拿掉這行，mode 用 full
+
+# 2. 建 job：參數全部放在 params
+r = requests.post(f"{BASE}/v2/jobs", headers=H, timeout=60, json={
+    "service": "crown", "job_id": "case123-36",
+    "inputs": inputs,
+    "params": {"fdi": "36", "mode": "margin_override",
+               "crown_model": "heygears", "occlusal_clearance": 0.2,
+               "occlusal_detail": 1}})                     # 不要 HeyGears：拿掉後三個
 r.raise_for_status()
-job = r.json()["job_id"]
+job = r.json()["id"]
 
-# 2. 輪詢
+# 3. 長輪詢
 while True:
-    s = requests.get(f"{BASE}/v1/jobs/{job}", headers=H, timeout=60).json()
-    if s["status"] in ("succeeded", "failed"):
+    s = requests.get(f"{BASE}/v2/jobs/{job}", headers=H, params={"wait": 20}, timeout=60).json()
+    if s["status"] in ("succeeded", "failed", "cancelled"):
         break
-    time.sleep(1)
-print(s["status"], s["error"], s["timings_ms"].get("total_ms"))
-for w in s["warnings"]:
+print(s["status"], s.get("where"), s.get("error"), s.get("timings"))
+for w in s.get("warnings") or []:
     print("warning:", w)
 
-# 3. 下載結果，確認用了哪個模型
+# 4. 下載結果，確認用了哪個模型
 if s["status"] == "succeeded":
-    z = requests.get(f"{BASE}/v1/jobs/{job}/result", headers=H, timeout=120)
+    z = requests.get(s["result_url"], timeout=120)        # S3：不帶 H
     zf = zipfile.ZipFile(io.BytesIO(z.content))
     crown = json.loads(zf.read("manifest.json"))["backends"]["crown"]
-    print("crown model:", crown.get("model"))       # 後牙應該是 heygears；前牙等是 default
+    print("crown model:", crown.get("model"))              # 後牙應該是 heygears；前牙等是 default
     print("occlusal detail:", crown.get("occlusal_detail"))   # 後牙應該是 applied（34、44 是 skipped: no template for L4）
     open(f"crown_{job}.ply", "wb").write(zf.read("crown.ply"))
 
-# 4. 刪除
-requests.delete(f"{BASE}/v1/jobs/{job}", headers=H, timeout=60)
+# 5. 刪除
+requests.delete(f"{BASE}/v2/jobs/{job}", headers=H, timeout=60)
 ```
 
 curl：
 
 ```bash
-# 嘉義；台中備援時把 B 換成 https://ezai.inteware.com.tw/pipeline，token 換台中那組
-H=(-H "CF-Access-Client-Id: $CF_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_CLIENT_SECRET" -A "heygears-integration/1.0")
-B=https://ezai2.inteware.com.tw/pipeline
+H=(-H "CF-Access-Client-Id: $AI_CF_CLIENT_ID" -H "CF-Access-Client-Secret: $AI_CF_CLIENT_SECRET" -A "heygears-integration/1.0")
+B=https://ai.inteware.com.tw
 
-curl -s "${H[@]}" $B/health
-curl -s "${H[@]}" $B/                                                   # options 裡有 crown_model 才認得
-curl -s "${H[@]}" "$B/v1/jobs?crown_model=heygears&occlusal_clearance=0.2&occlusal_detail=1" \
-  -F upper_stl=@upper.stl.gz -F lower_stl=@lower.stl.gz -F fdi=36 \
-  -F mode=margin_override -F margin_pts=@margin.pts                     # HeyGears＋0.2 mm＋咬合面細節，用你的 margin
-curl -s "${H[@]}" $B/v1/jobs -F upper_stl=@upper.stl.gz -F lower_stl=@lower.stl.gz -F fdi=36   # v3，AI 預測 margin
-curl -s "${H[@]}" $B/v1/jobs/<job_id>
-curl -s "${H[@]}" -o result.zip $B/v1/jobs/<job_id>/result
+curl -s "${H[@]}" $B/v2/status                                          # 200 才算通
+curl -s "${H[@]}" $B/v2/uploads -H "Content-Type: application/json" -d '{"filename": "upper.stl.gz"}'
+curl -s -T upper.stl.gz "<put_url>"                                     # 下顎同樣再做一次
+curl -s "${H[@]}" $B/v2/jobs -H "Content-Type: application/json" -d '{
+  "service": "crown", "job_id": "case123-36",
+  "inputs": {"upper_stl_url": "<上顎 get_url>", "lower_stl_url": "<下顎 get_url>"},
+  "params": {"fdi": "36", "crown_model": "heygears", "occlusal_clearance": 0.2, "occlusal_detail": 1}}'
+curl -s "${H[@]}" "$B/v2/jobs/case123-36?wait=20"                       # 重複到 succeeded
+curl -s -o result.zip "<result_url>"
 unzip -p result.zip manifest.json | python3 -c "import sys,json; print(json.load(sys.stdin)['backends']['crown'].get('model'))"
-curl -s "${H[@]}" -X DELETE $B/v1/jobs/<job_id>
+curl -s "${H[@]}" -X DELETE $B/v2/jobs/case123-36
 ```
+
+## 直連主機（舊方式）
+
+現有直連主機的呼叫端在改接完成以前照常可用、行為不變；新的串接請用上面的分派器。改接時，下表是對照：
+
+| 直連主機 | 分派器 |
+|---|---|
+| `POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?job_id=X`，multipart | `POST /v2/jobs`，`{"service": "crown", "job_id": "X", "inputs": {…}, "params": {…}}` |
+| 表單欄位 `fdi`、`mode`、`all_tooth_numbers`、`single_arch`、`contact_fit`、`contralateral`、`no_abutment`、支台齒的欄位 | 原名放進 `params` |
+| 網址參數 `crown_model`、`occlusal_clearance`、`occlusal_detail` | 原名放進 `params`（不用分表單或網址參數） |
+| 表單欄位 `upper_stl_url`、`lower_stl_url`、`margin_pts_url` | 原名放進 `inputs` |
+| 夾帶檔案 `upper_stl`、`lower_stl` | 不收夾帶：`POST /v2/uploads` 拿上傳網址，建 job 時給 `get_url` |
+| 夾帶檔案 `margin_pts` | `inputs.margin_pts` 放檔案的文字（≤64 KB），或 `margin_pts_url` |
+| 輪詢 `GET …/v1/jobs/X`，要送回同一台 | `GET /v2/jobs/X?wait=20`，不用管在哪做 |
+| `GET …/v1/jobs/X/result` | 下載 `result_url`（S3，不用帶 header） |
+| `DELETE …/v1/jobs/X` | `DELETE /v2/jobs/X` |
+| 主嘉義、備台中，自己 `GET /health`、遇到 502／503／504 換台 | 一個網址；換台由分派器做。530 當成連不上 |
+| 429（佇列滿） | 分派器排隊，不回 429 |
+| 422（參數錯）、500 | 參數名稱錯：建 job 時 422；值錯：job `failed`（`input_rejected`）；主機出錯：自動重做一次，再失敗才 `host_failed` |
+| 每台主機各一把 Service Token | 每個團隊一把分派器的 Service Token |
+
+直連主機的細節（給還沒改接的呼叫端）：
+
+- 基底網址：嘉義 `https://ezai2.inteware.com.tw/pipeline`、台中 `https://ezai.inteware.com.tw/pipeline`，兩台各用一把 Service Token，header 同上。兩台的程式、模型和參數預設值都一樣。
+- 端點：`POST /v1/jobs`（multipart/form-data，回 202 與 `job_id`）、`GET /v1/jobs/{job_id}`、`GET /v1/jobs/{job_id}/result`（zip）、`DELETE /v1/jobs/{job_id}`、`GET /health`、`GET /`（認得哪些選項）。
+- 參數名稱和上面 `params` 相同，但 **`crown_model`、`occlusal_clearance`、`occlusal_detail`、`job_id` 是網址參數**（接在 `/v1/jobs?` 後面），放在表單裡會被忽略；其他是表單欄位。口掃可以夾帶（`upper_stl`、`lower_stl`），`margin_pts` 是檔案欄位。
+- 狀態回應的欄位是 `job_id`、`status`、`stage`（`jaw`、`margin`、`crown`、`packaging`）、`queue_position`、`timings_ms`、`warnings`、`error`、`error_stage`、`links.result`。結果 zip 的內容和經分派器相同。
+- 每台同時跑 8 個 job、最多 100 個排隊（滿了回 429 與 `Retry-After: 30`）；job 結束 1 小時後自動刪除。job 只存在收到它的那一台，輪詢、下載、刪除都要送回同一台；一台在 job 進行中掛掉時要重新上傳到另一台。
+- 錯誤回 JSON `{"detail": …}`：404 job 不存在、409 結果還沒好、410 結果已清掉、413 上傳超過 100 MB、422 參數或檔案不對（原因同上面的 `input_rejected`）、429 排隊已滿、503 `/health` 有服務連不上。
