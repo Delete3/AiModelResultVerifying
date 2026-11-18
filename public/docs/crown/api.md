@@ -1,15 +1,15 @@
 # 牙冠設計 API 串接說明
 
-文件版本：2026-11-17（台中也有 `crown_model=heygears`、`occlusal_detail`，和嘉義相同：兩台都能送 HeyGears 的 job）。之前：2026-11-11 嘉義的 `crown_model=heygears` 換成新版模型，加 `occlusal_detail=1` 時改上 HeyGears 咬合面紋路，舊版暫時保留為 `heygears_v1`；2026-11-04 貼合鄰牙不再留下折痕（兩台）、新增 `occlusal_detail`（嘉義）；2026-11-03 新增 `crown_model=heygears`（嘉義）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
+文件版本：2026-11-18（補上 2026-11-17 起兩台都有的支台齒 `mode=stump`，以及無支台齒的 `stump_shape`，見「無支台齒與支台齒」）。之前：2026-11-17 台中也有 `crown_model=heygears`、`occlusal_detail`，和嘉義相同：兩台都能送 HeyGears 的 job；2026-11-11 嘉義的 `crown_model=heygears` 換成新版模型，加 `occlusal_detail=1` 時改上 HeyGears 咬合面紋路，舊版暫時保留為 `heygears_v1`；2026-11-04 貼合鄰牙不再留下折痕（兩台）、新增 `occlusal_detail`（嘉義）；2026-11-03 新增 `crown_model=heygears`（嘉義）。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
 
-上傳一組上下顎口掃和要做牙冠的牙位（FDI），服務會自動擺正口掃、預測 margin（也可以用你畫好的 margin）、生成牙冠，最後回傳一個 zip。這是非同步 API：上傳後立刻拿到 `job_id`，再輪詢結果。嘉義、台中兩台主機提供同一個 API、互為備援；一個 job 在服務端約 3–8 秒。
+上傳一組上下顎口掃和要做牙冠的牙位（FDI），服務會自動擺正口掃、預測 margin（也可以用你畫好的 margin）、生成牙冠，最後回傳一個 zip。這是非同步 API：上傳後立刻拿到 `job_id`，再輪詢結果。還沒有支台齒的位置（例如植體）也能做牙冠外壁（`no_abutment=true`）或支台齒（`mode=stump`），見「無支台齒與支台齒」。嘉義、台中兩台主機提供同一個 API、互為備援；一個 job 在服務端約 1–8 秒。
 
 ## 連線與認證
 
-| 端點 | 基底網址 | `crown_model=heygears` | `occlusal_detail` |
-|---|---|---|---|
-| 嘉義（RTX 5090） | `https://ezai2.inteware.com.tw/pipeline` | 有（2026-11-03 起；2026-11-11 換新版） | 有（2026-11-04 起） |
-| 台中（RTX 5080） | `https://ezai.inteware.com.tw/pipeline` | 有（2026-11-17 起，和嘉義同一版） | 有（2026-11-17 起） |
+| 端點 | 基底網址 | `crown_model=heygears` | `occlusal_detail` | 支台齒 `mode=stump` |
+|---|---|---|---|---|
+| 嘉義（RTX 5090） | `https://ezai2.inteware.com.tw/pipeline` | 有（2026-11-03 起；2026-11-11 換新版） | 有（2026-11-04 起） | 有（2026-11-17 起） |
+| 台中（RTX 5080） | `https://ezai.inteware.com.tw/pipeline` | 有（2026-11-17 起，和嘉義同一版） | 有（2026-11-17 起） | 有（2026-11-17 起） |
 
 兩台各用一組 Service Token（兩個 Cloudflare Access 應用）。每個請求都要帶下面三個 header，缺一個就會被 Cloudflare 擋下。
 
@@ -58,23 +58,23 @@
 | `upper_stl` | 檔案 | — | 上顎口掃。格式看檔名的副檔名：`.stl`、`.ply`、`.obj`、`.tri`（公司格式 V1、V2），都可以再加 `.gz`，例如 `upper.tri.gz`。欄位名稱雖然是 `_stl`，四種格式都收 |
 | `lower_stl` | 檔案 | — | 下顎口掃，格式同上 |
 | `fdi` | 文字（必填） | — | 要做牙冠的牙位，兩位數 FDI（11–48） |
-| `mode` | `full`、`margin_only`、`margin_override` | `full` | `full`：預測 margin 再生成牙冠。`margin_only`：只預測 margin，不生成牙冠。`margin_override`：用你上傳的 `margin_pts`，不跑 margin 模型 |
-| `margin_pts` | 檔案 | — | `mode=margin_override` 時必填，其他模式送了會回 422。`.pts`（`BEGIN_<FDI>`、每行 `x y z`、`END_<FDI>`）、`.json`（`[[x,y,z], …]`，或之前 job 的 `margin.json`）或 `.txt`，可以再加 `.gz`。座標要和一起上傳的口掃同一個座標系 |
+| `mode` | `full`、`margin_only`、`margin_override`、`stump` | `full` | `full`：預測 margin 再生成牙冠。`margin_only`：只預測 margin，不生成牙冠。`margin_override`：用你上傳的 `margin_pts`，不跑 margin 模型。`stump`（2026-11-17 起）：支台齒，不生成牙冠，見「無支台齒與支台齒」 |
+| `margin_pts` | 檔案 | — | `mode=margin_override` 或 `stump` 時必填，其他模式送了會回 422。`.pts`（`BEGIN_<FDI>`、每行 `x y z`、`END_<FDI>`）、`.json`（`[[x,y,z], …]`，或之前 job 的 `margin.json`）或 `.txt`，可以再加 `.gz`。座標要和一起上傳的口掃同一個座標系 |
 | `all_tooth_numbers` | 文字，例如 `14,15` | 空白 | 同一顎所有備牙的牙位（含這一顆），給 margin 模型參考；單顆可留白。`margin_override` 時沒有作用 |
 | `single_arch` | `true`、`false` | `false` | 只送備牙那一顎（另一顎的欄位要留空，送了會回 422）。對咬用鄰牙高度的平面代替，咬合面不是照真實咬合做的，每顆都會有一則警告 |
 | `contact_fit` | `true`、`false` | `true` | 牙冠穿進鄰牙的那面牆整平、往回推最多 0.3 mm；margin 上方 1 mm 內（牙齦帶）不動，牆從那裡照原本的斜度接上去。推完還重疊的留給編修並發警告。`false` 回傳模型原樣 |
 | `contralateral` | `true`、`false` | `false` | 只對前牙（牙位第二碼 1–3）：形狀擬合另一側的同名牙，每顆約多 2 秒。不適用時不套用，原因寫在 `warnings` |
 | `no_abutment` | `true`、`false` | `false` | 還沒有支台齒的位置（例如植體）：要搭配 `mode=margin_override`。服務放一個虛擬支台齒再生成牙冠，多回傳 `virtual_prep.ply`；**牙冠只用外表面** |
-| `stump_height_mm`、`stump_shoulder_mm` | 數字 | 服務決定 | 只能和 `no_abutment=true` 一起送：虛擬支台齒的高度（1.0–6.0）與肩台寬（0.3–1.5） |
+| `stump_height_mm`、`stump_shoulder_mm`、`stump_shape`、`insertion_axis`、`stump_clearance_mm`、`cutback_style`、`cutback_mm`、`cutback_occlusal_mm` | 見「無支台齒與支台齒」 | 服務決定 | 只能和 `no_abutment=true` 或 `mode=stump` 一起送：支台齒的形狀、高度、肩台寬、插入方向、離對咬、cutback 的內縮 |
 | `upper_stl_url`、`lower_stl_url`、`margin_pts_url` | https 網址 | — | 用網址代替上傳（例如 S3 的 presigned URL），每個欄位只能二選一。格式看網址**路徑**的副檔名（例如 `…/upper.tri.gz?X-Amz-…`）；目前只收 `amazonaws.com` 的網址、每個檔案最大 200 MB，要用別的儲存空間請先跟我們說 |
 
 下表是**網址參數**（接在 `/v1/jobs?` 後面，**不是表單欄位**；放在表單裡會被忽略）：
 
 | 參數 | 值 | 預設 | 說明 |
 |---|---|---|---|
-| `crown_model` | `heygears`（`heygears_v1`：舊版，暫時保留） | 不帶＝v3 | 用哪個牙冠模型，見下一節。**目前只有嘉義認得** |
+| `crown_model` | `heygears`（`heygears_v1`：舊版，暫時保留） | 不帶＝v3 | 用哪個牙冠模型，見下一節。兩台都有（台中 2026-11-17 起） |
 | `occlusal_clearance` | −0.3–1.0（mm） | 不帶＝不另外留 | 牙冠咬合面和對咬牙之間至少留這個距離，由牙冠服務在生成後調整。HeyGears 建議 `0.2`。兩台都有 |
-| `occlusal_detail` | 0–2 | 不帶＝不補 | 生成後補回模型磨平的咬合面細節：v3 沿窩溝往下挖深，`heygears` 改上 HeyGears 咬合面紋路；`1` 是建議值。只對小臼齒、大臼齒，見「咬合面細節」。**目前只有嘉義認得** |
+| `occlusal_detail` | 0–2 | 不帶＝不補 | 生成後補回模型磨平的咬合面細節：v3 沿窩溝往下挖深，`heygears` 改上 HeyGears 咬合面紋路；`1` 是建議值。只對小臼齒、大臼齒，見「咬合面細節」。兩台都有（台中 2026-11-17 起） |
 | `job_id` | 英數字、`_`、`.`、`-`，最多 64 字 | 服務產生 | 自訂 job id，方便追蹤。**要保證不重複**：重複的 id 會蓋掉同名的 job |
 
 其他網址參數（`res`、`steps`、`guide`、`frame`、`chamfer`、`shell`、`contact_clearance`、`jaw_samples`）是模型的內部設定，請維持預設；改了以後，結果就和其他客戶的不一樣。
@@ -173,6 +173,41 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 - 看起來是「窩溝清楚一點」，不是大改；技師那種很細的副溝補不出來。
 - 逐頂點量，沒有任何一顆更靠近對咬牙；移動量平均 0.04 mm，最深約 0.19 mm。
 
+## 無支台齒與支台齒
+
+還沒有支台齒的位置（例如植體）有兩種做法。兩種都**一定要你畫的 margin**（`margin_pts`，畫在牙齦上牙冠或支台齒要落的位置）：沒有支台齒時 margin 模型找不到邊緣線。
+
+| | PEEK abut：`mode=margin_override`＋`no_abutment=true` | 支台齒：`mode=stump` |
+|---|---|---|
+| 做什麼 | 在 margin 裡放一個支台齒，再生成牙冠；**牙冠只用外表面**（內側是配合那顆支台齒的），例如給 PEEK 牙冠的上半部 | 沿 margin 把口掃切開，縫進一顆支台齒（abutment 的上半部）；**不做牙冠** |
+| 回傳 | `crown.ply`（外壁）、`virtual_prep.ply`（牙冠底下的支台齒） | `stump.ply`、`scan_with_stump.ply`；`cutback` 另有 `cutback_crown.ply` |
+| `stump_shape` | 不帶＝一般的虛擬支台齒（預設）；`library`、`cutback`：牙冠改長在那種支台齒上 | `library`（預設）、`cutback` |
+| 可以一起送 | `contralateral`、`crown_model`、`occlusal_clearance`、`occlusal_detail` | `cutback` 時 `crown_model`、`occlusal_clearance`、`occlusal_detail`（用在內縮之前的牙冠）；**不能**送 `contralateral` |
+| 主機上的時間 | 和 `margin_override` 差不多（3–5 秒） | `library` 約 1 秒（台中 1.2）；`cutback` 3.1–4.0 秒（台中約 4.2） |
+
+支台齒的形狀：
+
+| `stump_shape` | 做法 |
+|---|---|
+| 不帶（只有 `no_abutment`） | 一般的虛擬支台齒：高度＝牙齦到對咬的距離減 1.5 mm（限制在 1.5–4.0 mm），錐度 8°。牙齦到對咬不到 3 mm 時放不下牙冠，`warnings` 會說明 |
+| `library` | 形狀取自 EZCAD 支台齒資料庫；高度、傾斜、寬度取同牙位真實支台齒的中位數，不會比 margin 寬；對咬太近時自動降低（最低 2.0 mm），`warnings` 會說明 |
+| `cutback` | 先在 `library` 支台齒上生成牙冠，再把牙冠往內縮一層牙冠的厚度，剩下的就是支台齒。`scaled`（預設）：肩台與牆照 `ring`，咬合面用牙冠自己的咬合面等比縮進來，植體牙冠比 margin 寬很多時咬合面的起伏留得比較多；`ring`：牆和咬合面分開內縮。空間不夠切不出來時改回 `library` 支台齒並在 `warnings` 說明 |
+
+支台齒的參數（表單欄位；不帶＝服務決定）：
+
+| 欄位 | 能配什麼 | 值 | 說明 |
+|---|---|---|---|
+| `stump_height_mm` | `no_abutment` 或 `mode=stump` | 虛擬支台齒 1.0–6.0；`library` 1.5–8.0 | 支台齒高度（從 margin 平均高度量到頂端） |
+| `stump_shoulder_mm` | 同上 | 0.3–1.5（虛擬支台齒不帶＝0.8，`library`／`cutback` 不帶＝0.6） | 肩台寬（從 margin 往內） |
+| `stump_shape` | 同上 | `library`、`cutback` | 見上表 |
+| `insertion_axis` | `library`、`cutback` | `"x,y,z"`（原始口掃的座標，正負都可） | 支台齒立起的方向，例如掃描桿的軸。不帶＝牙位自然的傾斜。離咬合方向超過 60° 回 422，超過 30° 加警告 |
+| `stump_clearance_mm` | `library`、`cutback` | 0.5–3.0（不帶＝1.0） | 和對咬牙至少保留的距離 |
+| `cutback_style` | `cutback` | `scaled`（預設）、`ring` | 其他值回 422 |
+| `cutback_mm`、`cutback_occlusal_mm` | `cutback` | 0.5–2.5（不帶＝1.0）、0.5–3.0（不帶＝1.8） | 牆內縮多少、咬合面沿插入方向往下降多少（mm） |
+
+- `manifest.json` 的 `stump`（`mode=stump`）或 `no_abutment`（無支台齒）記錄這顆支台齒：形狀、高度與怎麼決定的、離對咬、插入方向（`insertion_axis_original`，原始座標）等。
+- 範例（支台齒，cutback）：`-F mode=stump -F margin_pts=@margin.pts -F stump_shape=cutback`；（PEEK abut，資料庫支台齒）：`-F mode=margin_override -F no_abutment=true -F stump_shape=library -F margin_pts=@margin.pts`。
+
 ## 狀態回應
 
 `GET /v1/jobs/{job_id}`（以及 `POST` 的 202 回應）是 JSON，主要欄位：
@@ -195,13 +230,16 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 
 | 檔案 | 座標系 | 內容 |
 |---|---|---|
-| `crown.ply` | **原始口掃** | 牙冠外壁（`margin_only` 沒有）：一片開口在 margin 的外表面，不含內側的黏著面 |
+| `crown.ply` | **原始口掃** | 牙冠外壁（`margin_only`、`stump` 沒有）：一片開口在 margin 的外表面，不含內側的黏著面 |
 | `margin_original.pts` | **原始口掃** | 這次用的 margin（預測的或你上傳的） |
 | `margin_canonical.pts` | 擺正後 | 同一條 margin，擺正座標 |
 | `margin.json` | 兩者 | 兩條 margin 的 JSON，加上 margin 是否有效；`margin_override` 時另有你的 margin 離口掃多遠（`surface_check`，超過 0.3 mm 會警告） |
 | `alignment.json` | — | 擺正用的旋轉矩陣：`p_canonical = rotation_matrix @ p_original` |
 | `manifest.json` | — | 參數、每步耗時、警告，以及各 AI 服務回報的資訊（見下） |
-| `virtual_prep.ply` | **原始口掃** | 只有 `no_abutment=true`：虛擬支台齒 |
+| `virtual_prep.ply` | **原始口掃** | 只有 `no_abutment=true`：牙冠底下的支台齒（帶 `stump_shape` 時是那種支台齒） |
+| `stump.ply` | **原始口掃** | 只有 `mode=stump`：支台齒本身（肩台＋支台齒），開口的邊就是 margin。這種 job 沒有 `crown.ply` |
+| `scan_with_stump.ply` | **原始口掃** | 只有 `mode=stump`：口掃沿 margin 切開、縫上支台齒（共用頂點，沒有縫隙、沒有重疊） |
+| `cutback_crown.ply` | **原始口掃** | 只有 `mode=stump&stump_shape=cutback`：內縮之前的那顆牙冠（中間產物，不是給這顆支台齒用的牙冠） |
 
 回傳的牙冠和 margin 都在**你上傳的口掃的座標系**，不必另外轉換。
 
@@ -215,6 +253,7 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 - `backends.crown.antagonist_relief`：大於 0 表示備牙的咬合空間不夠，服務把對咬往外移了這麼多 mm 才做得出牙冠，`warnings` 也會說明；這種牙冠的咬合要另外處理。
 - `backends.crown.antagonist`：單顎時用的對咬替身。
 - `contact_fit`：和鄰牙的重疊處理前後的數字。
+- `stump`、`no_abutment`：支台齒的紀錄（見「無支台齒與支台齒」）。
 - `warnings`、`timings_ms`：同狀態回應。
 
 ## 兩台備援怎麼用
@@ -236,7 +275,7 @@ POST https://ezai2.inteware.com.tw/pipeline/v1/jobs?crown_model=heygears&occlusa
 | 409 | job 還沒成功就要下載結果 | 等 `status` 是 `succeeded` |
 | 410 | 結果已經被清掉 | 重新上傳 |
 | 413 | 上傳太大（Cloudflare 上限 100 MB） | 先 gzip、用 `.tri`，或改用網址傳檔 |
-| 422 | 參數或檔案不對：缺一顎、不支援的副檔名、讀不出檔案、牙位不對、`margin_pts` 和 `mode` 不搭、`single_arch` 又送了對咬顎、`no_abutment` 沒有搭配 `margin_override`、`occlusal_detail` 不是 0–2 的數字 | 看 `detail` |
+| 422 | 參數或檔案不對：缺一顎、不支援的副檔名、讀不出檔案、牙位不對、`margin_pts` 和 `mode` 不搭、`single_arch` 又送了對咬顎、`no_abutment` 沒有搭配 `margin_override`、`occlusal_detail` 不是 0–2 的數字、支台齒參數超出範圍或配錯模式、`mode=stump` 帶了 `contralateral`、`insertion_axis` 離咬合方向超過 60°、`cutback_style` 不是 `scaled` 或 `ring` | 看 `detail` |
 | 429 | 排隊已滿（100 筆） | 等 `Retry-After`（30 秒）再送，或改送另一台 |
 | 503 | `/health`：後面的 AI 服務有一個連不上 | 改送另一台 |
 
@@ -244,7 +283,7 @@ job 本身失敗（`status` 是 `failed`）時 `GET` 仍然回 200，原因在 `
 
 限制：
 
-- 牙冠模型只學過有支台齒的牙；沒有支台齒的位置請用 `no_abutment=true`。
+- 牙冠模型只學過有支台齒的牙；沒有支台齒的位置請用 `no_abutment=true`（或用 `mode=stump` 先做支台齒）。
 - 每個 job 只做一顆牙冠；牙橋要拆成單顆送。
 - 檔名會記在 job 裡，請用不含病人姓名的檔名。
 
@@ -257,6 +296,8 @@ job 本身失敗（`status` 是 `failed`）時 `GET` 仍然回 200，原因在 `
 | `full`（預測 margin＋牙冠） | 約 6.5–7.5 秒 | 擺正 0.4–0.7、margin 約 3、牙冠約 2.5–3、貼合鄰牙約 0.6 秒 |
 | `margin_override`（用你的 margin） | 約 3–5 秒 | 不跑 margin 模型 |
 | `margin_only` | 約 4 秒 | 不生成牙冠 |
+| `stump`（`library`） | 約 1 秒（台中約 1.2） | 不生成牙冠 |
+| `stump`（`cutback`） | 3.1–4.0 秒（台中約 4.2） | 多做一顆牙冠再內縮 |
 
 - `crown_model=heygears` 每顆比 v3 多約 0.2 秒（`heygears_v1` 和 v3 差不多快）；`occlusal_clearance=0.2` 每顆約多 0.3–0.4 秒；`occlusal_detail=1` 每顆約多 0.1 秒（`heygears` 的紋路約 0.4 秒）；`contralateral=true` 每顆約多 2 秒。
 - HeyGears 建議的組合（`heygears`＋0.2＋`occlusal_detail=1`）牙冠服務每顆約 2.5–3 秒，比 11-10 以前多約 0.5 秒。
@@ -269,7 +310,7 @@ Python（`pip install requests`），一顆牙冠從上傳到刪除。Service To
 ```python
 import gzip, io, json, os, time, zipfile, requests
 
-BASE = "https://ezai2.inteware.com.tw/pipeline"     # HeyGears 模型目前只有嘉義
+BASE = "https://ezai2.inteware.com.tw/pipeline"     # 嘉義；台中是 https://ezai.inteware.com.tw/pipeline
 H = {"CF-Access-Client-Id": os.environ["CHIAYI_CF_CLIENT_ID"],
      "CF-Access-Client-Secret": os.environ["CHIAYI_CF_CLIENT_SECRET"],
      "User-Agent": "heygears-integration/1.0"}

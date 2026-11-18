@@ -60,6 +60,11 @@ const PIPELINE_BASE = '/api/pipeline';
 // `occlusalDetail: true` marks a deployment whose pipeline passes occlusal_detail=1 to the crown
 // service: grooves and fossae deepened after decoding, premolars and molars only. Chiayi since
 // 2026-11-04. A pipeline older than the option drops it without a warning, as with crown_model.
+//
+// `libraryStump: true` marks a deployment with mode=stump and stump_shape=library|cutback (also as
+// the stump under a no_abutment crown): ezai-pipeline f01a7a7 on both boxes since 2026-11-17, and
+// the dispatcher (both its sites, and Modal since that evening). A deployment without it answers
+// with a 422.
 const BASE_FORMATS = ['stl', 'ply', 'obj'];
 const TRI_FORMATS = [...BASE_FORMATS, 'tri'];
 
@@ -79,6 +84,8 @@ const PIPELINE_TARGETS = {
     // the same crown service as Chiayi's (FlowToothSDF 03491f5).
     crownModels: ['heygears'],
     occlusalDetail: true,
+    // mode=stump and stump_shape since 2026-11-17 09:45 (ezai-pipeline f01a7a7).
+    libraryStump: true,
   },
   // A second ezai-pipeline container on the same box and the same GPU services, for a build
   // that has not been promoted to 8031. Kept apart so trying one can never change what the
@@ -110,9 +117,8 @@ const PIPELINE_TARGETS = {
     // occlusal_detail=1 since 2026-11-04 (FlowToothSDF train/exocad 98c1d73 + ezai-pipeline
     // 6b96617 on this box); z790 since 2026-11-17.
     occlusalDetail: true,
-    // mode=stump and stump_shape=library|cutback since 2026-11-17 (ezai-pipeline f01a7a7 on both
-    // boxes); the 「產生支台齒」 tab sends here. Before that only the test endpoint /pipeline-stump/ had
-    // them (see the end of this list).
+    // mode=stump and stump_shape=library|cutback since 2026-11-17 09:23 (ezai-pipeline f01a7a7).
+    // Before that only the test endpoint /pipeline-stump/ had them (see the end of this list).
     libraryStump: true,
   },
   // The same box and the same proxy as above -- only how the meshes get there differs. The
@@ -135,6 +141,7 @@ const PIPELINE_TARGETS = {
     contralateral: true,
     crownModels: ['heygears'],
     occlusalDetail: true,
+    libraryStump: true,
   },
   // The AI dispatcher's test site (2026-11-06; src/utils/function/DispatcherApi.js): the same
   // production pipelines, reached through ai-dispatcher v2 on the 226 box. 「分派器」 lets it
@@ -155,6 +162,7 @@ const PIPELINE_TARGETS = {
     contralateral: true,
     crownModels: ['heygears'],
     occlusalDetail: true,
+    libraryStump: true,
   },
   cloud: {
     base: '/api/dispatcher',
@@ -169,10 +177,11 @@ const PIPELINE_TARGETS = {
     contralateral: true,
     crownModels: ['heygears'],
     occlusalDetail: true,
+    libraryStump: true,
   },
   // There was a no-abutment test endpoint here, 'rtx5090_noabut' (/pipeline-noabut/ on the
   // Chiayi box, 2026-09-21 to 2026-10-07). It came down once that box's production pipeline
-  // took no_abutment; the peek abut tab calls "5090 ezai2" instead. vite.config.js still
+  // took no_abutment. vite.config.js still
   // declares its proxy route, which now answers 404 -- left until that file is next edited,
   // since editing it restarts Vite and reloads every open page. `panel: '<tab>'` on a target
   // keeps it out of the design tab's list.
@@ -180,7 +189,8 @@ const PIPELINE_TARGETS = {
   // endpoint; the option moved into 'rtx5090' and the endpoint came down.
   // 'rtx5090_stump' (/pipeline-stump/, 2026-10-14 to 2026-11-17) was the library-stump test
   // endpoint (mode=stump, stump_shape); both boxes' production pipelines took it
-  // (ezai-pipeline f01a7a7) and the 「產生支台齒」 tab moved to 'rtx5090'.
+  // (ezai-pipeline f01a7a7). Since 2026-11-18 crowns, PEEK abut and stumps are one tab (牙冠設計)
+  // with one choice of target.
 };
 
 /** FDI x1-x3: the teeth the contralateral option is for. */
@@ -401,7 +411,7 @@ const UPPER_FDI = new Set([11, 12, 13, 14, 15, 16, 17, 18, 21, 22, 23, 24, 25, 2
 
 /** Named rather than hard-coded, so promoting single_arch to another box needs one flag. */
 const singleArchTargets = () => Object.values(PIPELINE_TARGETS)
-  .filter(site => site.singleArch).map(site => `「${site.label}」`).join(' 或 ');
+  .filter(site => site.singleArch && !site.panel).map(site => `「${site.label}」`).join(' 或 ');
 
 /**
  * The result the panels read, from a finished job's zip and, when the job went to ezai-pipeline

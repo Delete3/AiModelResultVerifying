@@ -1,6 +1,6 @@
 /* eslint-disable react/prop-types -- props are documented at each component; no prop-types dependency here */
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Modal, Tabs } from 'antd';
+import { Alert, Button, Collapse, Modal, Tabs } from 'antd';
 
 import MarkdownView, { markdownOutline, parseMarkdown } from './MarkdownView';
 import { downloadBlob } from '../../utils/tool/useStores';
@@ -14,6 +14,10 @@ import { downloadBlob } from '../../utils/tool/useStores';
 //
 // Any number of guides beside the change log (AI排牙 has two since 2026-11-11: API v2 and v1),
 // each with its own button, tab and version.
+//
+// With `entries` (牙冠設計 since 2026-11-18) the bar shows the latest entries in full, the newest one
+// open, instead of the newest title alone. Once collapsed it stays a one-line bar for this viewer
+// until the change log gets a newer entry (`storageKey`, browser storage).
 
 /** The document as served now: a query string past every cache between here and the file. */
 const fetchDoc = async url => {
@@ -32,6 +36,42 @@ const latestEntry = changelog => {
   const text = heading.text.replace(/[`*]/g, '');
   const m = text.match(/^(\d{4}-\d{2}-\d{2})\s*(.*)$/);
   return m ? { date: m[1], title: m[2].trim() } : { date: '', title: text };
+};
+
+/**
+ * The change log's `## <date>　<title>` sections, newest first: { date, title, body }, the title as
+ * plain text and the body as the Markdown under it.
+ */
+const changelogEntries = changelog => {
+  const entries = [];
+  let fenced = false;
+  for (const line of changelog.replace(/\r\n/g, '\n').split('\n')) {
+    if (line.startsWith('```')) fenced = !fenced;
+    const heading = !fenced && line.match(/^##\s+(.*)$/);
+    if (heading) {
+      const text = heading[1].replace(/[`*]/g, '').trim();
+      const m = text.match(/^(\d{4}-\d{2}-\d{2}(?:／\d{2}-\d{2})?)\s*(.*)$/);
+      entries.push({ date: m ? m[1] : '', title: m ? m[2].trim() : text, lines: [] });
+    } else if (entries.length) {
+      entries[entries.length - 1].lines.push(line);
+    }
+  }
+  return entries.map(({ lines, ...entry }) => ({ ...entry, body: lines.join('\n').trim() }));
+};
+
+const readStored = key => {
+  try {
+    return key ? window.localStorage.getItem(key) : null;
+  } catch {
+    return null;
+  }
+};
+const writeStored = (key, value) => {
+  try {
+    if (key) window.localStorage.setItem(key, value);
+  } catch {
+    // private window or blocked storage: the bar just opens again next time
+  }
 };
 
 /** "文件版本：2026-10-30" from the guide's first lines. */
@@ -60,12 +100,14 @@ const toHtml = (node, title) => {
  *
  * Props: title (the dialog's), docs ({ changelog, <guide>... }, each { url, label, file }: where
  * it is served, its tab and button label, the download's file name; the guides in the order given),
- * idPrefix (the heading ids, one per tab).
+ * idPrefix (the heading ids, one per tab), entries (how many of the latest changes to show in full;
+ * 0: the newest title only), storageKey (where this viewer's "collapsed at this entry" is kept).
  */
-const ApiDocs = ({ title, docs, idPrefix }) => {
+const ApiDocs = ({ title, docs, idPrefix, entries = 0, storageKey = null }) => {
   const [texts, setTexts] = useState({});
   const [error, setError] = useState(null);
   const [open, setOpen] = useState(null);           // null | 'changelog' | a guide's key
+  const [collapsedAt, setCollapsedAt] = useState(() => readStored(storageKey));
   const bodyRef = useRef(null);
 
   const load = () => Promise.all(Object.entries(docs).map(async ([key, doc]) => [key, await fetchDoc(doc.url)]))
@@ -80,6 +122,18 @@ const ApiDocs = ({ title, docs, idPrefix }) => {
   };
 
   const latest = texts.changelog ? latestEntry(texts.changelog) : null;
+  const latestId = latest ? `${latest.date} ${latest.title}` : '';
+  const recent = entries && texts.changelog ? changelogEntries(texts.changelog).slice(0, entries) : [];
+  // Expanded until this viewer collapses it, and again once there is a newer entry than that.
+  const expanded = recent.length > 0 && collapsedAt !== latestId;
+  const collapse = () => {
+    setCollapsedAt(latestId);
+    writeStored(storageKey, latestId);
+  };
+  const expand = () => {
+    setCollapsedAt(null);
+    writeStored(storageKey, '');
+  };
   const guides = Object.keys(docs).filter(key => key !== 'changelog');
   const versionOf = key => (texts[key] ? docVersion(texts[key]) : '');
   const text = open ? texts[open] : '';
@@ -93,13 +147,37 @@ const ApiDocs = ({ title, docs, idPrefix }) => {
 
   const outline = open && text ? markdownOutline(text, `${idPrefix}-${open}`) : [];
 
-  return <div className='api-docs-bar'>
-    <div className='api-docs-latest'>
-      <b>API 最新更新</b>
-      {latest ? <span>{latest.date}　{latest.title}</span> : <span>{error ? `讀不到文件：${error}` : '讀取中…'}</span>}
-    </div>
+  return <div className={`api-docs-bar ${expanded ? 'expanded' : ''}`}>
+    {expanded
+      ? <>
+        <div className='api-docs-head'>
+          <b>API 最近 {recent.length} 次更新</b>
+          <Button size='small' type='link' onClick={collapse}>收起</Button>
+        </div>
+        <Collapse
+          size='small'
+          className='api-docs-entries'
+          defaultActiveKey={['0']}
+          items={recent.map((entry, index) => ({
+            key: String(index),
+            label: <span className='api-docs-entry-head'><b>{entry.date}</b>　{entry.title}</span>,
+            children: <div className='api-docs-entry-body'>
+              <MarkdownView text={entry.body} idPrefix={`${idPrefix}-recent${index}`} />
+            </div>,
+          }))}
+        />
+      </>
+      : <div className='api-docs-latest'>
+        <b>API 最新更新</b>
+        {latest ? <span>{latest.date}　{latest.title}</span> : <span>{error ? `讀不到文件：${error}` : '讀取中…'}</span>}
+        {entries > 0 && latest && <Button size='small' type='link' className='api-docs-expand' onClick={expand}>
+          展開最近 {entries} 次
+        </Button>}
+      </div>}
     <div className='button-row'>
-      <Button size='small' type='primary' ghost disabled={!texts.changelog} onClick={() => show('changelog')}>看更新內容</Button>
+      <Button size='small' type='primary' ghost disabled={!texts.changelog} onClick={() => show('changelog')}>
+        {entries > 0 ? '全部更新內容' : '看更新內容'}
+      </Button>
       {guides.map(key => <Button key={key} size='small' disabled={!texts[key]} onClick={() => show(key)}>
         {docs[key].label}{versionOf(key) ? `（${versionOf(key)} 版）` : ''}
       </Button>)}

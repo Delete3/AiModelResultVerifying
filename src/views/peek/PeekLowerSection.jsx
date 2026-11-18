@@ -33,20 +33,20 @@ const libraryOptions = index => (index?.systems ?? []).map(system => ({
 }));
 
 /**
- * Step 5 of the peek abut tab: the PEEK crown's lower part, built in this browser from the
+ * The last step of PEEK abut on the 牙冠設計 tab: the PEEK crown's lower part, built in this browser from the
  * outer shell the service returned, the way AIrDesign builds it (AbutmentLoft.js). The
  * implant position is an estimate (no scan body here), and the titanium base is either a
  * generic placeholder or a part from the implant library when this instance has one.
  * Every change rebuilds it; a change to the implant position re-fits the shell too.
  *
- * Props: enabled / setEnabled (build it after each job), params / setParams,
+ * Props: step (its number on the panel), enabled / setEnabled (build it after each job), params / setParams,
  * library / setLibrary (a {system, type, subtype} or null for the generic base),
  * libraryIndex (null when this instance has no library), state (the last build, or null),
  * busy, error, hasShell (a job's shell to build on), onRebuild, result (the job, for the
  * file names), running (a whole job in flight).
  */
 const PeekLowerSection = ({
-  enabled, setEnabled, params, setParams, library, setLibrary, libraryIndex, state, busy, error,
+  step = 5, enabled, setEnabled, params, setParams, library, setLibrary, libraryIndex, state, busy, error,
   hasShell, onRebuild, result, running,
 }) => {
   const set = (key, value) => setParams(prev => ({ ...prev, [key]: value }));
@@ -122,7 +122,7 @@ const PeekLowerSection = ({
   const fileBase = result?.fileName.replace('pipeline_crown', '%s').replace(/\.ply$/, '.stl');
 
   return <section className='panel-section'>
-    <div className='section-title'><span className='step'>5</span>PEEK 下半部（在瀏覽器建置）</div>
+    <div className='section-title'><span className='step'>{step}</span>PEEK 下半部（在瀏覽器建置）</div>
     <Checkbox checked={enabled} onChange={e => setEnabled(e.target.checked)} disabled={disabled}>
       取回外壁後自動建置 PEEK 下半部
     </Checkbox>

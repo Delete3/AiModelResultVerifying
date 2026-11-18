@@ -8,12 +8,14 @@ import ApiDocs from '../docs/ApiDocs';
 //   changelog.md  what changed, newest first -- its first `## <date>　<title>` is "this version"
 //
 // When the pipeline's API changes -- an option, a box gaining one -- update both (user, 2026-11-03).
+// The bar shows the latest three entries in full (user, 2026-11-18).
 const DOCS = {
   changelog: { url: '/docs/crown/changelog.md', label: '更新內容', file: '牙冠設計-API-更新內容' },
   api: { url: '/docs/crown/api.md', label: 'API 串接文件', file: '牙冠設計-API-串接說明' },
 };
 
-/** The 牙冠設計 tab's documents: the latest change, and the change log and guide in a dialog. */
-const CrownDocs = () => <ApiDocs title='牙冠設計 API' docs={DOCS} idPrefix='crown' />;
+/** The 牙冠設計 tab's documents: the latest changes, and the change log and guide in a dialog. */
+const CrownDocs = () => <ApiDocs title='牙冠設計 API（牙冠、PEEK abut、支台齒）' docs={DOCS} idPrefix='crown'
+  entries={3} storageKey='checkingViewer.crownDocsCollapsedAt' />;
 
 export default CrownDocs;

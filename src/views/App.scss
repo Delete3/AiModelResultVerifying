@@ -957,3 +957,130 @@ $muted: #6b7280;
     .md-copy { position: absolute; top: 6px; right: 6px; }
   }
 }
+
+// --- 牙冠設計: one tab for crowns, PEEK abut and stumps (design/DesignPanel.jsx, 2026-11-18) ---------
+
+.product-picker {
+  .ant-segmented-item-label {
+    padding: 4px 6px;
+    line-height: 1.3;
+    white-space: normal;
+  }
+}
+
+.product-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  b {
+    font-size: 13px;
+  }
+
+  small {
+    font-size: 11px;
+    color: $muted;
+  }
+}
+
+.product-summary {
+  margin: 8px 0 0;
+
+  code {
+    padding: 0 3px;
+    border-radius: 3px;
+    background: #f3f4f6;
+    font-size: 11px;
+  }
+}
+
+.sub-title {
+  margin: 4px 0 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e5e7eb;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+
+  &:first-of-type {
+    padding-top: 0;
+    border-top: 0;
+  }
+}
+
+.option-radios {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  margin-bottom: 10px;
+}
+
+.option-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.field-row.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.api-docs-bar.expanded {
+  .api-docs-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    font-size: 12px;
+
+    .ant-btn {
+      height: auto;
+      padding: 0;
+    }
+  }
+}
+
+.api-docs-expand.ant-btn {
+  height: auto;
+  padding: 0;
+  font-size: 12px;
+}
+
+.api-docs-entries {
+  background: #fff;
+
+  .ant-collapse-header {
+    align-items: flex-start !important;
+    font-size: 12px;
+  }
+
+  .ant-collapse-content-box {
+    padding: 6px 10px 8px !important;
+  }
+}
+
+.api-docs-entry-head b {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.api-docs-entry-body {
+  max-height: 260px;
+  overflow: auto;
+
+  .md-view {
+    font-size: 12px;
+    line-height: 1.6;
+
+    ul,
+    ol {
+      padding-left: 18px;
+    }
+
+    p,
+    ul,
+    ol {
+      margin-bottom: 6px;
+    }
+  }
+}

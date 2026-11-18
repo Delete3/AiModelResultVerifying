@@ -1,6 +1,6 @@
 # 牙冠設計 API 更新內容
 
-最新的一版在最上面。每次 API 更新都會在這裡加一節，並同步更新「API 串接文件」。這裡的 API 是牙冠生成 pipeline（網址結尾 `/pipeline`）：上傳口掃與牙位，回傳牙冠。
+最新的一版在最上面。每次 API 更新都會在這裡加一節，並同步更新「API 串接文件」。這裡的 API 是牙冠生成 pipeline（網址結尾 `/pipeline`）：上傳口掃與牙位，回傳牙冠；還沒有支台齒的位置（植體）也能做牙冠外壁（`no_abutment`）或支台齒（`mode=stump`）。
 
 ## 2026-11-17　台中也有 HeyGears 模型和咬合面細節
 
@@ -9,6 +9,20 @@
 - **台中也認得 `crown_model=heygears`、`heygears_v1`、`occlusal_detail`**，和嘉義同一版（2026-11-11 的新版模型與 HeyGears 咬合面紋路）。HeyGears 的 job 兩台都能送；嘉義不能用時改送台中，拿到的也是 HeyGears 牙冠。
 - **沒帶這些參數的 job 不受影響**：台中的預設牙冠（v3）換版前後逐位元組相同（38 筆回歸測試）。
 - 呼叫方式不用改。
+
+## 2026-11-17　支台齒（`mode=stump`）；無支台齒可以改用資料庫或 cutback 支台齒（兩台）
+
+嘉義 09:23、台中 09:45 換版。牙冠服務沒有動。
+
+- **新模式 `mode=stump`：支台齒**。給還沒有支台齒的位置（例如植體）：用你畫在牙齦上的 margin（`margin_pts` 必填）把口掃切開，縫進一顆支台齒，**不做牙冠**。回傳 `stump.ply`（支台齒本身）和 `scan_with_stump.ply`（縫好支台齒的口掃，沒有縫隙、沒有重疊），都在原始口掃的座標系；這種 job 沒有 `crown.ply`。
+- **`stump_shape` 選支台齒的做法**：
+  - `library`（`mode=stump` 的預設）：形狀取自 EZCAD 支台齒資料庫，高度、傾斜取同牙位真實支台齒的中位數，不會比 margin 寬，離對咬至少 1.0 mm。
+  - `cutback`：先在資料庫支台齒上生成一顆牙冠，再把牙冠往內縮一層牙冠的厚度，剩下的就是支台齒；多回傳 `cutback_crown.ply`（內縮之前的牙冠）。`crown_model`、`occlusal_detail` 用在這顆牙冠上。
+- **一起加的參數**：`insertion_axis`（支台齒立起的方向，例如掃描桿的軸）、`stump_clearance_mm`（離對咬）、`cutback_style`（`scaled` 預設、`ring`）、`cutback_mm`、`cutback_occlusal_mm`；`stump_height_mm`、`stump_shoulder_mm` 也可以用在 `mode=stump`。範圍見串接文件「無支台齒與支台齒」。
+- **無支台齒（`no_abutment=true`）也可以帶 `stump_shape=library` 或 `cutback`**：牙冠改長在這種支台齒上，不是原本的虛擬支台齒；`virtual_prep.ply` 就是那顆支台齒。不帶 `stump_shape` 和以前完全一樣。
+- `mode=stump` 不能和 `contralateral` 一起送（422）。
+- **速度**（主機上，一次一筆）：資料庫支台齒嘉義約 1 秒、台中約 1.2 秒；cutback 嘉義 3.1–4.0 秒、台中約 4.2 秒（多做一顆牙冠）。
+- **其他呼叫完全不變**：換版前後兩台各送 38 筆檢查 job（13 個病例、單顎 FDI 13、5 個無支台齒病例，各送預設與 `contact_fit=false`），結果逐位元組相同，時間沒有變（13 個病例中位數：嘉義 6.86 → 6.78 秒、台中 7.82 → 7.76 秒）。
 
 ## 2026-11-11　HeyGears 模型換新版，咬合面細節改成 HeyGears 紋路（嘉義）
 

@@ -30,19 +30,19 @@ const libraryOptions = index => (index?.systems ?? []).map(system => ({
 }));
 
 /**
- * Step 5 of the 「產生支台齒」 tab: a custom abutment, built in this browser from the job's
+ * The last step of 「支台齒」 on the 牙冠設計 tab: a custom abutment, built in this browser from the job's
  * stump the way EZCAD's abutment design builds one -- the stump down to the margin, the
  * emergence lofted from the margin to the implant interface, the interface stitched on
  * (abutmentBuilder.js). The implant stands on the stump's insertion axis; its depth and
  * offsets come from the scan's soft-tissue tunnel unless set. Every change rebuilds it.
  *
- * Props: enabled / setEnabled, params / setParams (peekParams.js's keys), library /
+ * Props: step (its number on the panel), enabled / setEnabled, params / setParams (peekParams.js's keys), library /
  * setLibrary (a {system, type, subtype} or null for the generic base), libraryIndex (null
  * when this instance has none), state (the last build, or null), busy, error, hasStump,
  * onRebuild, result (the job, for the file names), running.
  */
 const AbutmentSection = ({
-  enabled, setEnabled, params, setParams, library, setLibrary, libraryIndex, state, busy, error,
+  step = 5, enabled, setEnabled, params, setParams, library, setLibrary, libraryIndex, state, busy, error,
   hasStump, onRebuild, result, running,
 }) => {
   const set = (key, value) => setParams(prev => ({ ...prev, [key]: value }));
@@ -117,7 +117,7 @@ const AbutmentSection = ({
   const fileBase = result ? `FDI${result.manifest?.fdi ?? ''}_${result.jobId}` : 'abutment';
 
   return <section className='panel-section'>
-    <div className='section-title'><span className='step'>5</span>客製化支台齒（縫到植體 interface）</div>
+    <div className='section-title'><span className='step'>{step}</span>客製化支台齒（縫到植體 interface）</div>
     <Checkbox checked={enabled} onChange={e => setEnabled(e.target.checked)} disabled={disabled}>
       生成支台齒後自動建置
     </Checkbox>
@@ -127,7 +127,7 @@ const AbutmentSection = ({
       showIcon
       message='照 EZCAD 的 abutment design：上半部（支台齒）→ 穿齦段 → 縫到 interface'
       description={<>
-        上半部就是上面生成的支台齒（到 margin 的肩台為止）；從 margin 往下放樣到植體 interface（和 peek 分頁同一套算法，airdental <code>AbutmentLoft.js</code>），
+        上半部就是上面生成的支台齒（到 margin 的肩台為止）；從 margin 往下放樣到植體 interface（和 PEEK abut 同一套算法，airdental <code>AbutmentLoft.js</code>），
         再和 interface 縫成一個實體。<b>沒有 scan body</b>：植體軸＝支台齒的插入方向，平台深度與偏移從口掃的軟組織隧道估計，都可以改。只供看效果，不能拿去製作。
       </>}
     />
@@ -184,7 +184,7 @@ const AbutmentSection = ({
       {number('tilt_bl_deg', '相對插入方向：頰舌傾斜', 1, '°')}
     </div>
     <p className='panel-note'>
-      植體軸預設和支台齒的插入方向同一條（第 3 步：自然傾斜、目前視角或指定）。深度是植體平台沿這條軸在 margin 環中心下方多少；
+      植體軸預設和支台齒的插入方向同一條（第 4 步：自然傾斜、目前視角或指定）。深度是植體平台沿這條軸在 margin 環中心下方多少；
       偏移與傾斜都是近心、頰側為正，傾斜＝植體軸和插入方向的夾角（角度支台齒）。自動＝從口掃的軟組織隧道估計。
     </p>
 

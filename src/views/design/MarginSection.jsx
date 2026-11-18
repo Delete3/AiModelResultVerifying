@@ -22,13 +22,13 @@ const SURFACE_WARN_MM = 0.3;
  * Step 2: where the margin comes from. "AI" lets ezai-pipeline predict it (mode=full);
  * "custom" is a ring drawn, uploaded or corrected here and sent with mode=margin_override.
  *
- * Props: marginSource, setMarginSource, fdi, prepJaw, hasPrepScan, busy, onPredict,
+ * Props: step (its number on the panel), marginSource, setMarginSource, fdi, prepJaw, hasPrepScan, busy, onPredict,
  * notice / setNotice (a one-line message about the ring, e.g. a frame warning).
  * customOnly: no AI option at all, for a case the margin model cannot read (the peek abut
  * tab, where there is no preparation to find a finish line on); `customNote` replaces it.
  */
 const MarginSection = ({
-  marginSource, setMarginSource, fdi, prepJaw, hasPrepScan, busy, onPredict, notice, setNotice,
+  step = 2, marginSource, setMarginSource, fdi, prepJaw, hasPrepScan, busy, onPredict, notice, setNotice,
   customOnly = false, customNote = null,
 }) => {
   const editor = useMarginEditor();
@@ -67,7 +67,7 @@ const MarginSection = ({
   })();
 
   return <section className='panel-section'>
-    <div className='section-title'><span className='step'>2</span>Margin</div>
+    <div className='section-title'><span className='step'>{step}</span>Margin</div>
     {customOnly
       ? customNote && <p className='panel-note'>{customNote}</p>
       : <Segmented
@@ -82,7 +82,7 @@ const MarginSection = ({
 
     {marginSource === 'ai' && <div className='section-body'>
       <p className='panel-note'>
-        由 pipeline 的 margin 模型預測（mode=full）。PEEK abutment 這類模型認不得的案例，請改用「自訂」。
+        由 pipeline 的 margin 模型預測（mode=full）。模型認不得的案例（例如植體位置）請改用「自訂」，或在第 1 步選 PEEK abut／支台齒。
       </p>
       <Tooltip title='只跑擺正與 margin（mode=margin_only），把結果載入編輯器，修改後再生成'>
         <Button block disabled={!canEdit} loading={busy === 'margin'} onClick={onPredict}>

@@ -15,8 +15,6 @@ import { useCaseScene } from '../utils/tool/useStores';
 import DesignPanel from './design/DesignPanel';
 import DirectFlowToothPanel from './advanced/DirectFlowToothPanel';
 import LegacyTools from './legacy/LegacyTools';
-import PeekAbutPanel from './peek/PeekAbutPanel';
-import StumpPanel from './stump/StumpPanel';
 import PreviewOverlay from './preview/PreviewOverlay';
 import PreviewPanel from './preview/PreviewPanel';
 import SceneOverlay from './SceneOverlay';
@@ -78,7 +76,7 @@ function App({ appSwitcher }) {
             <header className='side-header'>
               {/* The page title, and the menu of eztest's other pages (Root.jsx). */}
               {appSwitcher}
-              <span>口掃 → margin → 牙冠</span>
+              <span>口掃 → margin → 牙冠／支台齒</span>
             </header>
             <Tabs
               className='side-tabs'
@@ -87,6 +85,10 @@ function App({ appSwitcher }) {
               onChange={setTab}
               items={[
                 {
+                  // Crowns, PEEK abut (a crown's shell for a site with no abutment, and its PEEK
+                  // lower part) and stumps (and the custom abutment made of one), through
+                  // ezai-pipeline on the target chosen there. Three tabs until 2026-11-18
+                  // (peek abut設計, 產生支台齒).
                   key: 'design',
                   label: '牙冠設計',
                   children: <DesignPanel
@@ -96,23 +98,8 @@ function App({ appSwitcher }) {
                     setAllToothFdi={setAllToothFdi}
                     prepJaw={prepJaw}
                     scene={scene}
+                    active={tab === 'design'}
                   />,
-                },
-                {
-                  // Crowns for scans with no abutment yet, through the no-abutment test
-                  // endpoint on the Chiayi box. Shares the case (scans, FDI, margin) with
-                  // the design tab.
-                  key: 'peek',
-                  label: 'peek abut設計',
-                  children: <PeekAbutPanel fdi={fdi} setFdi={setFdi} prepJaw={prepJaw} scene={scene} />,
-                },
-                {
-                  // A stump from the abutment library grown on the margin and stitched into
-                  // the scan (an AI abutment's upper part), through the Chiayi box's
-                  // library-stump test pipeline. Shares the case with the design tab.
-                  key: 'stump',
-                  label: '產生支台齒',
-                  children: <StumpPanel fdi={fdi} setFdi={setFdi} prepJaw={prepJaw} scene={scene} active={tab === 'stump'} />,
                 },
                 {
                   key: 'preview',
