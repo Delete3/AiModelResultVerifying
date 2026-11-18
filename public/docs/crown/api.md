@@ -1,8 +1,8 @@
 # 牙冠設計 API 串接說明
 
-文件版本：2026-11-18（呼叫方式改以 **AI 分派器**為主：一個網址，嘉義、台中和雲端 GPU 由分派器分派；直連主機的方式移到最後一節「直連主機（舊方式）」）。之前：2026-11-18 補上支台齒 `mode=stump` 與無支台齒的 `stump_shape`；2026-11-17 台中也有 `crown_model=heygears`、`occlusal_detail`；2026-11-11 `crown_model=heygears` 換成新版模型，`occlusal_detail=1` 改上 HeyGears 咬合面紋路，舊版暫時保留為 `heygears_v1`；2026-11-04 貼合鄰牙不再留下折痕、新增 `occlusal_detail`；2026-11-03 新增 `crown_model=heygears`。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
+文件版本：2026-11-18 晚上（支台齒 `mode=stump`：預設多回牙冠外壁、`outputs` 選要哪些檔、收掃描桿的位置與軸向、送回改過的支台齒重做外壁（`stump_shape=supplied`）、回報外壁厚度；外壁下緣整理成一圈）。之前：2026-11-18 呼叫方式改以 **AI 分派器**為主，直連主機的方式移到最後一節「直連主機（舊方式）」；2026-11-18 補上支台齒 `mode=stump` 與無支台齒的 `stump_shape`；2026-11-17 台中也有 `crown_model=heygears`、`occlusal_detail`；2026-11-11 `crown_model=heygears` 換成新版模型，`occlusal_detail=1` 改上 HeyGears 咬合面紋路，舊版暫時保留為 `heygears_v1`；2026-11-04 貼合鄰牙不再留下折痕、新增 `occlusal_detail`；2026-11-03 新增 `crown_model=heygears`。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
 
-上傳一組上下顎口掃和要做牙冠的牙位（FDI），服務會自動擺正口掃、預測 margin（也可以用你畫好的 margin）、生成牙冠，最後回傳一個 zip。還沒有支台齒的位置（例如植體）也能做牙冠外壁（`no_abutment`）或支台齒（`mode=stump`），見「無支台齒與支台齒」。
+上傳一組上下顎口掃和要做牙冠的牙位（FDI），服務會自動擺正口掃、預測 margin（也可以用你畫好的 margin）、生成牙冠，最後回傳一個 zip。還沒有支台齒的位置（例如植體）也能做牙冠外壁（`no_abutment`），或做支台齒加上面的牙冠外壁（`mode=stump`），也能送回你們改過的支台齒重做牙冠外壁，見「無支台齒與支台齒」。
 
 **請呼叫 AI 分派器 `https://ai.inteware.com.tw`。** 分派器把每個 job 交給有空的主機：嘉義（RTX 5090）或台中（RTX 5080）；兩台都忙到讓 job 明顯變慢時，再開雲端 GPU（Modal）一起做。你只要記一個網址，排隊、換台、出錯重做都由分派器處理。兩台主機和雲端跑的是同一版程式與模型。
 
@@ -79,7 +79,7 @@
 | 欄位 | 必填 | 說明 |
 |---|---|---|
 | `service` | 是 | 固定 `crown` |
-| `inputs` | 是 | 口掃與 margin 的網址（下表） |
+| `inputs` | 是 | 口掃、margin、支台齒的網址（下表） |
 | `params` | 是 | 參數，至少要有 `fdi`（下表） |
 | `job_id` | 否 | 你們自己的 id（英數、`_`、`.`、`-`，最多 64 字）；不給就由分派器產生 |
 | `deadline_s` | 否 | 這個 job 最多等幾秒（5–3600，預設 330）；超過就 `failed`（`deadline_exceeded`） |
@@ -90,8 +90,9 @@
 | 名稱 | 說明 |
 |---|---|
 | `upper_stl_url`、`lower_stl_url` | 上、下顎口掃的網址。名稱沿用舊 API：`.tri.gz` 也用這兩個名稱。兩顎都要給，除非 `single_arch=true` |
-| `margin_pts` | margin 檔的**文字內容**（≤64 KB），直接放在 JSON 裡，不用另外上傳。`mode=margin_override` 或 `stump` 時必填，其他模式不能給 |
+| `margin_pts` | margin 檔的**文字內容**（≤64 KB），直接放在 JSON 裡，不用另外上傳。`mode=margin_override` 或 `stump` 時必填（`stump_shape=supplied` 除外），其他模式不能給 |
 | `margin_pts_url` | 同上，改用網址（檔名決定格式：`.pts`、`.json`、`.txt`，可加 `.gz`）。和 `margin_pts` 二選一 |
+| `stump_url` | 只配 `mode=stump`＋`stump_shape=supplied`：你們的支台齒，齦線以上、沿 margin 開口，**原始口掃的座標**；檔名決定格式（`.stl`、`.ply`、`.obj`、`.tri`，可加 `.gz`）。上一筆 `mode=stump` 結果的 `stump.ply` 就是這種形狀。開口的邊就是 margin，所以不能再給 `margin_pts` |
 
 - margin 要在**你送來的口掃的座標系**（就是結果裡 `margin_original.pts` 的座標）。
 - `.pts` 格式：`BEGIN_<FDI>`、每行 `x y z`、`END_<FDI>`；JSON 可以是 `[[x,y,z], …]`，或之前 job 的 `margin.json`。
@@ -101,7 +102,7 @@
 | 名稱 | 值 | 不帶時 | 說明 |
 |---|---|---|---|
 | `fdi` | 兩位數 FDI（11–48），**必填** | — | 要做牙冠的牙位 |
-| `mode` | `full`、`margin_only`、`margin_override`、`stump` | `full` | `full`：預測 margin 再生成牙冠。`margin_only`：只預測 margin，不生成牙冠。`margin_override`：用你給的 `margin_pts`，不跑 margin 模型。`stump`：支台齒，不生成牙冠，見「無支台齒與支台齒」 |
+| `mode` | `full`、`margin_only`、`margin_override`、`stump` | `full` | `full`：預測 margin 再生成牙冠。`margin_only`：只預測 margin，不生成牙冠。`margin_override`：用你給的 `margin_pts`，不跑 margin 模型。`stump`：支台齒和上面的牙冠外壁（`outputs` 選要哪些），見「無支台齒與支台齒」 |
 | `all_tooth_numbers` | 例如 `"14,15"` | 空白 | 同一顎所有備牙的牙位（含這一顆），給 margin 模型參考；單顆可不送。`margin_override` 時沒有作用 |
 | `single_arch` | `true`、`false` | `false` | 只送備牙那一顎（另一顎不要給）。對咬用鄰牙高度的平面代替，咬合面不是照真實咬合做的，每顆都會有一則警告 |
 | `contact_fit` | `true`、`false` | `true` | 牙冠穿進鄰牙的那面牆整平、往回推最多 0.3 mm；margin 上方 1 mm 內（牙齦帶）不動。推完還重疊的留給編修並發警告。`false` 回傳模型原樣 |
@@ -111,6 +112,7 @@
 | `occlusal_detail` | 0–2 | 不補 | 生成後補回模型磨平的咬合面細節；`1` 是建議值。只對小臼齒、大臼齒，見「咬合面細節」 |
 | `no_abutment` | `true`、`false` | `false` | 還沒有支台齒的位置（例如植體）：要搭配 `mode=margin_override`。服務放一個支台齒再生成牙冠，多回傳 `virtual_prep.ply`；**牙冠只用外表面** |
 | `stump_height_mm`、`stump_shoulder_mm`、`stump_shape`、`insertion_axis`、`stump_clearance_mm`、`cutback_style`、`cutback_mm`、`cutback_occlusal_mm` | 見「無支台齒與支台齒」 | 服務決定 | 只能和 `no_abutment=true` 或 `mode=stump` 一起送 |
+| `outputs`、`implant_position`、`implant_axis` | 見「無支台齒與支台齒」 | 服務決定 | 只能和 `mode=stump` 一起送 |
 
 - **名稱打錯**（例如 `no_abutement`）時，建 job 就回 422 `invalid_request`，`message` 列出不認得的名稱和 `crown` 收的所有名稱；不會被默默忽略。
 - 值不對（例如 `occlusal_detail` 不是 0–2、`mode` 和 `margin_pts` 不搭）由主機檢查：job 會 `failed`，`error.code` 是 `input_rejected`，`message` 是主機的原話。
@@ -207,15 +209,15 @@ HeyGears 的 job 像這樣：
 
 ## 無支台齒與支台齒
 
-還沒有支台齒的位置（例如植體）有兩種做法。兩種都**一定要你畫的 margin**（`margin_pts`，畫在牙齦上牙冠或支台齒要落的位置）：沒有支台齒時 margin 模型找不到邊緣線。
+還沒有支台齒的位置（例如植體）有兩種做法。兩種都**一定要你畫的 margin**（`margin_pts`，畫在牙齦上牙冠或支台齒要落的位置）：沒有支台齒時 margin 模型找不到邊緣線。支台齒還可以**送回你們改過的支台齒，重做牙冠外壁**（`stump_shape=supplied`，這時不給 margin）。
 
-| | PEEK abut：`mode=margin_override`＋`no_abutment=true` | 支台齒：`mode=stump` |
+| | PEEK abut：`mode=margin_override`＋`no_abutment=true` | 支台齒＋牙冠外壁：`mode=stump` |
 |---|---|---|
-| 做什麼 | 在 margin 裡放一個支台齒，再生成牙冠；**牙冠只用外表面**（內側是配合那顆支台齒的），例如給 PEEK 牙冠的上半部 | 沿 margin 把口掃切開，縫進一顆支台齒（abutment 的上半部）；**不做牙冠** |
-| 回傳 | `crown.ply`（外壁）、`virtual_prep.ply`（牙冠底下的支台齒） | `stump.ply`、`scan_with_stump.ply`；`cutback` 另有 `cutback_crown.ply` |
-| `stump_shape` | 不帶＝一般的虛擬支台齒（預設）；`library`、`cutback`：牙冠改長在那種支台齒上 | `library`（預設）、`cutback` |
-| 可以一起送 | `contralateral`、`crown_model`、`occlusal_clearance`、`occlusal_detail` | `cutback` 時 `crown_model`、`occlusal_clearance`、`occlusal_detail`（用在內縮之前的牙冠）；**不能**送 `contralateral` |
-| 主機上的時間 | 和 `margin_override` 差不多（3–5 秒） | `library` 約 1 秒（台中 1.2）；`cutback` 3.1–4.0 秒（台中約 4.2） |
+| 做什麼 | 在 margin 裡放一個支台齒，再生成牙冠；**牙冠只用外表面**（內側是配合那顆支台齒的），例如給 PEEK 牙冠的上半部 | 沿 margin 把口掃切開，縫進一顆支台齒（abutment 的上半部），再在支台齒上生成牙冠外壁；**牙冠內面由你們做** |
+| 回傳 | `crown.ply`（外壁）、`virtual_prep.ply`（牙冠底下的支台齒） | 由 `outputs` 決定；不帶＝`stump.ply`＋`crown.ply`（`supplied`＝`crown.ply`） |
+| `stump_shape` | 不帶＝一般的虛擬支台齒（預設）；`library`、`cutback`：牙冠改長在那種支台齒上 | `library`（預設）、`cutback`、`virtual`、`supplied` |
+| 可以一起送 | `contralateral`、`crown_model`、`occlusal_clearance`、`occlusal_detail` | `crown_model`、`occlusal_clearance`、`occlusal_detail`、`contact_fit`、`contralateral`（要有牙冠） |
+| 主機上的時間 | 和 `margin_override` 差不多（3–5 秒） | 有牙冠 4.4–5 秒；只要 `library` 支台齒、不要牙冠約 1 秒（見「速度」） |
 
 支台齒的形狀：
 
@@ -223,22 +225,42 @@ HeyGears 的 job 像這樣：
 |---|---|
 | 不帶（只有 `no_abutment`） | 一般的虛擬支台齒：高度＝牙齦到對咬的距離減 1.5 mm（限制在 1.5–4.0 mm），錐度 8°。牙齦到對咬不到 3 mm 時放不下牙冠，`warnings` 會說明 |
 | `library` | 形狀取自 EZCAD 支台齒資料庫；高度、傾斜、寬度取同牙位真實支台齒的中位數，不會比 margin 寬；對咬太近時自動降低（最低 2.0 mm），`warnings` 會說明 |
-| `cutback` | 先在 `library` 支台齒上生成牙冠，再把牙冠往內縮一層牙冠的厚度，剩下的就是支台齒。`scaled`（預設）：肩台與牆照 `ring`，咬合面用牙冠自己的咬合面等比縮進來，植體牙冠比 margin 寬很多時咬合面的起伏留得比較多；`ring`：牆和咬合面分開內縮。空間不夠切不出來時改回 `library` 支台齒並在 `warnings` 說明 |
+| `cutback` | 先在 `library` 支台齒上生成牙冠，再把牙冠往內縮一層牙冠的厚度，剩下的就是支台齒。`mode=stump` 回的 `crown.ply` 就是這顆牙冠（整平鄰接後），支台齒是從它內縮來的。`scaled`（預設）：肩台與牆照 `ring`，咬合面用牙冠自己的咬合面等比縮進來，植體牙冠比 margin 寬很多時咬合面的起伏留得比較多；`ring`：牆和咬合面分開內縮。空間不夠切不出來時改回 `library` 支台齒並在 `warnings` 說明 |
+| `virtual`（`mode=stump`） | 和 PEEK abut 同一種虛擬支台齒 |
+| `supplied`（`mode=stump`） | **你們的支台齒**（`inputs.stump_url`），例如上一筆的 `stump.ply` 在你們的軟體改過後送回來。它的開口邊緣就是 margin（不收 `margin_pts`）：服務沿這條邊把口掃切開、縫上這顆支台齒，再**重新生成**牙冠外壁。支台齒本身不會被改動（只在開口邊緣多了和口掃共用的頂點）。要給齦線以上的部分、只有一個開口、開口至少 8 點；封閉的整顆支台齒（含齦線以下）還不收，另一個超過 3 mm 的開口也不收（都是 `input_rejected`）；小於 3 mm 的小洞照收並加警告 |
 
 支台齒的參數（放在 `params`；不帶＝服務決定）：
 
 | 名稱 | 能配什麼 | 值 | 說明 |
 |---|---|---|---|
+| `outputs` | `mode=stump` | 逗號分隔：`stump`、`crown`、`scan_with_stump` | zip 裡要哪些檔。不帶＝`stump,crown`（`supplied`＝`crown`）。只有不要 `crown` 的 `library`／`virtual` 支台齒會跳過牙冠（約 1 秒）；`cutback` 一定會做牙冠（支台齒從它內縮），不要 `crown` 只是不放進 zip。沒有 `crown` 又送 `contralateral`：`input_rejected` |
+| `implant_position` | `mode=stump` | `"x,y,z"`（原始口掃的座標，mm） | 掃描桿量到的植體平台中心。**只記錄**（`manifest.json` 的 `stump.implant`：在 margin 下方多深、離 margin 中心多遠），不影響形狀；離 margin 太遠（可能是別的座標系）加警告 |
+| `implant_axis` | `mode=stump` 的 `library`、`cutback` | `"x,y,z"`（原始口掃的座標，正負都可） | 掃描桿量到的植體軸向。沒送 `insertion_axis` 時支台齒沿這個方向立起（`stump.axis_source` 寫 `implant_axis`），也記下它和實際插入方向的夾角 |
 | `stump_height_mm` | `no_abutment` 或 `mode=stump` | 虛擬支台齒 1.0–6.0；`library` 1.5–8.0 | 支台齒高度（從 margin 平均高度量到頂端） |
 | `stump_shoulder_mm` | 同上 | 0.3–1.5（虛擬支台齒不帶＝0.8，`library`／`cutback` 不帶＝0.6） | 肩台寬（從 margin 往內） |
-| `stump_shape` | 同上 | `library`、`cutback` | 見上表 |
-| `insertion_axis` | `library`、`cutback` | `"x,y,z"`（原始口掃的座標，正負都可） | 支台齒立起的方向，例如掃描桿的軸。不帶＝牙位自然的傾斜。離咬合方向超過 60° 時 job 會 `failed`（`input_rejected`），超過 30° 加警告 |
+| `stump_shape` | 同上 | `library`、`cutback`；`mode=stump` 還有 `virtual`、`supplied` | 見上表 |
+| `insertion_axis` | `library`、`cutback` | `"x,y,z"`（原始口掃的座標，正負都可） | 支台齒立起的方向。不帶＝有 `implant_axis` 就用它，否則牙位自然的傾斜。離咬合方向超過 60° 時 job 會 `failed`（`input_rejected`），超過 30° 加警告 |
 | `stump_clearance_mm` | `library`、`cutback` | 0.5–3.0（不帶＝1.0） | 和對咬牙至少保留的距離 |
 | `cutback_style` | `cutback` | `scaled`（預設）、`ring` | 其他值 `input_rejected` |
 | `cutback_mm`、`cutback_occlusal_mm` | `cutback` | 0.5–2.5（不帶＝1.0）、0.5–3.0（不帶＝1.8） | 牆內縮多少、咬合面沿插入方向往下降多少（mm） |
 
-- `manifest.json` 的 `stump`（`mode=stump`）或 `no_abutment`（無支台齒）記錄這顆支台齒：形狀、高度與怎麼決定的、離對咬、插入方向（`insertion_axis_original`，原始座標）等。
-- 範例 `params`：支台齒（cutback）`{"fdi": "21", "mode": "stump", "stump_shape": "cutback"}`；PEEK abut（資料庫支台齒）`{"fdi": "21", "mode": "margin_override", "no_abutment": true, "stump_shape": "library"}`。兩個都要在 `inputs` 給 `margin_pts`。
+`mode=stump` 做了牙冠時：
+
+- 貼合鄰牙（`contact_fit`）預設開，和一般牙冠一樣。
+- `manifest.json` 的 `stump.fit` 給你們做牙冠內面時參考：
+  - `thickness`：牙冠外壁到支台齒表面的距離（mm），分咬合面 `occlusal_mm`、軸面 `axial_mm`（最小、第 5 百分位、中位數），離 margin 1 mm 以內不算。外壁穿進支台齒（`inside_points` > 0）或比 0.3 mm 薄時加警告。
+  - `rim`：牙冠外壁下緣離 margin 多遠。下緣刻意放在 margin 外約 **0.2 mm**（模型的倒角寬度），不在 margin 上；做內面時要接到這條邊。
+- **外壁下緣是一圈**：服務把下緣的頂點沿 margin 排好順序，下緣不會沿 margin 往回走，也沒有座標完全相同的點，所以用座標焊接（例如 0.0001 mm）之後還是一圈。下緣還在原本那條線上（margin 外約 0.2 mm），只改了順序；每筆約多 0.02 秒。`manifest.json` 的 `stump.crown_rim.result`：`clean`（本來就是一圈）、`reseated`（重排過）、`skipped: …`（下緣沒有繞 margin 一圈，例如咬合空間不夠時的退化外殼：原樣回傳並加警告）、`closed`（外壁沒分離出來，見「結果 zip」）。
+- `manifest.json` 的 `stump` 也記錄這顆支台齒：形狀、高度與怎麼決定的、離對咬、插入方向（`insertion_axis_original`，原始座標）和它的來源（`axis_source`）、要了哪些檔（`outputs`）；`supplied` 時另有口掃怎麼切、縫合（`cut`、`seam`）。PEEK abut（`no_abutment`）的支台齒記在 `no_abutment`。
+
+範例 `params`：
+
+| 要做什麼 | `params` | `inputs` 另外要給 |
+|---|---|---|
+| 支台齒＋牙冠外壁（cutback，沿掃描桿的軸） | `{"fdi": "26", "mode": "stump", "stump_shape": "cutback", "implant_axis": "0.1,-0.2,0.97"}` | `margin_pts` |
+| 只要資料庫支台齒（約 1 秒） | `{"fdi": "26", "mode": "stump", "outputs": "stump"}` | `margin_pts` |
+| 改過的支台齒，重做牙冠外壁 | `{"fdi": "26", "mode": "stump", "stump_shape": "supplied"}` | `stump_url`（不給 margin） |
+| PEEK abut（資料庫支台齒） | `{"fdi": "21", "mode": "margin_override", "no_abutment": true, "stump_shape": "library"}` | `margin_pts` |
 
 ## job 狀態
 
@@ -261,16 +283,16 @@ HeyGears 的 job 像這樣：
 
 | 檔案 | 座標系 | 內容 |
 |---|---|---|
-| `crown.ply` | **原始口掃** | 牙冠外壁（`margin_only`、`stump` 沒有）：一片開口在 margin 的外表面，不含內側的黏著面 |
+| `crown.ply` | **原始口掃** | 牙冠外壁（`margin_only` 沒有；`mode=stump` 看 `outputs`，預設有）：一片開口在 margin 的外表面，不含內側的黏著面 |
 | `margin_original.pts` | **原始口掃** | 這次用的 margin（預測的或你給的） |
 | `margin_canonical.pts` | 擺正後 | 同一條 margin，擺正座標 |
 | `margin.json` | 兩者 | 兩條 margin 的 JSON，加上 margin 是否有效；`margin_override` 時另有你的 margin 離口掃多遠（`surface_check`，超過 0.3 mm 會警告） |
 | `alignment.json` | — | 擺正用的旋轉矩陣：`p_canonical = rotation_matrix @ p_original` |
 | `manifest.json` | — | 參數、每步耗時、警告，以及各 AI 服務回報的資訊（見下） |
 | `virtual_prep.ply` | **原始口掃** | 只有 `no_abutment=true`：牙冠底下的支台齒（帶 `stump_shape` 時是那種支台齒） |
-| `stump.ply` | **原始口掃** | 只有 `mode=stump`：支台齒本身（肩台＋支台齒），開口的邊就是 margin。這種 job 沒有 `crown.ply` |
-| `scan_with_stump.ply` | **原始口掃** | 只有 `mode=stump`：口掃沿 margin 切開、縫上支台齒（共用頂點，沒有縫隙、沒有重疊） |
-| `cutback_crown.ply` | **原始口掃** | 只有 `mode=stump` 且 `stump_shape=cutback`：內縮之前的那顆牙冠（中間產物，不是給這顆支台齒用的牙冠） |
+| `stump.ply` | **原始口掃** | 只有 `mode=stump` 且 `outputs` 有 `stump`（預設有，`supplied` 預設沒有）：支台齒本身（肩台＋支台齒），開口的邊就是 margin；`supplied` 時是縫進口掃之後的樣子 |
+| `scan_with_stump.ply` | **原始口掃** | 只有 `mode=stump` 且 `outputs` 有 `scan_with_stump`（2026-11-18 以前一律有）：口掃沿 margin 切開、縫上支台齒（共用頂點，沒有縫隙、沒有重疊） |
+| `cutback_crown.ply` | — | 2026-11-18 起**沒有這個檔**：`cutback` 內縮之前的那顆牙冠改成 `crown.ply`（整平鄰接後）送出 |
 
 回傳的牙冠和 margin 都在**你送來的口掃的座標系**，不必另外轉換。
 
@@ -284,7 +306,7 @@ HeyGears 的 job 像這樣：
 - `backends.crown.antagonist_relief`：大於 0 表示備牙的咬合空間不夠，服務把對咬往外移了這麼多 mm 才做得出牙冠，`warnings` 也會說明；這種牙冠的咬合要另外處理。
 - `backends.crown.antagonist`：單顎時用的對咬替身。
 - `contact_fit`：和鄰牙的重疊處理前後的數字。
-- `stump`、`no_abutment`：支台齒的紀錄（見「無支台齒與支台齒」）。
+- `stump`、`no_abutment`：支台齒的紀錄；`stump.fit`（外壁厚度、下緣離 margin 多遠）、`stump.crown_rim`（下緣整理），見「無支台齒與支台齒」。
 - `request`：收到哪些參數（`sent`）、每個選項實際用的值，含預設（`applied`）、這個 `mode` 下沒有作用的參數（`no_effect`）。
 - `warnings`、`timings_ms`：警告與每一步的毫秒數（`jaw_ms`、`margin_ms`、`crown_ms`、`contact_fit_ms`、`total_ms`…）。
 - 同一份輸入在同一台得到逐位元組相同的牙冠。嘉義和台中之間只有浮點誤差等級的差異（牙冠中位數 ≤0.02 mm）。雲端的顯示卡不同，而 AI 預測的 margin（`full`、`margin_only`）對極小的數值差很敏感：少數病例和主機的 margin 差 0.5 mm 以上（13 例中 4–5 例），牙冠也跟著不同；哪一邊比較好沒有比過。在哪裡做的看 job 的 `where`。
@@ -296,7 +318,7 @@ HeyGears 的 job 像這樣：
 | 狀態碼 | `code` | 原因 | 怎麼處理 |
 |---|---|---|---|
 | 403 | — | Cloudflare：沒帶或帶錯 Service Token，或用了預設 User-Agent（error code: 1010） | 檢查三個 header |
-| 400、422 | `invalid_request` | JSON 或欄位錯：不認得的參數名稱、一顎口掃都沒給、網址不是 https／不在 `amazonaws.com`／快過期、`margin_pts` 超過 64 KB | 看 `message`，改了再送 |
+| 400、422 | `invalid_request` | JSON 或欄位錯：不認得的參數名稱、一顎口掃都沒給、網址不是 https／不在 `amazonaws.com`／快過期、`margin_pts` 超過 64 KB、`stump_shape=supplied` 沒給 `stump_url` 或又給了 margin、`stump_url` 沒配 `supplied` | 看 `message`，改了再送 |
 | 409 | `conflict` | 這個 `job_id` 剛好不能用（很少見） | 換一個 `job_id` |
 | 503 | `no_capacity` | 現在沒有能做這種 job 的地方；回 `Retry-After: 30` | 稍後再送 |
 | 404 | `not_found` | 查詢、刪除的 job 不存在、已刪除，或不是你們的 | — |
@@ -306,7 +328,7 @@ job 失敗（`status` 是 `failed`，看 `error.code`；`GET` 仍然回 200）�
 
 | `code` | 原因 | 要不要重送 |
 |---|---|---|
-| `input_rejected` | 主機拒絕輸入或參數，`message` 是主機的原話：沒有 `fdi`、缺一顎或 `single_arch` 又給了對咬顎、不支援的副檔名、讀不出檔案、牙位不對、`margin_pts` 和 `mode` 不搭、`no_abutment` 沒有搭配 `margin_override`、`occlusal_detail` 不是 0–2、支台齒參數超出範圍或配錯模式、`mode=stump` 帶了 `contralateral`、`insertion_axis` 離咬合方向超過 60°、`cutback_style` 不是 `scaled` 或 `ring`、`crown_model` 打錯 | 改了再送；原樣重送一樣會失敗 |
+| `input_rejected` | 主機拒絕輸入或參數，`message` 是主機的原話：沒有 `fdi`、缺一顎或 `single_arch` 又給了對咬顎、不支援的副檔名、讀不出檔案、牙位不對、`margin_pts` 和 `mode` 不搭、`no_abutment` 沒有搭配 `margin_override`、`occlusal_detail` 不是 0–2、支台齒參數超出範圍或配錯模式、`mode=stump` 不做牙冠又帶了 `contralateral`、送來的支台齒是封閉的或有另一個大開口、`insertion_axis` 離咬合方向超過 60°、`cutback_style` 不是 `scaled` 或 `ring`、`crown_model` 打錯 | 改了再送；原樣重送一樣會失敗 |
 | `input_fetch_failed` | 主機抓不到口掃網址（多半是過期或 403） | 重新上傳或重新簽網址再送 |
 | `host_failed` | 主機出錯，已自動換一台重做一次，還是失敗 | 稍後再送 |
 | `deadline_exceeded` | 超過 `deadline_s` | 視情況加長 `deadline_s` 再送 |
@@ -326,8 +348,10 @@ job 失敗（`status` 是 `failed`，看 `error.code`；`GET` 仍然回 200）�
 | `full`（預測 margin＋牙冠） | 約 6.5–7.5 秒 | 擺正 0.4–0.7、margin 約 3、牙冠約 2.5–3、貼合鄰牙約 0.6 秒 |
 | `margin_override`（用你的 margin） | 約 3–5 秒 | 不跑 margin 模型 |
 | `margin_only` | 約 4 秒 | 不生成牙冠 |
-| `stump`（`library`） | 約 1 秒（台中約 1.2） | 不生成牙冠 |
-| `stump`（`cutback`） | 3.1–4.0 秒（台中約 4.2） | 多做一顆牙冠再內縮 |
+| `stump`（`library`＋牙冠，預設） | 約 4.5 秒（台中約 4.8） | 支台齒約 1 秒、牙冠、貼合鄰牙、厚度檢查 0.1–0.2 秒 |
+| `stump`（`cutback`） | 約 5 秒（台中約 5.1） | 牙冠做一次，支台齒從它內縮 |
+| `stump`（`supplied`） | 約 4.4 秒（台中約 4.5） | 沿支台齒邊緣切口掃、縫合 0.3–0.9 秒 |
+| `stump`（`library`，`outputs=stump`） | 約 1 秒（台中約 1.2） | 不生成牙冠 |
 
 - `crown_model=heygears` 每顆比 v3 多約 0.2 秒（`heygears_v1` 和 v3 差不多快）；`occlusal_clearance=0.2` 每顆約多 0.3–0.4 秒；`occlusal_detail=1` 每顆約多 0.1 秒（`heygears` 的紋路約 0.4 秒）；`contralateral=true` 每顆約多 2 秒。
 - 經分派器比直連多約 0.3–0.4 秒（主要是把結果放上 S3）。另外要加上你上傳口掃、輪詢與下載結果的時間，主要看口掃大小與你的網路。
@@ -423,6 +447,7 @@ curl -s "${H[@]}" -X DELETE $B/v2/jobs/case123-36
 | 表單欄位 `upper_stl_url`、`lower_stl_url`、`margin_pts_url` | 原名放進 `inputs` |
 | 夾帶檔案 `upper_stl`、`lower_stl` | 不收夾帶：`POST /v2/uploads` 拿上傳網址，建 job 時給 `get_url` |
 | 夾帶檔案 `margin_pts` | `inputs.margin_pts` 放檔案的文字（≤64 KB），或 `margin_pts_url` |
+| 夾帶檔案 `stump`（`stump_shape=supplied` 的支台齒），或表單欄位 `stump_url` | `inputs.stump_url`（先 `POST /v2/uploads`） |
 | 輪詢 `GET …/v1/jobs/X`，要送回同一台 | `GET /v2/jobs/X?wait=20`，不用管在哪做 |
 | `GET …/v1/jobs/X/result` | 下載 `result_url`（S3，不用帶 header） |
 | `DELETE …/v1/jobs/X` | `DELETE /v2/jobs/X` |
@@ -435,7 +460,7 @@ curl -s "${H[@]}" -X DELETE $B/v2/jobs/case123-36
 
 - 基底網址：嘉義 `https://ezai2.inteware.com.tw/pipeline`、台中 `https://ezai.inteware.com.tw/pipeline`，兩台各用一把 Service Token，header 同上。兩台的程式、模型和參數預設值都一樣。
 - 端點：`POST /v1/jobs`（multipart/form-data，回 202 與 `job_id`）、`GET /v1/jobs/{job_id}`、`GET /v1/jobs/{job_id}/result`（zip）、`DELETE /v1/jobs/{job_id}`、`GET /health`、`GET /`（認得哪些選項）。
-- 參數名稱和上面 `params` 相同，但 **`crown_model`、`occlusal_clearance`、`occlusal_detail`、`job_id` 是網址參數**（接在 `/v1/jobs?` 後面），放在表單裡會被忽略；其他是表單欄位。口掃可以夾帶（`upper_stl`、`lower_stl`），`margin_pts` 是檔案欄位。
+- 參數名稱和上面 `params` 相同，但 **`crown_model`、`occlusal_clearance`、`occlusal_detail`、`job_id` 是網址參數**（接在 `/v1/jobs?` 後面），放在表單裡會被忽略；其他是表單欄位。口掃可以夾帶（`upper_stl`、`lower_stl`），`margin_pts`、`stump`（`supplied` 的支台齒；或用 `stump_url`）是檔案欄位。
 - 狀態回應的欄位是 `job_id`、`status`、`stage`（`jaw`、`margin`、`crown`、`packaging`）、`queue_position`、`timings_ms`、`warnings`、`error`、`error_stage`、`links.result`。結果 zip 的內容和經分派器相同。
 - 每台同時跑 8 個 job、最多 100 個排隊（滿了回 429 與 `Retry-After: 30`）；job 結束 1 小時後自動刪除。job 只存在收到它的那一台，輪詢、下載、刪除都要送回同一台；一台在 job 進行中掛掉時要重新上傳到另一台。
 - 錯誤回 JSON `{"detail": …}`：404 job 不存在、409 結果還沒好、410 結果已清掉、413 上傳超過 100 MB、422 參數或檔案不對（原因同上面的 `input_rejected`）、429 排隊已滿、503 `/health` 有服務連不上。

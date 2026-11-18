@@ -1,6 +1,20 @@
 # 牙冠設計 API 更新內容
 
-最新的一版在最上面。每次 API 更新都會在這裡加一節，並同步更新「API 串接文件」。這裡的 API 是牙冠生成服務：上傳口掃與牙位，回傳牙冠；還沒有支台齒的位置（植體）也能做牙冠外壁（`no_abutment`）或支台齒（`mode=stump`）。2026-11-18 起請經 AI 分派器（`https://ai.inteware.com.tw`）呼叫；更早的條目寫的是直連主機的網址（結尾 `/pipeline`），參數名稱和意思兩邊相同。
+最新的一版在最上面。每次 API 更新都會在這裡加一節，並同步更新「API 串接文件」。這裡的 API 是牙冠生成服務：上傳口掃與牙位，回傳牙冠；還沒有支台齒的位置（植體）也能做牙冠外壁（`no_abutment`）或支台齒加牙冠外壁（`mode=stump`）。2026-11-18 起請經 AI 分派器（`https://ai.inteware.com.tw`）呼叫；更早的條目寫的是直連主機的網址（結尾 `/pipeline`），參數名稱和意思兩邊相同。
+
+## 2026-11-18　支台齒：預設多回牙冠外壁、送回改過的支台齒重做外壁、外壁下緣整理成一圈（兩台）
+
+嘉義 15:34、台中 15:42 換版（支台齒），16:15、16:23 再換一次（外壁下緣）。牙冠服務沒有動。
+
+- **`mode=stump` 預設多回牙冠外壁**：支台齒做好後，接著在它上面生成牙冠外壁（`crown.ply`），牙冠內面由你們做。`cutback` 回的 `crown.ply` 就是被內縮的那顆牙冠（整平鄰接後），支台齒從它內縮來；**不再回 `cutback_crown.ply`**。有做牙冠時貼合鄰牙（`contact_fit`）預設開。
+- **`outputs` 選 zip 裡要哪些檔**：`stump`、`crown`、`scan_with_stump`，逗號分隔。不帶＝`stump,crown`。**`scan_with_stump.ply` 不再預設回傳**；要和以前一樣，送 `outputs=stump,scan_with_stump`（和以前逐位元組相同）。只要資料庫支台齒、不要牙冠時照舊約 1 秒。
+- **掃描桿**：`implant_axis`（植體軸向）沒送 `insertion_axis` 時當成支台齒立起的方向；`implant_position`（植體平台中心）只記錄在 `manifest.json` 的 `stump.implant`，不影響形狀。
+- **送回改過的支台齒，重做牙冠外壁**：`stump_shape=supplied`，在 `inputs.stump_url` 給你們的支台齒（齦線以上、沿 margin 開口、原始口掃的座標，例如上一筆的 `stump.ply` 改過後）。開口的邊就是 margin，不給 `margin_pts`；服務沿這條邊切開口掃、縫上這顆支台齒，再重新生成外壁。只回 `crown.ply`。支台齒本身不會被改動。封閉的整顆支台齒（含齦線以下）還不收。
+- **外壁厚度**：`manifest.json` 的 `stump.fit` 有牙冠外壁到支台齒的距離（咬合面、軸面）與下緣離 margin 多遠（約 0.2 mm，刻意放在 margin 外）；外壁穿進支台齒或比 0.3 mm 薄時加警告。
+- **外壁下緣整理成一圈**：以前有些外壁下緣有座標完全相同的點、或一小段沿 margin 往回走，用座標焊接後會斷成好幾圈。現在服務把下緣頂點沿 margin 排好順序再回傳，焊接後也是一圈；下緣還在原本那條線上，只改順序。`manifest.json` 的 `stump.crown_rim` 記錄有沒有整理。咬合空間不夠的退化外殼（下緣沒繞 margin 一圈）原樣回傳並加警告。
+- **速度**（主機上，一次一筆）：`library`＋牙冠約 4.5 秒（台中 4.8）、`cutback` 約 5 秒、`supplied` 約 4.4 秒；只要支台齒約 1 秒。整理下緣每筆約 0.02 秒。
+- **其他呼叫完全不變**：一般牙冠、`margin_only`、`margin_override`、PEEK abut（`no_abutment`，含 `stump_shape`）換版前後兩台各 38 筆檢查 job 逐位元組相同，時間沒有變。
+- **要改的地方**：用 `mode=stump` 拿 `scan_with_stump.ply` 的呼叫端要加 `outputs=stump,scan_with_stump`；用 `cutback_crown.ply` 的改讀 `crown.ply`。
 
 ## 2026-11-18　請改經 AI 分派器呼叫（`https://ai.inteware.com.tw`）
 
