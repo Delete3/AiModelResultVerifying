@@ -1,6 +1,6 @@
 # 牙冠設計 API 串接說明
 
-文件版本：2026-11-18 晚上（支台齒 `mode=stump`：預設多回牙冠外壁、`outputs` 選要哪些檔、收掃描桿的位置與軸向、送回改過的支台齒重做外壁（`stump_shape=supplied`）、回報外壁厚度；外壁下緣整理成一圈）。之前：2026-11-18 呼叫方式改以 **AI 分派器**為主，直連主機的方式移到最後一節「直連主機（舊方式）」；2026-11-18 補上支台齒 `mode=stump` 與無支台齒的 `stump_shape`；2026-11-17 台中也有 `crown_model=heygears`、`occlusal_detail`；2026-11-11 `crown_model=heygears` 換成新版模型，`occlusal_detail=1` 改上 HeyGears 咬合面紋路，舊版暫時保留為 `heygears_v1`；2026-11-04 貼合鄰牙不再留下折痕、新增 `occlusal_detail`；2026-11-03 新增 `crown_model=heygears`。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
+文件版本：2026-11-18 傍晚（PEEK abut 的外壁下緣也整理成一圈）。之前：2026-11-18 下午（支台齒 `mode=stump`：預設多回牙冠外壁、`outputs` 選要哪些檔、收掃描桿的位置與軸向、送回改過的支台齒重做外壁（`stump_shape=supplied`）、回報外壁厚度；外壁下緣整理成一圈）；2026-11-18 呼叫方式改以 **AI 分派器**為主，直連主機的方式移到最後一節「直連主機（舊方式）」；2026-11-18 補上支台齒 `mode=stump` 與無支台齒的 `stump_shape`；2026-11-17 台中也有 `crown_model=heygears`、`occlusal_detail`；2026-11-11 `crown_model=heygears` 換成新版模型，`occlusal_detail=1` 改上 HeyGears 咬合面紋路，舊版暫時保留為 `heygears_v1`；2026-11-04 貼合鄰牙不再留下折痕、新增 `occlusal_detail`；2026-11-03 新增 `crown_model=heygears`。每次 API 更新的內容，見同一處的「更新內容」（changelog.md）。
 
 上傳一組上下顎口掃和要做牙冠的牙位（FDI），服務會自動擺正口掃、預測 margin（也可以用你畫好的 margin）、生成牙冠，最後回傳一個 zip。還沒有支台齒的位置（例如植體）也能做牙冠外壁（`no_abutment`），或做支台齒加上面的牙冠外壁（`mode=stump`），也能送回你們改過的支台齒重做牙冠外壁，見「無支台齒與支台齒」。
 
@@ -250,7 +250,7 @@ HeyGears 的 job 像這樣：
 - `manifest.json` 的 `stump.fit` 給你們做牙冠內面時參考：
   - `thickness`：牙冠外壁到支台齒表面的距離（mm），分咬合面 `occlusal_mm`、軸面 `axial_mm`（最小、第 5 百分位、中位數），離 margin 1 mm 以內不算。外壁穿進支台齒（`inside_points` > 0）或比 0.3 mm 薄時加警告。
   - `rim`：牙冠外壁下緣離 margin 多遠。下緣刻意放在 margin 外約 **0.2 mm**（模型的倒角寬度），不在 margin 上；做內面時要接到這條邊。
-- **外壁下緣是一圈**：服務把下緣的頂點沿 margin 排好順序，下緣不會沿 margin 往回走，也沒有座標完全相同的點，所以用座標焊接（例如 0.0001 mm）之後還是一圈。下緣還在原本那條線上（margin 外約 0.2 mm），只改了順序；每筆約多 0.02 秒。`manifest.json` 的 `stump.crown_rim.result`：`clean`（本來就是一圈）、`reseated`（重排過）、`skipped: …`（下緣沒有繞 margin 一圈，例如咬合空間不夠時的退化外殼：原樣回傳並加警告）、`closed`（外壁沒分離出來，見「結果 zip」）。
+- **外壁下緣是一圈**（`mode=stump` 有牙冠時，以及 PEEK abut）：服務把下緣的頂點沿 margin 排好順序，下緣不會沿 margin 往回走，也沒有座標完全相同的點，所以用座標焊接（例如 0.0001 mm）之後還是一圈。下緣還在原本那條線上（margin 外約 0.2 mm），只改了順序；每筆約多 0.02 秒。`manifest.json` 的 `stump.crown_rim.result`（PEEK abut 是 `no_abutment.crown_rim.result`）：`clean`（本來就是一圈）、`reseated`（重排過）、`skipped: …`（下緣沒有繞 margin 一圈，例如咬合空間不夠時的退化外殼：原樣回傳並加警告）、`closed`（外壁沒分離出來，見「結果 zip」）。PEEK abut 的外壁拿去放樣到植體（AbutmentLoft）時，不經 `cleanShell` 下緣也是一圈；外壁內部還有很短的邊，`cleanShell` 請照舊留著。
 - `manifest.json` 的 `stump` 也記錄這顆支台齒：形狀、高度與怎麼決定的、離對咬、插入方向（`insertion_axis_original`，原始座標）和它的來源（`axis_source`）、要了哪些檔（`outputs`）；`supplied` 時另有口掃怎麼切、縫合（`cut`、`seam`）。PEEK abut（`no_abutment`）的支台齒記在 `no_abutment`。
 
 範例 `params`：
@@ -306,7 +306,7 @@ HeyGears 的 job 像這樣：
 - `backends.crown.antagonist_relief`：大於 0 表示備牙的咬合空間不夠，服務把對咬往外移了這麼多 mm 才做得出牙冠，`warnings` 也會說明；這種牙冠的咬合要另外處理。
 - `backends.crown.antagonist`：單顎時用的對咬替身。
 - `contact_fit`：和鄰牙的重疊處理前後的數字。
-- `stump`、`no_abutment`：支台齒的紀錄；`stump.fit`（外壁厚度、下緣離 margin 多遠）、`stump.crown_rim`（下緣整理），見「無支台齒與支台齒」。
+- `stump`、`no_abutment`：支台齒的紀錄；`stump.fit`（外壁厚度、下緣離 margin 多遠）、`stump.crown_rim`、`no_abutment.crown_rim`（下緣整理），見「無支台齒與支台齒」。
 - `request`：收到哪些參數（`sent`）、每個選項實際用的值，含預設（`applied`）、這個 `mode` 下沒有作用的參數（`no_effect`）。
 - `warnings`、`timings_ms`：警告與每一步的毫秒數（`jaw_ms`、`margin_ms`、`crown_ms`、`contact_fit_ms`、`total_ms`…）。
 - 同一份輸入在同一台得到逐位元組相同的牙冠。嘉義和台中之間只有浮點誤差等級的差異（牙冠中位數 ≤0.02 mm）。雲端的顯示卡不同，而 AI 預測的 margin（`full`、`margin_only`）對極小的數值差很敏感：少數病例和主機的 margin 差 0.5 mm 以上（13 例中 4–5 例），牙冠也跟著不同；哪一邊比較好沒有比過。在哪裡做的看 job 的 `where`。

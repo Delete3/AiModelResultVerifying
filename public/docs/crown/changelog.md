@@ -2,6 +2,16 @@
 
 最新的一版在最上面。每次 API 更新都會在這裡加一節，並同步更新「API 串接文件」。這裡的 API 是牙冠生成服務：上傳口掃與牙位，回傳牙冠；還沒有支台齒的位置（植體）也能做牙冠外壁（`no_abutment`）或支台齒加牙冠外壁（`mode=stump`）。2026-11-18 起請經 AI 分派器（`https://ai.inteware.com.tw`）呼叫；更早的條目寫的是直連主機的網址（結尾 `/pipeline`），參數名稱和意思兩邊相同。
 
+## 2026-11-18　PEEK abut 的外壁下緣也整理成一圈（兩台）
+
+嘉義 17:03、台中 17:04 換版。牙冠服務沒有動。
+
+- **PEEK abut 的 `crown.ply` 下緣也排成一圈**：`mode=margin_override`＋`no_abutment=true`（單用、配 `stump_shape=library` 或 `cutback`，`contact_fit` 開或關都是）回傳的外壁，下緣和 `mode=stump` 一樣，沿 margin 排好順序再回傳。以前外壁下緣常有往回走的一小段或座標完全相同的點（我們測的 16 個外壁都有），不經 `cleanShell` 直接放樣到植體（AbutmentLoft）會報錯或留洞；現在直接放樣也是水密的（用 AbutmentLoft 的複製測這 16 個外壁）。
+- **會變的檔**：下緣被重排的 `crown.ply`（只動下緣和旁邊兩圈頂點，離原本的表面最多約 0.05 mm）；`manifest.json` 多了 `no_abutment.crown_rim`（`result`：`clean`、`reseated`、`skipped: …`、`closed`）和 `timings_ms.rim_ms`。`virtual_prep.ply`、`margin.json`、`margin_*.pts`、`alignment.json` 不變。下緣沒繞 margin 一圈的退化外殼（咬合空間不夠時）原樣回傳，`warnings` 多一則。
+- **呼叫端不用改**：現在「先 `cleanShell` 再放樣」的做法照舊可用，最薄壁厚和以前相差不到 0.001 mm。外壁內部還有很短的邊，`cleanShell` 請留著。
+- **速度**：整理下緣每筆約 0.02 秒，整筆時間沒有變（主機上的中位數：嘉義約 3.2 秒、台中約 3.8 秒）。
+- **其他呼叫完全不變**：一般牙冠、`margin_only`、不帶 `no_abutment` 的 `margin_override`、`mode=stump`，換版前後逐位元組相同。
+
 ## 2026-11-18　支台齒：預設多回牙冠外壁、送回改過的支台齒重做外壁、外壁下緣整理成一圈（兩台）
 
 嘉義 15:34、台中 15:42 換版（支台齒），16:15、16:23 再換一次（外壁下緣）。牙冠服務沒有動。
